@@ -12,9 +12,29 @@ _Avoid_: Using “案件” to name the app's local checklist record
 A private auxiliary checklist created by an officer to track procedural work for one administrative case. It is not an official case record, business ledger, or legal determination.
 _Avoid_: App内案件、电子案卷、业务台账
 
+**候选事实**:
+从用户原始表述中提取、但尚未由民警确认的一项案情陈述。候选事实可以进入确认界面和追问过程，但不能直接支撑初步定性意见。
+_Avoid_: 已查明事实、系统认定、自动确认
+
 **事实选择**:
 A structured fact confirmed by the officer and used by PoliceMate to select procedural branches. It is user input, not a fact inferred from police business data or a legal finding made by the app.
 _Avoid_: 自动识别、系统认定、案情录入
+
+**争议事实**:
+本次分析中存在不同说法、尚不能按单一版本确认的事实。它必须保留冲突表述，只能用于展示分支、缺口和核验事项，不能被系统静默选定。
+_Avoid_: 系统采信事实、默认事实、已确认事实
+
+**事实快照**:
+一次分析在特定时点采用的候选、确认、否认、未知和争议事实的不可变集合。用户修改决定性内容后形成新快照，并使依赖旧快照的报告失效。
+_Avoid_: 可直接覆盖的案情对象、分析历史、官方案卷版本
+
+**决定性事实缺口**:
+一个尚未确认、且其不同答案可能实质改变定性方向、受立案条件、证据优先级或重大风险判断的信息缺口。追问优先处理这类缺口，但允许民警回答未知、待核实或存在争议。
+_Avoid_: 所有空字段、必填项缺失、模型想知道的信息
+
+**连续案情**:
+一次案情分析所覆盖的共同背景、人员关系或因果链相连的一组事件、人员和行为。彼此独立、需要分别研判的事项不应因出现在同一段输入中而合并。
+_Avoid_: 单一案由、整段输入、无限案情集合
 
 **派出所重点案情**:
 第一版优先整理公开法源、分流条件和测试案例的一组派出所常见或高风险案情，包括派出所直接办理及首先接报、初步处置后可能移交的案情。它是内部内容建设清单，不代表官方发案率排名、产品对外承诺或用户可见的覆盖等级。
