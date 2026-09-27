@@ -4,16 +4,20 @@ import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import {
   CONTRACT_VERSION,
   type ApiErrorBody,
+  type ContentStatus,
   type DataUseResponse,
+  type DocumentExampleDetailResponse,
+  type DocumentExampleListResponse,
   type FixtureControlRequest,
   type FixtureControlResponse,
   type HealthResponse,
   type ProductShellResponse,
 } from "@policymate/contracts";
-import { buildProductShell, loadCapabilityInputs } from "./capabilities";
+import { buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } from "./capabilities";
 import type { AppConfig } from "./config";
 import { buildDataUseResponse } from "./data-use";
-import type { FixtureControls, FixtureState } from "./providers/fixture";
+import { buildFacets } from "./content/gating";
+import type { FixtureControls, FixturePatch } from "./providers/fixture";
 
 export interface BuildAppDeps {
   config: AppConfig;
@@ -33,20 +37,61 @@ function errorBody(
   return { contractVersion: CONTRACT_VERSION, error: { code, message, requestId } };
 }
 
-function readFixturePatch(body: unknown): Partial<FixtureState> | null {
-  if (body === null || typeof body !== "object" || Array.isArray(body)) return null;
+const CONTENT_STATUSES = ["draft", "pending_verification", "trial", "withdrawn"] as const;
+const LEGAL_SOURCE_STATUSES = ["current", "future", "superseded", "repealed", "uncertain"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readContentStatus(value: unknown): ContentStatus | null {
+  return typeof value === "string" && (CONTENT_STATUSES as readonly string[]).includes(value)
+    ? (value as ContentStatus)
+    : null;
+}
+
+function readFixturePatch(body: unknown): FixturePatch | null {
+  if (!isRecord(body)) return null;
   const candidate = body as FixtureControlRequest;
-  const patch: Partial<FixtureState> = {};
+  const patch: FixturePatch = {};
 
   if ("difyAvailable" in candidate) {
     if (typeof candidate.difyAvailable !== "boolean") return null;
     patch.difyAvailable = candidate.difyAvailable;
   }
-  if ("eligibleExampleCount" in candidate) {
-    const count = candidate.eligibleExampleCount;
-    if (typeof count !== "number" || !Number.isInteger(count) || count < 0) return null;
-    patch.eligibleExampleCount = count;
+
+  if ("exampleStatusAll" in candidate) {
+    const status = readContentStatus(candidate.exampleStatusAll);
+    if (status === null) return null;
+    patch.exampleStatusAll = status;
   }
+
+  if ("exampleStatus" in candidate) {
+    const value = candidate.exampleStatus;
+    if (!isRecord(value) || typeof value.exampleId !== "string" || value.exampleId === "") {
+      return null;
+    }
+    const status = readContentStatus(value.status);
+    if (status === null) return null;
+    patch.exampleStatus = { exampleId: value.exampleId, status };
+  }
+
+  if ("legalSourceStatusAll" in candidate) {
+    const value = candidate.legalSourceStatusAll;
+    if (
+      typeof value !== "string" ||
+      !(LEGAL_SOURCE_STATUSES as readonly string[]).includes(value)
+    ) {
+      return null;
+    }
+    patch.legalSourceStatusAll = value as NonNullable<FixturePatch["legalSourceStatusAll"]>;
+  }
+
+  if ("examplesExpired" in candidate) {
+    if (typeof candidate.examplesExpired !== "boolean") return null;
+    patch.examplesExpired = candidate.examplesExpired;
+  }
+
   return patch;
 }
 
@@ -112,6 +157,57 @@ export async function buildApp({ config, fixtures }: BuildAppDeps): Promise<Fast
   app.get("/api/v1/data-use", async (): Promise<DataUseResponse> => {
     return buildDataUseResponse(config.service, CONTRACT_VERSION);
   });
+
+  // 文书范例检索与打开都重新执行当前状态门控；响应禁止缓存。
+  // 总开关或文书入口停用时，检索与旧链接一律阻断（失败关闭），
+  // 不能只靠首页入口卡片降级。
+  const documentsRetrievalEnabled = isDocumentRetrievalEnabled(config);
+
+  app.get("/api/v1/document-examples", async (): Promise<DocumentExampleListResponse> => {
+    const index = await fixtures.content.listExamples();
+    const items = documentsRetrievalEnabled ? index.items : [];
+    const facets = documentsRetrievalEnabled ? index.facets : buildFacets([]);
+    return {
+      contractVersion: CONTRACT_VERSION,
+      generatedAt: new Date().toISOString(),
+      releaseId: documentsRetrievalEnabled ? index.releaseId : "",
+      notice: index.notice,
+      stages: index.stages,
+      items,
+      facets,
+    };
+  });
+
+  app.get<{ Params: { exampleId: string } }>(
+    "/api/v1/document-examples/:exampleId",
+    async (request, reply) => {
+      const lookup = documentsRetrievalEnabled
+        ? await fixtures.content.getExample(request.params.exampleId)
+        : ({ outcome: "unavailable" } as const);
+      if (lookup.outcome === "not_found") {
+        return reply.code(404).send(errorBody(request.id, "not_found", "未找到该文书范例。"));
+      }
+      if (lookup.outcome === "unavailable") {
+        return reply
+          .code(410)
+          .send(
+            errorBody(
+              request.id,
+              "content_unavailable",
+              "当前内容已经失效，无法继续查看正文，请返回文书范例列表重新选择。",
+            ),
+          );
+      }
+      const response: DocumentExampleDetailResponse = {
+        contractVersion: CONTRACT_VERSION,
+        generatedAt: new Date().toISOString(),
+        releaseId: lookup.releaseId,
+        notice: lookup.notice,
+        example: lookup.example,
+      };
+      return response;
+    },
+  );
 
   if (config.enableTestControls) {
     app.post<{ Body: FixtureControlRequest }>("/api/test/fixtures", async (request, reply) => {

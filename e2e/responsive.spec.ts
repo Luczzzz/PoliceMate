@@ -34,7 +34,7 @@ for (const viewport of portraitViewports) {
 }
 
 test("关键状态不只依赖颜色表达", async ({ page, request }) => {
-  await setFixture(request, { eligibleExampleCount: 0 });
+  await setFixture(request, { exampleStatusAll: "withdrawn" });
   await page.goto("/");
 
   const status = page.getByTestId("entry-status-documentExamples");

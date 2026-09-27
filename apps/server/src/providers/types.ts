@@ -1,3 +1,11 @@
+import type {
+  DocumentExampleFacets,
+  DocumentExampleNotice,
+  DocumentExampleVariantDetail,
+  DocumentExampleVariantSummary,
+  HandlingStageCatalogEntry,
+} from "@policymate/contracts";
+
 /**
  * 外部边界提供者接口。
  *
@@ -24,9 +32,34 @@ export interface GovernedContentRelease {
   eligibleExampleCount: number;
 }
 
-/** 受治理内容读取边界。 */
+/** 当前批次中通过状态门控的文书范例索引。 */
+export interface GovernedContentExampleIndex {
+  releaseId: string;
+  notice: DocumentExampleNotice;
+  stages: HandlingStageCatalogEntry[];
+  items: DocumentExampleVariantSummary[];
+  facets: DocumentExampleFacets;
+}
+
+/**
+ * 详情查询结果。失效标识返回 `unavailable`，未知标识返回 `not_found`；
+ * 两者都必须与“可展示正文”严格区分。
+ */
+export type GovernedContentExampleLookup =
+  | {
+      outcome: "found";
+      releaseId: string;
+      notice: DocumentExampleNotice;
+      example: DocumentExampleVariantDetail;
+    }
+  | { outcome: "unavailable" }
+  | { outcome: "not_found" };
+
+/** 受治理内容读取边界。所有读取都必须经过当前状态门控。 */
 export interface GovernedContentProvider {
   getActiveRelease(): Promise<GovernedContentRelease>;
+  listExamples(): Promise<GovernedContentExampleIndex>;
+  getExample(exampleId: string): Promise<GovernedContentExampleLookup>;
 }
 
 export interface Providers {

@@ -1,5 +1,17 @@
 import type {
+  ContentStatus,
+  FixtureControlResponse,
+  LegalSourceStatus,
+  FixtureExampleState,
+} from "@policymate/contracts";
+import { createFixtureContent } from "../content/fixture-content";
+import { DOCUMENT_EXAMPLE_NOTICE } from "../content/catalog";
+import { buildDocumentExampleIndex, lookupDocumentExample } from "../content/responses";
+import { createGovernedContentStore } from "../content/store";
+import type {
   DifyProvider,
+  GovernedContentExampleIndex,
+  GovernedContentExampleLookup,
   GovernedContentProvider,
   GovernedContentRelease,
   Providers,
@@ -9,39 +21,56 @@ import type {
 /**
  * Dify 与受治理内容边界的确定性替身。
  *
- * 替身状态只属于当前进程，可由测试控制接口修改。它不读取案情内容，
- * 也不返回任何真实模型或真实法源数据。
+ * 受治理内容来自仅用于测试的确定性内容源；替身只维护治理开关，
+ * 不读取案情内容，也不返回任何真实模型或真实法源数据。
  */
-export interface FixtureState {
-  difyAvailable: boolean;
-  eligibleExampleCount: number;
+export interface FixturePatch {
+  difyAvailable?: boolean;
+  exampleStatusAll?: ContentStatus;
+  exampleStatus?: { exampleId: string; status: ContentStatus };
+  legalSourceStatusAll?: LegalSourceStatus;
+  examplesExpired?: boolean;
 }
 
 export interface FixtureControls extends Providers {
-  updateState(patch: Partial<FixtureState>): FixtureState;
-  reset(): FixtureState;
+  updateState(patch: FixturePatch): FixtureControlResponse;
+  reset(): FixtureControlResponse;
+  describe(): FixtureControlResponse;
 }
 
-export const DEFAULT_FIXTURE_STATE: FixtureState = {
-  difyAvailable: true,
-  eligibleExampleCount: 1,
-};
+export function createFixtureControls(initial: FixturePatch = {}): FixtureControls {
+  const store = createGovernedContentStore(createFixtureContent());
+  let difyAvailable = true;
 
-const FIXTURE_RELEASE_ID = "fixture-release-0001";
-
-function normalize(state: FixtureState): FixtureState {
-  return {
-    difyAvailable: state.difyAvailable,
-    eligibleExampleCount: Math.max(0, Math.trunc(state.eligibleExampleCount)),
+  const applyPatch = (patch: FixturePatch) => {
+    if (patch.difyAvailable !== undefined) difyAvailable = patch.difyAvailable;
+    if (patch.exampleStatusAll !== undefined) store.setAllExampleStatus(patch.exampleStatusAll);
+    if (patch.exampleStatus !== undefined) {
+      store.setExampleStatus(patch.exampleStatus.exampleId, patch.exampleStatus.status);
+    }
+    if (patch.legalSourceStatusAll !== undefined) {
+      store.setAllLegalSourceStatus(patch.legalSourceStatusAll);
+    }
+    if (patch.examplesExpired !== undefined) store.setExamplesExpired(patch.examplesExpired);
   };
-}
 
-export function createFixtureControls(initial: Partial<FixtureState> = {}): FixtureControls {
-  let state = normalize({ ...DEFAULT_FIXTURE_STATE, ...initial });
+  const describe = (): FixtureControlResponse => {
+    const snapshot = store.snapshot();
+    const examples: FixtureExampleState[] = snapshot.examples.map((item) => ({ ...item }));
+    return {
+      difyAvailable,
+      activeReleaseId: snapshot.activeReleaseId,
+      eligibleExampleCount: snapshot.eligibleExampleCount,
+      examples,
+      legalSources: snapshot.legalSources.map((source) => ({ ...source })),
+    };
+  };
+
+  applyPatch(initial);
 
   const dify: DifyProvider = {
     async getAvailability(): Promise<ServiceAvailability> {
-      return state.difyAvailable
+      return difyAvailable
         ? { available: true, reason: null }
         : { available: false, reason: "分析服务暂不可用" };
     },
@@ -49,23 +78,35 @@ export function createFixtureControls(initial: Partial<FixtureState> = {}): Fixt
 
   const content: GovernedContentProvider = {
     async getActiveRelease(): Promise<GovernedContentRelease> {
+      const snapshot = store.snapshot();
       return {
-        releaseId: FIXTURE_RELEASE_ID,
-        eligibleExampleCount: state.eligibleExampleCount,
+        releaseId: snapshot.activeReleaseId,
+        eligibleExampleCount: snapshot.eligibleExampleCount,
       };
+    },
+    async listExamples(): Promise<GovernedContentExampleIndex> {
+      const index = buildDocumentExampleIndex(store);
+      return { notice: DOCUMENT_EXAMPLE_NOTICE, ...index };
+    },
+    async getExample(exampleId: string): Promise<GovernedContentExampleLookup> {
+      const lookup = lookupDocumentExample(store, exampleId);
+      if (lookup.outcome !== "found") return lookup;
+      return { ...lookup, notice: DOCUMENT_EXAMPLE_NOTICE };
     },
   };
 
   return {
     dify,
     content,
-    updateState(patch) {
-      state = normalize({ ...state, ...patch });
-      return { ...state };
+    updateState: (patch) => {
+      applyPatch(patch);
+      return describe();
     },
-    reset() {
-      state = { ...DEFAULT_FIXTURE_STATE };
-      return { ...state };
+    reset: () => {
+      difyAvailable = true;
+      store.reset();
+      return describe();
     },
+    describe,
   };
 }

@@ -4,6 +4,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { CapabilityBoundaryPage } from "./pages/CapabilityBoundaryPage";
 import { DataUsePage } from "./pages/DataUsePage";
+import { DocumentExampleDetailPage } from "./pages/DocumentExampleDetailPage";
+import { DocumentsRoute } from "./pages/DocumentsPage";
 import { HomePage } from "./pages/HomePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { TestThrowPage } from "./pages/TestThrowPage";
@@ -28,8 +30,9 @@ export function App() {
                 />
                 <Route
                   path="/documents"
-                  element={<CapabilityBoundaryPage capability="documentExamples" />}
+                  element={<DocumentsRoute />}
                 />
+                <Route path="/documents/:exampleId" element={<DocumentExampleDetailPage />} />
                 {import.meta.env.DEV ? (
                   <Route path="/__test__/throw" element={<TestThrowPage />} />
                 ) : null}

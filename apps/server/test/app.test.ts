@@ -3,6 +3,9 @@ import {
   CONTRACT_VERSION,
   type ApiErrorBody,
   type DataUseResponse,
+  type DocumentExampleDetailResponse,
+  type DocumentExampleListResponse,
+  type FixtureControlResponse,
   type ProductShellResponse,
 } from "@policymate/contracts";
 import type { FastifyInstance } from "fastify";
@@ -46,6 +49,18 @@ function getDataUse(app: FastifyInstance) {
   return app.inject({ method: "GET", url: "/api/v1/data-use", headers: contractHeaders });
 }
 
+function getExampleList(app: FastifyInstance, url = "/api/v1/document-examples") {
+  return app.inject({ method: "GET", url, headers: contractHeaders });
+}
+
+function getExampleDetail(app: FastifyInstance, exampleId: string) {
+  return app.inject({
+    method: "GET",
+    url: `/api/v1/document-examples/${exampleId}`,
+    headers: contractHeaders,
+  });
+}
+
 describe("GET /api/v1/shell", () => {
   it("返回两个可用入口和契约版本", async () => {
     const { app } = await makeApp();
@@ -81,7 +96,7 @@ describe("GET /api/v1/shell", () => {
     await app.inject({
       method: "POST",
       url: "/api/test/fixtures",
-      payload: { eligibleExampleCount: 0 },
+      payload: { exampleStatusAll: "withdrawn" },
     });
 
     const body = (await getShell(app)).json<ProductShellResponse>();
@@ -151,11 +166,16 @@ describe("替身控制接口", () => {
     await app.inject({
       method: "POST",
       url: "/api/test/fixtures",
-      payload: { difyAvailable: false, eligibleExampleCount: 0 },
+      payload: { difyAvailable: false, exampleStatusAll: "withdrawn" },
     });
     const reset = await app.inject({ method: "POST", url: "/api/test/fixtures/reset" });
+    const body = reset.json<FixtureControlResponse>();
 
-    expect(reset.json()).toEqual({ difyAvailable: true, eligibleExampleCount: 1 });
+    expect(body.difyAvailable).toBe(true);
+    expect(body.eligibleExampleCount).toBeGreaterThanOrEqual(1);
+    expect(body.examples.every((item) => item.contentStatus === "trial" && item.eligible)).toBe(
+      true,
+    );
     await app.close();
   });
 
@@ -164,7 +184,7 @@ describe("替身控制接口", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/test/fixtures",
-      payload: { eligibleExampleCount: -2 },
+      payload: { exampleStatusAll: "approved" },
     });
 
     expect(response.statusCode).toBe(400);
@@ -240,6 +260,209 @@ describe("API 未匹配路由", () => {
 
     expect(response.statusCode).toBe(404);
     expect(response.json<ApiErrorBody>().error.code).toBe("not_found");
+    await app.close();
+  });
+});
+
+describe("GET /api/v1/document-examples", () => {
+  it("只返回通过状态门控的 trial 范例，并携带阶段目录与筛选计数", async () => {
+    const { app } = await makeApp();
+    const response = await getExampleList(app);
+    const body = response.json<DocumentExampleListResponse>();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(body.contractVersion).toBe(CONTRACT_VERSION);
+    expect(body.releaseId).toBeTruthy();
+    expect(body.items.length).toBeGreaterThanOrEqual(1);
+    expect(body.items.every((item) => item.contentStatus === "trial")).toBe(true);
+    expect(body.stages).toHaveLength(6);
+    expect(body.facets.stages).toHaveLength(6);
+    expect(body.notice.notFormalTemplate).toBeTruthy();
+    await app.close();
+  });
+
+  it("忽略检索词参数，检索词不进入后端处理", async () => {
+    const { app } = await makeApp();
+    const plain = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    const withQuery = (
+      await getExampleList(app, "/api/v1/document-examples?q=受案+登记")
+    ).json<DocumentExampleListResponse>();
+
+    expect(withQuery.items.map((item) => item.exampleId)).toEqual(
+      plain.items.map((item) => item.exampleId),
+    );
+    expect(JSON.stringify(withQuery)).not.toContain("受案 登记");
+    await app.close();
+  });
+
+  it("列表不包含 draft、pending_verification 或 withdrawn 内容", async () => {
+    const { app } = await makeApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/test/fixtures",
+      payload: { exampleStatusAll: "pending_verification" },
+    });
+
+    const body = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    expect(body.items).toEqual([]);
+    await app.close();
+  });
+
+  it("依赖非 current 法源时内容退出列表", async () => {
+    const { app } = await makeApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/test/fixtures",
+      payload: { legalSourceStatusAll: "superseded" },
+    });
+
+    const body = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    expect(body.items).toEqual([]);
+    await app.close();
+  });
+
+  it("内容到期后退出列表", async () => {
+    const { app } = await makeApp();
+    await app.inject({
+      method: "POST",
+      url: "/api/test/fixtures",
+      payload: { examplesExpired: true },
+    });
+
+    const body = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    expect(body.items).toEqual([]);
+    await app.close();
+  });
+});
+
+describe("GET /api/v1/document-examples/:exampleId", () => {
+  async function firstExampleId(app: FastifyInstance): Promise<string> {
+    const body = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    const id = body.items[0]?.exampleId;
+    expect(id).toBeTruthy();
+    return id as string;
+  }
+
+  it("返回完整详情、法源依据与治理信息", async () => {
+    const { app } = await makeApp();
+    const exampleId = await firstExampleId(app);
+    const response = await getExampleDetail(app, exampleId);
+    const body = response.json<DocumentExampleDetailResponse>();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(body.example.exampleId).toBe(exampleId);
+    expect(body.example.applicableScenarios.length).toBeGreaterThan(0);
+    expect(body.example.exclusions.length).toBeGreaterThan(0);
+    expect(body.example.prerequisites.length).toBeGreaterThan(0);
+    expect(body.example.structure.length).toBeGreaterThan(0);
+    expect(body.example.annotatedExample.length).toBeGreaterThan(0);
+    expect(body.example.productionPoints.length).toBeGreaterThan(0);
+    expect(body.example.commonErrors.length).toBeGreaterThan(0);
+    expect(body.example.legalSources[0]?.statusLabel).toBe("现行有效");
+    expect(body.example.governance.releaseId).toBe(body.releaseId);
+    expect(body.notice.fictionalData).toBeTruthy();
+    await app.close();
+  });
+
+  it("未知标识返回 not_found", async () => {
+    const { app } = await makeApp();
+    const response = await getExampleDetail(app, "doc-does-not-exist");
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json<ApiErrorBody>().error.code).toBe("not_found");
+    await app.close();
+  });
+
+  it("单项下架后旧链接不能访问正文", async () => {
+    const { app } = await makeApp();
+    const exampleId = await firstExampleId(app);
+
+    expect((await getExampleDetail(app, exampleId)).statusCode).toBe(200);
+
+    await app.inject({
+      method: "POST",
+      url: "/api/test/fixtures",
+      payload: { exampleStatus: { exampleId, status: "withdrawn" } },
+    });
+
+    const blocked = await getExampleDetail(app, exampleId);
+    expect(blocked.statusCode).toBe(410);
+    expect(blocked.json<ApiErrorBody>().error.code).toBe("content_unavailable");
+
+    const list = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    expect(list.items.some((item) => item.exampleId === exampleId)).toBe(false);
+    await app.close();
+  });
+
+  it("法源失效后已打开的标识同样被阻断", async () => {
+    const { app } = await makeApp();
+    const exampleId = await firstExampleId(app);
+
+    await app.inject({
+      method: "POST",
+      url: "/api/test/fixtures",
+      payload: { legalSourceStatusAll: "repealed" },
+    });
+
+    const blocked = await getExampleDetail(app, exampleId);
+    expect(blocked.statusCode).toBe(410);
+    expect(blocked.json<ApiErrorBody>().error.code).toBe("content_unavailable");
+    await app.close();
+  });
+
+  it("仍要求契约版本请求头", async () => {
+    const { app } = await makeApp();
+    const exampleId = await firstExampleId(app);
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/document-examples/${exampleId}`,
+    });
+
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("受治理内容替身状态", () => {
+  it("报告每个测试范例的治理状态与可用性", async () => {
+    const { app } = await makeApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/test/fixtures",
+      payload: { exampleStatusAll: "draft", examplesExpired: true },
+    });
+    const body = response.json<FixtureControlResponse>();
+
+    expect(body.eligibleExampleCount).toBe(0);
+    expect(body.examples.every((item) => item.contentStatus === "draft")).toBe(true);
+    expect(body.examples.every((item) => item.eligible === false)).toBe(true);
+    await app.close();
+  });
+});
+
+describe("文书范例入口停用与总开关", () => {
+  it("文书入口停用时列表与旧链接都不返回正文", async () => {
+    const { app } = await makeApp({ documentsEnabled: false });
+    const list = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    expect(list.items).toEqual([]);
+    expect(list.releaseId).toBe("");
+
+    const exampleId = "doc-test-reception-register";
+    const detail = await getExampleDetail(app, exampleId);
+    expect(detail.statusCode).toBe(410);
+    expect(detail.json<ApiErrorBody>().error.code).toBe("content_unavailable");
+    await app.close();
+  });
+
+  it("总开关关闭时同样阻断正文", async () => {
+    const { app } = await makeApp({ masterSwitch: false });
+    const list = (await getExampleList(app)).json<DocumentExampleListResponse>();
+    expect(list.items).toEqual([]);
+
+    const detail = await getExampleDetail(app, "doc-test-reception-register");
+    expect(detail.statusCode).toBe(410);
     await app.close();
   });
 });

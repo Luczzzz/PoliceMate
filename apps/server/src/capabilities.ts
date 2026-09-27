@@ -78,6 +78,14 @@ export function resolveDocumentExamplesAvailability(inputs: CapabilityInputs): E
   return { available: true, reason: null };
 }
 
+/**
+ * 文书范例正文是否允许检索与打开。总开关或入口开关关闭时必须失败关闭：
+ * 只让首页入口卡片降级不足以保证旧链接无法访问正文。
+ */
+export function isDocumentRetrievalEnabled(config: CapabilityConfig): boolean {
+  return config.masterSwitch && config.documentsEnabled;
+}
+
 export function buildProductShell(
   inputs: CapabilityInputs,
   contractVersion: string,

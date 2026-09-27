@@ -7,7 +7,7 @@ test.beforeEach(async ({ request }) => {
 
 test.describe("入口可用状态门控", () => {
   test("文书范例不可用时在点击前显示暂不可用，且不进入空入口", async ({ page, request }) => {
-    await setFixture(request, { eligibleExampleCount: 0 });
+    await setFixture(request, { exampleStatusAll: "withdrawn" });
     await page.goto("/");
 
     const entry = page.getByTestId("entry-documentExamples");
@@ -42,7 +42,7 @@ test.describe("入口可用状态门控", () => {
   });
 
   test("两个入口可以同时不可用", async ({ page, request }) => {
-    await setFixture(request, { difyAvailable: false, eligibleExampleCount: 0 });
+    await setFixture(request, { difyAvailable: false, exampleStatusAll: "withdrawn" });
     await page.goto("/");
 
     await expect(page.getByTestId("entry-caseAnalysis")).toHaveAttribute("data-available", "false");
