@@ -52,13 +52,19 @@ function extractEnvelope(body: unknown): { code: string | null; message: string 
 }
 
 /**
- * 同源读取 JSON。所有请求都携带契约版本；响应版本不兼容时停止解析，
+ * 同源请求 JSON。所有请求都携带契约版本；响应版本不兼容时停止解析，
  * 不猜测字段含义。
  */
-export async function getJson<T>(
+export async function requestJson<T>(
   path: string,
-  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+  options: {
+    method?: "GET" | "POST" | "PUT" | "DELETE";
+    body?: unknown;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+  } = {},
 ): Promise<T> {
+  const method = options.method ?? "GET";
   const controller = new AbortController();
   const externalSignal = options.signal;
   const forwardAbort = () => controller.abort();
@@ -68,11 +74,13 @@ export async function getJson<T>(
   let response: Response;
   try {
     response = await fetch(path, {
-      method: "GET",
+      method,
       headers: {
         accept: "application/json",
         "x-pm-contract-version": CONTRACT_VERSION,
+        ...(options.body === undefined ? {} : { "content-type": "application/json" }),
       },
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
       cache: "no-store",
       credentials: "same-origin",
       signal: controller.signal,
@@ -108,6 +116,10 @@ export async function getJson<T>(
     });
   }
 
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
   let body: unknown;
   try {
     body = await response.json();
@@ -124,4 +136,12 @@ export async function getJson<T>(
   }
 
   return body as T;
+}
+
+/** 同源读取 JSON（GET）。 */
+export async function getJson<T>(
+  path: string,
+  options: { signal?: AbortSignal; timeoutMs?: number } = {},
+): Promise<T> {
+  return requestJson<T>(path, options);
 }

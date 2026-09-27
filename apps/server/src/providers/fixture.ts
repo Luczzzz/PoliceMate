@@ -8,13 +8,20 @@ import { createFixtureContent } from "../content/fixture-content";
 import { DOCUMENT_EXAMPLE_NOTICE } from "../content/catalog";
 import { buildDocumentExampleIndex, lookupDocumentExample } from "../content/responses";
 import { createGovernedContentStore } from "../content/store";
+import { extractCaseFactsFixture } from "../analysis/fixture-extract";
+import { proposeDecisiveQuestionsFixture } from "../analysis/fixture-questions";
 import type {
+  CaseAnalysisProvider,
+  CaseExtractionRequest,
+  CaseExtractionResult,
   DifyProvider,
   GovernedContentExampleIndex,
   GovernedContentExampleLookup,
   GovernedContentProvider,
   GovernedContentRelease,
   Providers,
+  QuestionPoolRequest,
+  QuestionPoolResult,
   ServiceAvailability,
 } from "./types";
 
@@ -76,6 +83,19 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     },
   };
 
+  /**
+   * 案情分析边界替身：确定性提取与追问选题。
+   * 后端负责结构校验、状态机、上限控制与紧急提示，替身不决定任何产品状态。
+   */
+  const analysis: CaseAnalysisProvider = {
+    async extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult> {
+      return extractCaseFactsFixture(request.caseText);
+    },
+    async proposeDecisiveQuestions(request: QuestionPoolRequest): Promise<QuestionPoolResult> {
+      return proposeDecisiveQuestionsFixture(request);
+    },
+  };
+
   const content: GovernedContentProvider = {
     async getActiveRelease(): Promise<GovernedContentRelease> {
       const snapshot = store.snapshot();
@@ -97,6 +117,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
 
   return {
     dify,
+    analysis,
     content,
     updateState: (patch) => {
       applyPatch(patch);

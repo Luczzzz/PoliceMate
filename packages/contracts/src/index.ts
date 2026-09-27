@@ -76,6 +76,300 @@ export interface ApiErrorBody {
   };
 }
 
+/* ---------- 案情分析：候选事实与决定性追问 ---------- */
+
+/** 案情分析后端状态机。H5 只依据这些显式状态推进，不解析自然语言。 */
+export type AnalysisStage =
+  | "confirming_facts"
+  | "collecting_answers"
+  | "ready_to_analyze"
+  | "snapshot_confirmed";
+
+/** 事实状态。只有 `confirmed` 可以直接支撑主结论。 */
+export type FactStatus = "candidate" | "confirmed" | "denied" | "unknown" | "disputed";
+
+export const FACT_STATUS_LABELS: Record<FactStatus, string> = {
+  candidate: "候选事实",
+  confirmed: "已确认",
+  denied: "已否认",
+  unknown: "未知",
+  disputed: "存在争议",
+};
+
+/** 事实类别目录。展示名称由后端/契约统一提供，页面不得自行拼写。 */
+export type FactCategory =
+  | "event"
+  | "participant"
+  | "behavior"
+  | "object"
+  | "time"
+  | "place"
+  | "amount"
+  | "count"
+  | "age"
+  | "result"
+  | "relationship"
+  | "background"
+  | "other";
+
+export const FACT_CATEGORY_LABELS: Record<FactCategory, string> = {
+  event: "事件",
+  participant: "人员",
+  behavior: "行为",
+  object: "财物物品",
+  time: "时间",
+  place: "地点",
+  amount: "金额",
+  count: "次数数量",
+  age: "年龄",
+  result: "结果后果",
+  relationship: "人员关系",
+  background: "背景信息",
+  other: "其他事实",
+};
+
+/** 精确程度。模糊值必须同时保留原始表述、规范化范围与精确程度。 */
+export type PrecisionLevel = "exact" | "approximate" | "bounded" | "open" | "unknown";
+
+export const PRECISION_LABELS: Record<PrecisionLevel, string> = {
+  exact: "精确值",
+  approximate: "约值",
+  bounded: "范围值",
+  open: "不完整范围",
+  unknown: "无法规范化",
+};
+
+/** 紧急风险类别。只有对应事实被民警确认后才可能触发报告前核验提示。 */
+export type UrgentRiskCategory =
+  | "personal_safety"
+  | "medical"
+  | "minor_protection"
+  | "domestic_violence"
+  | "evidence_loss";
+
+export const URGENT_RISK_LABELS: Record<UrgentRiskCategory, string> = {
+  personal_safety: "人身安全",
+  medical: "医疗救助",
+  minor_protection: "未成年人保护",
+  domestic_violence: "家庭暴力",
+  evidence_loss: "证据灭失",
+};
+
+/** 模糊值的结构化表达：原值 + 规范化范围 + 精确程度。 */
+export interface FactValue {
+  /** 原始表述（用户原文片段）。 */
+  raw: string;
+  /** 规范化范围下界；开放范围时为 `null`。展示用字符串，不是日期对象。 */
+  normalizedMin: string | null;
+  /** 规范化范围上界；开放范围时为 `null`。 */
+  normalizedMax: string | null;
+  precision: PrecisionLevel;
+  precisionLabel: string;
+  unit: string | null;
+}
+
+/**
+ * 候选事实。系统不默认确认任何事实；删除（排除）只表示不纳入本次分析，
+ * 不代表确认其没有发生。
+ */
+export interface CandidateFact {
+  factId: string;
+  category: FactCategory;
+  categoryLabel: string;
+  /** 面向民警的中性结构化陈述。 */
+  statement: string;
+  /** 原始表述或对应原文片段，便于发现提取偏差。 */
+  originalWording: string;
+  value: FactValue | null;
+  /** 关联事件 ID（如“事件一”）。 */
+  eventRefs: string[];
+  /** 关联参与者（中性代号：人员甲、报案人等）。 */
+  participantRefs: string[];
+  /** 关联行为 ID（如“行为一”）。 */
+  behaviorRefs: string[];
+  status: FactStatus;
+  statusLabel: string;
+  /** 来源轮次：0 = 初始提取；>0 = 第 n 轮追问补充；民警新增为 null。 */
+  sourceRound: number | null;
+  /** 确认方式；未确认时为 `null`。 */
+  confirmationMethod: "officer" | "officer_added" | null;
+  confirmedAt: string | null;
+  /** 紧急风险类别标记；仅提取/回答时打标，触发提示仍以确认状态为准。 */
+  riskCategory: UrgentRiskCategory | null;
+  /** 是否已被排除（不纳入本次分析）。 */
+  excluded: boolean;
+}
+
+/** 决定性追问主题，对应锁定的选择优先级。 */
+export type QuestionTopic =
+  | "urgent_safety"
+  | "path_split"
+  | "core_classification"
+  | "filing_conditions"
+  | "evidence_preservation"
+  | "detail";
+
+export const QUESTION_TOPIC_LABELS: Record<QuestionTopic, string> = {
+  urgent_safety: "紧急安全核实",
+  path_split: "案件分流",
+  core_classification: "核心定性",
+  filing_conditions: "受立案条件",
+  evidence_preservation: "证据固定",
+  detail: "报告细节",
+};
+
+/**
+ * 决定性追问。每题说明为什么需要确认，允许“不知道、尚未核实、存在争议”。
+ * `kind: neutral_safety` 表示仅由未经确认的关键词触发的中性安全问题，
+ * 不构成已认定的紧急风险。
+ */
+export interface DecisiveQuestion {
+  questionId: string;
+  priority: 1 | 2 | 3 | 4 | 5 | 6;
+  topic: QuestionTopic;
+  topicLabel: string;
+  text: string;
+  whyItMatters: string;
+  kind: "standard" | "neutral_safety";
+  relatedFactIds: string[];
+  answerMaxLength: number;
+  /** 文本回答将形成的补充事实类别。 */
+  answerCategory: FactCategory;
+  /** 所属轮次（1 起）。 */
+  round: number;
+  /** 轮内展示顺序（1 起）。 */
+  orderInRound: number;
+}
+
+export type DecisiveAnswerKind = "value" | "unknown" | "not_verified" | "disputed";
+
+export const DECISIVE_ANSWER_KIND_LABELS: Record<DecisiveAnswerKind, string> = {
+  value: "补充说明",
+  unknown: "不知道",
+  not_verified: "尚未核实",
+  disputed: "存在争议",
+};
+
+export interface DecisiveAnswer {
+  questionId: string;
+  kind: DecisiveAnswerKind;
+  /** `kind: value` 时的自由文本，≤2,000 字符；其余为 `null`。 */
+  text: string | null;
+}
+
+export interface AnswerRecord {
+  questionId: string;
+  round: number;
+  questionText: string;
+  topic: QuestionTopic;
+  topicLabel: string;
+  kind: DecisiveAnswerKind;
+  kindLabel: string;
+  text: string | null;
+  answeredAt: string;
+}
+
+/** 报告前紧急核验提示。只由已确认的紧急风险事实触发。 */
+export interface UrgentRiskPrompt {
+  promptId: string;
+  category: UrgentRiskCategory;
+  categoryLabel: string;
+  triggeringFactIds: string[];
+  /** 触发它的已确认事实（原始表述）。 */
+  triggeringStatements: string[];
+  /** 需要民警立即人工核验的事项。 */
+  humanChecks: string[];
+  /** 固定边界说明：不构成自动处置或紧急状态认定。 */
+  boundaryStatement: string;
+}
+
+/** 剩余决定性事实缺口。 */
+export interface AnalysisGap {
+  gapId: string;
+  topic: QuestionTopic;
+  topicLabel: string;
+  description: string;
+  sourceQuestionIds: string[];
+}
+
+/** 不可变事实快照。用户在分析前确认页主动确认后形成。 */
+export interface FactSnapshot {
+  snapshotVersion: number;
+  snapshotHash: string;
+  confirmedAt: string;
+}
+
+/** 独立事项检测结果。系统提示拆分分析，不把独立事项合并为一个连续案情。 */
+export interface IndependentMatters {
+  detected: boolean;
+  note: string | null;
+}
+
+/** `GET /api/v1/analysis/sessions/:sessionId` 等接口返回的完整分析状态。 */
+export interface AnalysisSessionState {
+  contractVersion: string;
+  generatedAt: string;
+  sessionId: string;
+  stage: AnalysisStage;
+  stageLabel: string;
+  /** 当前案情字符数（非内容本身）。 */
+  caseCharacterCount: number;
+  facts: CandidateFact[];
+  /** 本轮待回答的决定性问题；无进行中轮次时为空数组。 */
+  questions: DecisiveQuestion[];
+  answers: AnswerRecord[];
+  roundsCompleted: number;
+  /** 体验上限：最多三轮、每轮五问、总计十二问。 */
+  roundLimit: number;
+  perRoundLimit: number;
+  totalQuestionLimit: number;
+  /** 追问是否已经结束（到达上限或没有剩余缺口）。 */
+  followUpEnded: boolean;
+  endReason: "limits_reached" | "no_gaps" | null;
+  gaps: AnalysisGap[];
+  urgentPrompts: UrgentRiskPrompt[];
+  /** 预期限制说明（预期报告状态），由后端结构化计算。 */
+  expectedStatusNote: string | null;
+  independentMatters: IndependentMatters;
+  snapshot: FactSnapshot | null;
+}
+
+export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {
+  confirming_facts: "候选事实确认",
+  collecting_answers: "决定性追问",
+  ready_to_analyze: "分析前确认",
+  snapshot_confirmed: "事实快照已确认",
+};
+
+/** 体验上限常量：最多三轮、每轮五问、总计十二问。 */
+export const ANALYSIS_ROUND_LIMIT = 3;
+export const ANALYSIS_PER_ROUND_LIMIT = 5;
+export const ANALYSIS_TOTAL_QUESTION_LIMIT = 12;
+
+/** 案情输入与追问答案的锁定上限。 */
+export const CASE_TEXT_MAX_CHARACTERS = 10_000;
+export const ANSWER_MAX_CHARACTERS = 2_000;
+
+/** `POST /api/v1/analysis/sessions` 请求。 */
+export interface CreateAnalysisRequest {
+  caseText: string;
+}
+
+/** `POST …/facts/:factId/status` 请求。 */
+export interface FactStatusUpdateRequest {
+  status: Exclude<FactStatus, "candidate">;
+}
+
+/** `POST …/facts` 请求：新增系统未提取出的遗漏事实。 */
+export interface AddFactRequest {
+  statement: string;
+}
+
+/** `POST …/rounds` 请求。开始追问时 `answers` 为空数组；提交本轮回答时必填。 */
+export interface AdvanceRoundRequest {
+  answers: DecisiveAnswer[];
+}
+
 /* ---------- 受治理文书范例 ---------- */
 
 /** 法源效力状态；与内容状态严格分离。 */

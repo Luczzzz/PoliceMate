@@ -17,11 +17,15 @@ import { buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } f
 import type { AppConfig } from "./config";
 import { buildDataUseResponse } from "./data-use";
 import { buildFacets } from "./content/gating";
+import { AnalysisEngine } from "./analysis/engine";
+import { registerAnalysisRoutes } from "./analysis/routes";
 import type { FixtureControls, FixturePatch } from "./providers/fixture";
 
 export interface BuildAppDeps {
   config: AppConfig;
   fixtures: FixtureControls;
+  /** 测试可以注入固定引擎以控制会话状态；默认使用共享引擎。 */
+  analysisEngine?: AnalysisEngine;
 }
 
 const CONTRACT_HEADER = "x-pm-contract-version";
@@ -98,7 +102,7 @@ function readFixturePatch(body: unknown): FixturePatch | null {
 /**
  * 构建 PoliceMate 后端。该函数不负责监听端口，便于测试直接使用 `inject`。
  */
-export async function buildApp({ config, fixtures }: BuildAppDeps): Promise<FastifyInstance> {
+export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
@@ -225,6 +229,14 @@ export async function buildApp({ config, fixtures }: BuildAppDeps): Promise<Fast
       return { ...fixtures.reset() };
     });
   }
+
+  // 案情分析：会话存于短暂运行内存；能力停用或边界不可用时失败关闭。
+  const analysisEngineResolved = analysisEngine ?? new AnalysisEngine(fixtures.analysis);
+  await registerAnalysisRoutes(app, {
+    engine: analysisEngineResolved,
+    analysisCapabilityEnabled: () => config.masterSwitch && config.analysisEnabled,
+    analysisBoundaryAvailable: async () => fixtures.dify.getAvailability(),
+  });
 
   app.setErrorHandler(async (error: FastifyError, request, reply) => {
     const status =

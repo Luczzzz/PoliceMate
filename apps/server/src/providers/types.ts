@@ -1,9 +1,15 @@
 import type {
+  CandidateFact,
+  DecisiveAnswerKind,
   DocumentExampleFacets,
   DocumentExampleNotice,
   DocumentExampleVariantDetail,
   DocumentExampleVariantSummary,
+  FactCategory,
   HandlingStageCatalogEntry,
+  IndependentMatters,
+  QuestionTopic,
+  UrgentRiskCategory,
 } from "@policymate/contracts";
 
 /**
@@ -20,9 +26,68 @@ export interface ServiceAvailability {
   reason: string | null;
 }
 
-/** Dify 集成适配层的可用性边界。后续切片在此之上增加结构化结果契约。 */
+/**
+ * Dify 集成适配层的可用性边界。后续切片在此之上增加结构化结果契约。
+ */
 export interface DifyProvider {
   getAvailability(): Promise<ServiceAvailability>;
+}
+
+/* ---------- 案情分析外部边界 ---------- */
+
+/** 自由案情提取请求。 */
+export interface CaseExtractionRequest {
+  caseText: string;
+}
+
+/**
+ * 提取结果：确定性候选事实列表与独立事项提示。
+ * 替身实现必须稳定；后端会在结构校验失败时整体失败关闭。
+ */
+export interface CaseExtractionResult {
+  facts: CandidateFact[];
+  independentMatters: IndependentMatters;
+}
+
+/** 决定性追问选题请求：后端传入完整结构化状态，而不是对话历史。 */
+export interface QuestionPoolRequest {
+  facts: CandidateFact[];
+  answers: AnsweredQuestionSummary[];
+  askedQuestionIds: string[];
+  maxQuestions: number;
+}
+
+/** 已回答问题的结构化摘要（追问边界只需要这些字段）。 */
+export interface AnsweredQuestionSummary {
+  questionId: string;
+  topic: QuestionTopic;
+  kind: DecisiveAnswerKind;
+}
+
+/** 候选问题。后端负责按优先级截断到体验上限。 */
+export interface ProposedQuestion {
+  questionId: string;
+  priority: 1 | 2 | 3 | 4 | 5 | 6;
+  topic: QuestionTopic;
+  text: string;
+  whyItMatters: string;
+  kind: "standard" | "neutral_safety";
+  relatedFactIds: string[];
+  /** 文本回答将形成的补充事实类别。 */
+  answerCategory: FactCategory;
+}
+
+export interface QuestionPoolResult {
+  questions: ProposedQuestion[];
+}
+
+/**
+ * 案情分析边界：候选事实提取与决定性追问选题。
+ * 真实 Dify 接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
+ */
+export interface CaseAnalysisProvider {
+  extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult>;
+  proposeDecisiveQuestions(request: QuestionPoolRequest): Promise<QuestionPoolResult>;
 }
 
 /** 当前激活的不可变内容发布批次摘要。 */
@@ -64,5 +129,6 @@ export interface GovernedContentProvider {
 
 export interface Providers {
   dify: DifyProvider;
+  analysis: CaseAnalysisProvider;
   content: GovernedContentProvider;
 }
