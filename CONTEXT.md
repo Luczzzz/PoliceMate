@@ -4,6 +4,10 @@ PoliceMate is a procedural aid for police officers handling cases. Its language 
 
 ## Language
 
+**受控试行版**:
+仅面向有限的真实目标用户定向分发、允许在既定脱敏和辅助边界内试用的第一版产品。第一版不通过技术手段核验访问者身份，知道不公开网址的人仍可能访问。它必须具备失败关闭、内容版本治理、紧急禁用和场景化验收能力，但不表示产品已经正式内容审定、机关授权或达到普遍生产发布条件。
+_Avoid_: 演示原型、正式生产版、正式上线、已审定系统、安全受控访问
+
 **案件**:
 An administrative case formally handled under the applicable legal procedure. PoliceMate does not create an official case record or replace the police business system.
 _Avoid_: Using “案件” to name the app's local checklist record
