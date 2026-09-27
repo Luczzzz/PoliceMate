@@ -1,0 +1,1423 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>松警伴侣｜移动端主流程交互原型</title>
+  <style>
+    :root {
+      --ink: #142033;
+      --muted: #667085;
+      --subtle: #8a94a6;
+      --line: #dce2ea;
+      --soft-line: #edf0f4;
+      --paper: #f4f6f8;
+      --surface: #ffffff;
+      --navy: #133b66;
+      --blue: #1769aa;
+      --blue-soft: #e9f3fb;
+      --cyan: #58b8d8;
+      --amber: #9b6413;
+      --amber-soft: #fff6df;
+      --red: #a23a3a;
+      --red-soft: #fff0ef;
+      --green: #267257;
+      --green-soft: #eaf7f1;
+      --shadow: 0 24px 72px rgba(0, 0, 0, .18);
+      --radius: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: #e8edf2;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    button, textarea, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, textarea:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+      outline: 3px solid rgba(23, 105, 170, .25);
+      outline-offset: 2px;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #e9eef3;
+    }
+
+    .prototype-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) minmax(390px, 440px) minmax(280px, 380px);
+      gap: 28px;
+      align-items: start;
+      justify-content: center;
+      padding: 28px;
+    }
+
+    .prototype-panel {
+      position: sticky;
+      top: 28px;
+      max-height: calc(100vh - 56px);
+      overflow: auto;
+      border: 1px solid rgba(20, 32, 51, .09);
+      background: rgba(255,255,255,.9);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, .08);
+      border-radius: 20px;
+      padding: 22px;
+      backdrop-filter: blur(12px);
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--blue);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+    .prototype-panel h1 { font-size: 25px; line-height: 1.2; margin-bottom: 12px; }
+    .prototype-panel h2 { font-size: 15px; margin: 24px 0 10px; }
+    .prototype-panel p, .prototype-panel li { color: #536071; font-size: 14px; line-height: 1.7; }
+    .prototype-panel ol, .prototype-panel ul { padding-left: 20px; margin-bottom: 0; }
+
+    .question-box {
+      padding: 14px;
+      background: #f1f8fb;
+      border: 1px solid #c8e1ea;
+      border-radius: 12px;
+      color: #294c61;
+      font-size: 14px;
+      line-height: 1.65;
+    }
+
+    .variant-list { display: grid; gap: 9px; }
+    .variant-choice {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      text-align: left;
+      border-radius: 13px;
+      padding: 12px;
+    }
+    .variant-choice:hover { border-color: #9dbbd4; }
+    .variant-choice.active { border: 2px solid var(--blue); padding: 11px; }
+    .variant-key {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 9px;
+      background: var(--ink);
+      color: white;
+      font-weight: 800;
+    }
+    .variant-choice.active .variant-key { background: var(--blue); }
+    .variant-copy strong { display: block; font-size: 14px; margin: 1px 0 4px; }
+    .variant-copy span { display: block; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .prototype-state {
+      display: grid;
+      gap: 8px;
+      border-top: 1px solid var(--soft-line);
+      padding-top: 14px;
+    }
+    .state-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+    .state-row span:first-child { color: var(--muted); }
+    .state-row strong { text-align: right; }
+
+    .decision-grid { display: grid; gap: 10px; }
+    .decision-item {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      background: #fff;
+    }
+    .decision-item label { display: block; font-size: 13px; font-weight: 750; margin-bottom: 8px; }
+    .decision-item select, .decision-item textarea {
+      width: 100%;
+      border: 1px solid #cfd6df;
+      border-radius: 9px;
+      background: #fbfcfd;
+      color: var(--ink);
+      padding: 9px 10px;
+      font-size: 13px;
+    }
+    .decision-item textarea { min-height: 78px; resize: vertical; }
+
+    .decision-output {
+      margin-top: 12px;
+      min-height: 94px;
+      white-space: pre-wrap;
+      background: #172234;
+      color: #e8eef5;
+      padding: 13px;
+      border-radius: 12px;
+      font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    .side-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .side-btn {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      background: white;
+      color: var(--ink);
+      padding: 9px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .side-btn.primary { background: var(--ink); border-color: var(--ink); color: white; }
+
+    .device-wrap { position: relative; width: 100%; }
+    .device {
+      position: relative;
+      width: min(100%, 430px);
+      height: calc(100vh - 56px);
+      min-height: 720px;
+      max-height: 900px;
+      margin: 0 auto;
+      overflow: hidden;
+      background: var(--paper);
+      border: 9px solid #182231;
+      border-radius: 35px;
+      box-shadow: var(--shadow);
+    }
+    .device::before {
+      content: "";
+      position: absolute;
+      z-index: 20;
+      top: 9px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 92px;
+      height: 25px;
+      border-radius: 20px;
+      background: #182231;
+      pointer-events: none;
+    }
+    .app { height: 100%; overflow: hidden; background: var(--paper); }
+    .screen { height: 100%; overflow-y: auto; padding-bottom: calc(94px + env(safe-area-inset-bottom)); scrollbar-width: none; }
+    .screen::-webkit-scrollbar { display: none; }
+
+    .statusbar {
+      height: 38px;
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      padding: 0 18px 7px;
+      background: var(--surface);
+      color: #101828;
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .status-icons { letter-spacing: .08em; }
+
+    .appbar {
+      position: sticky;
+      z-index: 12;
+      top: 0;
+      display: grid;
+      grid-template-columns: 48px 1fr 48px;
+      align-items: center;
+      min-height: 58px;
+      padding: 0 8px;
+      border-bottom: 1px solid var(--soft-line);
+      background: rgba(255,255,255,.96);
+    }
+    .appbar h2 { margin: 0; text-align: center; font-size: 17px; }
+    .icon-btn {
+      display: grid;
+      place-items: center;
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      color: var(--ink);
+      font-size: 22px;
+    }
+    .icon-btn:hover { background: var(--paper); }
+
+    .home-hero {
+      position: relative;
+      overflow: hidden;
+      padding: 33px 22px 28px;
+      background: var(--navy);
+      color: white;
+    }
+    .home-hero::after {
+      content: "";
+      position: absolute;
+      right: -50px;
+      bottom: -85px;
+      width: 190px;
+      height: 190px;
+      border: 28px solid rgba(88,184,216,.17);
+      border-radius: 50%;
+    }
+    .brand-row { display: flex; align-items: center; gap: 12px; margin-bottom: 27px; }
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.35);
+      background: rgba(255,255,255,.10);
+      border-radius: 14px;
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .brand-row strong { display: block; font-size: 17px; }
+    .brand-row span { display: block; color: #cbddeb; font-size: 11px; margin-top: 3px; }
+    .home-hero h1 { position: relative; z-index: 1; max-width: 310px; font-size: 29px; line-height: 1.28; margin: 0 0 12px; }
+    .home-hero p { position: relative; z-index: 1; max-width: 320px; color: #d5e4ef; font-size: 14px; line-height: 1.65; margin: 0; }
+
+    .home-content { padding: 18px 16px 28px; }
+    .section-label { margin: 5px 3px 11px; color: var(--muted); font-size: 12px; font-weight: 750; }
+    .entry-stack { display: grid; gap: 12px; }
+    .entry-card {
+      width: 100%;
+      min-height: 142px;
+      display: grid;
+      grid-template-columns: 1fr 48px;
+      align-items: end;
+      gap: 16px;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+      color: var(--ink);
+      text-align: left;
+      box-shadow: 0 7px 18px rgba(0,0,0,.05);
+    }
+    .entry-card.primary { min-height: 174px; border-color: #b8d3e5; background: #f9fcfe; }
+    .entry-card h3 { font-size: 20px; margin: 10px 0 7px; }
+    .entry-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .entry-kicker { color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+    .entry-arrow { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 13px; background: var(--ink); color: white; font-size: 21px; }
+    .entry-card.secondary { min-height: 118px; grid-template-columns: 52px 1fr 28px; align-items: center; }
+    .entry-card.secondary .entry-arrow { width: 50px; height: 50px; background: var(--blue-soft); color: var(--blue); }
+    .entry-card.secondary h3 { font-size: 17px; margin: 0 0 5px; }
+
+    .home-note {
+      display: flex;
+      gap: 10px;
+      margin-top: 17px;
+      padding: 12px 13px;
+      border-radius: 12px;
+      background: #eef1f4;
+      color: #596576;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .content-pad { padding: 16px; }
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
+      padding: 13px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--soft-line);
+    }
+    .step { min-width: 0; color: var(--subtle); font-size: 10px; text-align: center; }
+    .step::before {
+      content: "";
+      display: block;
+      height: 3px;
+      margin-bottom: 7px;
+      border-radius: 2px;
+      background: #dde3e9;
+    }
+    .step.done, .step.current { color: var(--blue); font-weight: 800; }
+    .step.done::before, .step.current::before { background: var(--blue); }
+
+    .notice {
+      display: flex;
+      gap: 11px;
+      padding: 13px;
+      border: 1px solid #ead59d;
+      border-radius: 13px;
+      background: var(--amber-soft);
+      color: #624919;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .notice strong { display: block; color: #4d3710; margin-bottom: 2px; }
+    .notice-mark { flex: 0 0 auto; font-weight: 900; }
+
+    .field-label { display: flex; justify-content: space-between; align-items: end; gap: 10px; margin: 20px 2px 8px; }
+    .field-label strong { font-size: 15px; }
+    .field-label span { color: var(--subtle); font-size: 11px; }
+    .case-input {
+      width: 100%;
+      min-height: 246px;
+      resize: none;
+      border: 1px solid #cdd5df;
+      border-radius: 16px;
+      background: white;
+      color: var(--ink);
+      padding: 16px;
+      line-height: 1.72;
+      box-shadow: inset 0 1px 2px rgba(16,24,40,.04);
+    }
+    .case-input::placeholder { color: #9aa4b2; }
+    .input-meta { display: flex; justify-content: space-between; gap: 12px; margin: 8px 3px 0; color: var(--muted); font-size: 11px; }
+
+    .sticky-action {
+      position: absolute;
+      z-index: 18;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      border-top: 1px solid var(--soft-line);
+      background: rgba(255,255,255,.97);
+      box-shadow: 0 -8px 24px rgba(0,0,0,.07);
+    }
+    .primary-btn, .secondary-btn, .danger-btn {
+      min-height: 50px;
+      border-radius: 13px;
+      font-weight: 800;
+    }
+    .primary-btn { width: 100%; border: 1px solid var(--blue); background: var(--blue); color: white; }
+    .primary-btn:disabled { border-color: #b5bfca; background: #b5bfca; cursor: not-allowed; }
+    .secondary-btn { border: 1px solid #cfd6df; background: white; color: var(--ink); padding: 0 16px; }
+    .danger-btn { border: 1px solid #e7c3c0; background: var(--red-soft); color: var(--red); padding: 0 16px; }
+    .split-actions { display: grid; grid-template-columns: .7fr 1.3fr; gap: 10px; }
+
+    .intro-block { margin-bottom: 17px; }
+    .intro-block h1 { font-size: 23px; line-height: 1.35; margin-bottom: 8px; }
+    .intro-block p { color: var(--muted); font-size: 13px; line-height: 1.65; margin: 0; }
+
+    .fact-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      border-radius: 13px;
+      background: #eaf3f9;
+      color: #28516f;
+      font-size: 12px;
+    }
+    .fact-summary strong { font-size: 14px; color: #173a55; }
+
+    .fact-groups { display: grid; gap: 12px; }
+    .fact-card {
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 15px;
+      overflow: hidden;
+    }
+    .fact-card-head { display: flex; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--soft-line); }
+    .fact-card-head strong { font-size: 14px; }
+    .fact-card-head span { color: var(--muted); font-size: 11px; }
+    .fact-row {
+      display: grid;
+      grid-template-columns: 22px 1fr auto;
+      gap: 10px;
+      align-items: start;
+      min-height: 56px;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--soft-line);
+    }
+    .fact-row:last-child { border-bottom: 0; }
+    .fact-check { width: 19px; height: 19px; margin-top: 1px; accent-color: var(--blue); }
+    .fact-row p { margin: 0; font-size: 13px; line-height: 1.5; }
+    .fact-row small { display: block; margin-top: 4px; color: var(--muted); line-height: 1.45; }
+    .fact-status { border: 0; background: transparent; color: var(--blue); font-size: 11px; padding: 3px; }
+    .fact-status.unknown { color: var(--amber); }
+    .fact-status.disputed { color: var(--red); }
+
+    .inline-help {
+      margin-top: 13px;
+      padding: 12px 13px;
+      border-radius: 12px;
+      background: #eef1f4;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .question-progress { display: flex; justify-content: space-between; align-items: center; margin-bottom: 13px; color: var(--muted); font-size: 12px; }
+    .question-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: white;
+      box-shadow: 0 8px 22px rgba(0,0,0,.05);
+    }
+    .question-card h2 { font-size: 19px; line-height: 1.5; margin: 0 0 9px; }
+    .question-reason { display: flex; gap: 7px; margin-bottom: 17px; color: #49677d; font-size: 12px; line-height: 1.55; }
+    .option-list { display: grid; gap: 9px; }
+    .option-btn {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      min-height: 50px;
+      border: 1px solid #d6dde5;
+      border-radius: 12px;
+      background: white;
+      color: var(--ink);
+      padding: 12px 13px;
+      text-align: left;
+      font-size: 13px;
+    }
+    .option-btn.selected { border: 2px solid var(--blue); background: #f0f7fc; padding: 11px 12px; }
+    .option-btn span:last-child { color: var(--blue); font-weight: 800; }
+    .question-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; }
+    .question-tab { flex: 0 0 auto; min-width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--muted); font-size: 12px; }
+    .question-tab.current { border-color: var(--blue); background: var(--blue); color: white; }
+    .question-tab.done { border-color: #abd5c4; background: var(--green-soft); color: var(--green); }
+
+    .generating {
+      min-height: calc(100% - 96px);
+      display: grid;
+      place-items: center;
+      padding: 30px;
+      text-align: center;
+      background: white;
+    }
+    .generating-mark {
+      width: 74px;
+      height: 74px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 22px;
+      border: 1px solid #b8d3e5;
+      border-radius: 24px;
+      background: var(--blue-soft);
+      color: var(--blue);
+      font-size: 27px;
+      animation: breathe 1.6s ease-in-out infinite;
+    }
+    @keyframes breathe { 50% { transform: scale(.94); opacity: .72; } }
+    .generating h2 { font-size: 21px; margin-bottom: 9px; }
+    .generating p { color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .phase-list { width: 100%; max-width: 280px; display: grid; gap: 8px; margin: 24px auto 0; text-align: left; }
+    .phase-item { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+    .phase-dot { width: 8px; height: 8px; border-radius: 50%; background: #cfd6df; }
+    .phase-item.done { color: var(--green); }
+    .phase-item.done .phase-dot { background: var(--green); }
+    .phase-item.active { color: var(--blue); font-weight: 750; }
+    .phase-item.active .phase-dot { width: 10px; height: 10px; background: var(--blue); }
+
+    .report-head {
+      padding: 18px 16px 14px;
+      background: white;
+      border-bottom: 1px solid var(--soft-line);
+    }
+    .report-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }
+    .status-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 4px 8px; border-radius: 999px; background: var(--amber-soft); color: #7b5417; font-size: 10px; font-weight: 800; }
+    .report-title { font-size: 12px; color: var(--muted); margin: 17px 0 6px; }
+    .main-conclusion { font-size: 22px; line-height: 1.42; margin: 0; }
+    .conclusion-qualifier { margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--soft-line); color: #4d5b6c; font-size: 12px; line-height: 1.65; }
+
+    .report-quick {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      border-bottom: 1px solid var(--line);
+      background: var(--line);
+    }
+    .quick-item { background: white; padding: 11px 8px; text-align: center; }
+    .quick-item strong { display: block; color: var(--ink); font-size: 15px; }
+    .quick-item span { color: var(--muted); font-size: 10px; }
+
+    .report-layout { padding: 14px 12px 30px; }
+    .anchor-nav {
+      position: sticky;
+      z-index: 10;
+      top: 58px;
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      padding: 9px 12px;
+      margin: -14px -12px 12px;
+      border-bottom: 1px solid var(--soft-line);
+      background: rgba(244,246,248,.96);
+      scrollbar-width: none;
+    }
+    .anchor-nav::-webkit-scrollbar { display: none; }
+    .anchor-btn { flex: 0 0 auto; min-height: 34px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--muted); font-size: 11px; }
+    .anchor-btn.active { border-color: var(--blue); background: var(--blue); color: white; }
+
+    .report-modules { display: grid; gap: 11px; }
+    .report-module {
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: white;
+      overflow: hidden;
+    }
+    .module-trigger {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 30px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      border: 0;
+      background: white;
+      color: var(--ink);
+      padding: 14px;
+      text-align: left;
+    }
+    .module-no { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 9px; background: #eef3f7; color: #49677d; font-size: 11px; font-weight: 800; }
+    .module-trigger strong { display: block; font-size: 14px; }
+    .module-trigger small { display: block; color: var(--muted); margin-top: 3px; line-height: 1.35; }
+    .module-chevron { color: var(--muted); transform: rotate(0); transition: transform .15s ease; }
+    .report-module.open .module-chevron { transform: rotate(90deg); }
+    .module-body { display: none; padding: 0 14px 15px 54px; }
+    .report-module.open .module-body { display: block; }
+    .module-body p, .module-body li { color: #4e5b6c; font-size: 12px; line-height: 1.65; }
+    .module-body ul { padding-left: 17px; margin: 7px 0 0; }
+    .mini-label { color: var(--subtle); font-size: 10px; font-weight: 800; letter-spacing: .06em; }
+    .analysis-chain { display: grid; gap: 7px; margin-top: 10px; }
+    .chain-step { position: relative; padding: 9px 10px 9px 27px; border-radius: 9px; background: #f4f7f9; color: #405064; font-size: 11px; line-height: 1.5; }
+    .chain-step::before { content: ""; position: absolute; left: 11px; top: 14px; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); }
+    .risk-item { margin-top: 8px; padding: 10px; border-left: 3px solid var(--amber); background: var(--amber-soft); color: #624919; font-size: 11px; line-height: 1.55; }
+    .source-card { margin-top: 9px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
+    .source-head { width: 100%; display: flex; justify-content: space-between; gap: 10px; border: 0; background: #f8fafb; padding: 10px; color: var(--ink); text-align: left; font-size: 11px; font-weight: 750; }
+    .source-text { display: none; padding: 10px; border-top: 1px solid var(--soft-line); color: #536071; font-size: 11px; line-height: 1.7; }
+    .source-card.open .source-text { display: block; }
+    .source-meta { display: block; margin-top: 7px; color: var(--subtle); font-size: 10px; }
+
+    .document-task {
+      margin: 13px 0 2px;
+      padding: 13px;
+      border: 1px solid #c9dceb;
+      border-radius: 13px;
+      background: #f2f8fc;
+    }
+    .document-task strong { display: block; font-size: 13px; margin-bottom: 5px; }
+    .document-task p { margin-bottom: 9px; }
+    .text-link { border: 0; background: transparent; color: var(--blue); padding: 0; font-size: 12px; font-weight: 800; }
+
+    .doc-search { padding: 14px 16px; background: white; border-bottom: 1px solid var(--soft-line); }
+    .search-box { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 13px; border: 1px solid #cfd6df; border-radius: 12px; background: #f8fafb; color: var(--muted); }
+    .search-box input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--ink); }
+    .stage-scroll { display: flex; gap: 7px; overflow-x: auto; padding: 12px 16px 4px; scrollbar-width: none; }
+    .stage-chip { flex: 0 0 auto; min-height: 34px; border: 1px solid var(--line); border-radius: 10px; background: white; color: var(--muted); padding: 7px 11px; font-size: 11px; }
+    .stage-chip.active { border-color: var(--blue); background: var(--blue); color: white; }
+    .doc-list { display: grid; gap: 10px; padding: 12px 16px 30px; }
+    .doc-card { border: 1px solid var(--line); border-radius: 14px; background: white; padding: 14px; text-align: left; }
+    .doc-card .doc-meta { color: var(--blue); font-size: 10px; font-weight: 800; }
+    .doc-card h3 { font-size: 15px; margin: 8px 0 6px; }
+    .doc-card p { color: var(--muted); font-size: 11px; line-height: 1.55; margin: 0; }
+    .doc-card footer { display: flex; justify-content: space-between; gap: 10px; margin-top: 12px; color: var(--subtle); font-size: 10px; }
+
+    .doc-detail-head { padding: 18px 16px; background: var(--navy); color: white; }
+    .doc-detail-head .status-pill { background: rgba(255,255,255,.13); color: white; }
+    .doc-detail-head h1 { font-size: 23px; line-height: 1.35; margin: 13px 0 8px; }
+    .doc-detail-head p { color: #d5e4ef; font-size: 12px; line-height: 1.6; }
+    .doc-section { margin: 12px 16px; border: 1px solid var(--line); border-radius: 14px; background: white; overflow: hidden; }
+    .doc-section h2 { padding: 13px 14px; margin: 0; border-bottom: 1px solid var(--soft-line); font-size: 14px; }
+    .doc-section-body { padding: 13px 14px; color: #4e5b6c; font-size: 12px; line-height: 1.7; }
+    .doc-section-body ul { padding-left: 18px; margin: 0; }
+    .example-block { margin-top: 10px; padding: 11px; border-radius: 10px; background: #f4f6f8; color: #3d4b5d; }
+
+    .bottom-sheet-backdrop {
+      position: absolute;
+      z-index: 40;
+      inset: 0;
+      display: none;
+      align-items: end;
+      background: rgba(9,16,27,.45);
+    }
+    .bottom-sheet-backdrop.open { display: flex; }
+    .bottom-sheet {
+      width: 100%;
+      max-height: 78%;
+      overflow-y: auto;
+      padding: 12px 16px 24px;
+      border-radius: 22px 22px 0 0;
+      background: white;
+      box-shadow: 0 -18px 50px rgba(0,0,0,.18);
+    }
+    .sheet-handle { width: 42px; height: 5px; margin: 0 auto 16px; border-radius: 4px; background: #d0d6de; }
+    .bottom-sheet h2 { font-size: 19px; margin-bottom: 8px; }
+    .bottom-sheet p, .bottom-sheet li { color: var(--muted); font-size: 12px; line-height: 1.7; }
+
+    .toast {
+      position: absolute;
+      z-index: 50;
+      left: 50%;
+      bottom: 90px;
+      display: none;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: calc(100% - 32px);
+      padding: 10px 14px;
+      border-radius: 11px;
+      background: #172234;
+      color: white;
+      box-shadow: 0 10px 30px rgba(0,0,0,.2);
+      font-size: 12px;
+      text-align: center;
+    }
+    .toast.show { display: block; }
+
+    .review-hint {
+      position: absolute;
+      z-index: 19;
+      right: 10px;
+      top: 104px;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid rgba(255,255,255,.7);
+      border-radius: 12px;
+      background: rgba(23,34,52,.88);
+      color: white;
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: 0 6px 16px rgba(0,0,0,.18);
+    }
+
+    .variant-b .home-hero { padding-bottom: 20px; }
+    .variant-b .home-hero h1 { font-size: 24px; }
+    .variant-b .entry-stack { grid-template-columns: 1fr 1fr; }
+    .variant-b .entry-card.primary, .variant-b .entry-card.secondary { display: block; min-height: 176px; padding: 16px; }
+    .variant-b .entry-card.secondary { grid-template-columns: none; }
+    .variant-b .entry-card .entry-arrow { margin-bottom: 24px; }
+    .variant-b .entry-card h3 { font-size: 16px; }
+    .variant-b .entry-card p { font-size: 11px; }
+    .variant-b .report-module { border-radius: 4px; border-top-color: #9db8cb; border-top-width: 2px; }
+    .variant-b .module-no { border-radius: 4px; }
+    .variant-b .report-modules { gap: 7px; }
+
+    .variant-c .home-hero { background: white; color: var(--ink); border-bottom: 1px solid var(--line); }
+    .variant-c .home-hero::after { border-color: rgba(23,105,170,.08); }
+    .variant-c .brand-mark { background: var(--navy); color: white; }
+    .variant-c .brand-row span, .variant-c .home-hero p { color: var(--muted); }
+    .variant-c .entry-card.primary { border-color: var(--navy); background: var(--navy); color: white; }
+    .variant-c .entry-card.primary p { color: #d5e4ef; }
+    .variant-c .entry-card.primary .entry-kicker { color: #8ed0e6; }
+    .variant-c .entry-card.primary .entry-arrow { background: white; color: var(--navy); }
+    .variant-c .report-head { background: var(--navy); color: white; }
+    .variant-c .report-head .report-title, .variant-c .report-head .report-meta, .variant-c .report-head .conclusion-qualifier { color: #d5e4ef; }
+    .variant-c .report-head .conclusion-qualifier { border-color: rgba(255,255,255,.18); }
+
+    .mobile-variant-switch {
+      position: absolute;
+      z-index: 60;
+      left: 50%;
+      bottom: 82px;
+      display: none;
+      grid-template-columns: 42px auto 42px;
+      align-items: center;
+      transform: translateX(-50%);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      background: #172234;
+      color: white;
+      box-shadow: 0 10px 30px rgba(0,0,0,.28);
+      overflow: hidden;
+    }
+    .mobile-variant-switch button { width: 42px; height: 42px; border: 0; background: transparent; color: white; }
+    .mobile-variant-switch span { min-width: 132px; text-align: center; font-size: 11px; font-weight: 750; }
+
+    @media (max-width: 1080px) {
+      .prototype-shell { grid-template-columns: minmax(260px, 330px) minmax(390px, 430px); }
+      .prototype-panel.review { display: none; }
+    }
+
+    @media (max-width: 760px) {
+      body { background: #182231; }
+      .prototype-shell { display: block; padding: 0; }
+      .prototype-panel { display: none; }
+      .device { width: 100%; height: 100vh; min-height: 100vh; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+      .device::before { display: none; }
+      .mobile-variant-switch { display: grid; }
+      .review-hint { top: 52px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="prototype-shell">
+    <aside class="prototype-panel" aria-label="原型说明">
+      <h1>移动端案情分析主流程</h1>
+      <p>一次性原型 · 用于解决“首页与案情分析主流程”决策票</p>
+      <div class="question-box">
+        <strong>要回答的问题</strong><br />
+        哪种移动端交互，能让一线民警在短时间内完成脱敏输入、事实确认、关键追问和长报告浏览，同时始终看清“这是待核验的辅助意见”，并顺畅进入法律原文与文书范例？
+      </div>
+
+      <h2>请这样体验</h2>
+      <ol>
+        <li>从首页进入“案情分析”。</li>
+        <li>直接使用虚构示例，完成事实确认。</li>
+        <li>回答 3 个决定性问题并生成报告。</li>
+        <li>展开六个模块、法律原文和文书范例。</li>
+        <li>切换 A/B/C，比较首页和报告组织方式。</li>
+      </ol>
+
+      <h2>三种结构方案</h2>
+      <div class="variant-list" id="variantList"></div>
+
+      <h2>当前原型状态</h2>
+      <div class="prototype-state" id="prototypeState"></div>
+    </aside>
+
+    <section class="device-wrap" aria-label="移动端原型">
+      <div class="device" id="device">
+        <div class="app" id="app"></div>
+        <button class="review-hint" id="reviewHint" aria-label="显示评审提示" title="评审提示">评</button>
+        <div class="toast" id="toast" role="status" aria-live="polite"></div>
+        <div class="bottom-sheet-backdrop" id="sheetBackdrop" role="dialog" aria-modal="true" aria-label="补充信息">
+          <div class="bottom-sheet" id="bottomSheet"></div>
+        </div>
+        <div class="mobile-variant-switch" aria-label="原型方案切换">
+          <button id="prevVariant" aria-label="上一个方案">←</button>
+          <span id="mobileVariantLabel"></span>
+          <button id="nextVariant" aria-label="下一个方案">→</button>
+        </div>
+      </div>
+    </section>
+
+    <aside class="prototype-panel review" aria-label="评审记录">
+      <h1>记录你的取舍</h1>
+      <p>将体验结果整理为可回填决策票的摘要。</p>
+      <p>这不是满意度问卷。请直接决定信息结构；未定项会继续成为下一张决策票。</p>
+      <div class="decision-grid">
+        <div class="decision-item">
+          <label for="homeChoice">首页入口权重</label>
+          <select id="homeChoice">
+            <option value="未决定">未决定</option>
+            <option value="案情分析为主、文书范例为次">案情分析为主、文书范例为次</option>
+            <option value="两个入口同等权重">两个入口同等权重</option>
+          </select>
+        </div>
+        <div class="decision-item">
+          <label for="questionChoice">追问节奏</label>
+          <select id="questionChoice">
+            <option value="未决定">未决定</option>
+            <option value="一次一问，降低判断负担">一次一问，降低判断负担</option>
+            <option value="一组多问，优先提升速度">一组多问，优先提升速度</option>
+          </select>
+        </div>
+        <div class="decision-item">
+          <label for="reportChoice">长报告导航</label>
+          <select id="reportChoice">
+            <option value="未决定">未决定</option>
+            <option value="结论优先 + 六模块折叠">结论优先 + 六模块折叠</option>
+            <option value="固定模块索引 + 紧凑报告">固定模块索引 + 紧凑报告</option>
+            <option value="按研判顺序逐段阅读">按研判顺序逐段阅读</option>
+          </select>
+        </div>
+        <div class="decision-item">
+          <label for="sourceChoice">法律原文层级</label>
+          <select id="sourceChoice">
+            <option value="未决定">未决定</option>
+            <option value="模块内联展开">模块内联展开</option>
+            <option value="底部抽屉集中查看">底部抽屉集中查看</option>
+          </select>
+        </div>
+        <div class="decision-item">
+          <label for="reviewNotes">观察与修改意见</label>
+          <textarea id="reviewNotes" placeholder="例如：结论够醒目，但证据清单需要可勾选……"></textarea>
+        </div>
+      </div>
+      <div class="side-actions">
+        <button class="side-btn primary" id="captureDecision">生成决策摘要</button>
+        <button class="side-btn" id="resetPrototype">重置原型</button>
+      </div>
+      <div class="decision-output" id="decisionOutput">完成体验后，在这里生成可粘贴到决策票的摘要。</div>
+    </aside>
+  </main>
+
+  <script>
+    /*
+      Throwaway prototype: three structurally different interaction variants for
+      the PoliceMate mobile H5 home → analysis → report flow, switchable with ?variant=A|B|C.
+      All state is in memory. All case material is fictional demonstration content.
+    */
+
+    const VARIANTS = {
+      A: {
+        name: "主任务引导",
+        summary: "案情分析入口明显优先；一次一问；结论优先，六模块渐进展开。",
+        home: "primary",
+        questions: "single",
+        report: "accordion",
+        source: "inline"
+      },
+      B: {
+        name: "双入口工作台",
+        summary: "两个入口同级；问题集中处理；固定索引帮助快速跳到报告模块。",
+        home: "equal",
+        questions: "grouped",
+        report: "indexed",
+        source: "inline"
+      },
+      C: {
+        name: "研判阅读流",
+        summary: "强提醒的分析入口；一次一问；按结论—条件—行动顺序阅读，法源用抽屉查看。",
+        home: "primary",
+        questions: "single",
+        report: "narrative",
+        source: "sheet"
+      }
+    };
+
+    const DEFAULT_CASE = "2026年9月25日晚，报警人将一辆电动自行车停放在某小区单元门外，次日发现车辆不见。现场公共视频显示，一名男子在凌晨推走该车。报警人称车辆购买约两年，购入价格约3200元，现有发票照片。车辆当时未上锁。男子身份尚不明确，是否误认车辆暂不清楚。";
+
+    const facts = [
+      { id: "time", group: "时间与地点", text: "车辆于9月25日晚停放，次日发现不见", source: "来自原始表述", status: "confirmed" },
+      { id: "place", group: "时间与地点", text: "地点为某小区单元门外", source: "地点已做脱敏处理", status: "confirmed" },
+      { id: "behavior", group: "人员与行为", text: "公共视频显示一名男子凌晨推走车辆", source: "需要核验视频连续性和人员身份", status: "confirmed" },
+      { id: "owner", group: "人员与行为", text: "报警人自述为车辆所有人", source: "需核验购车凭证与车辆信息", status: "confirmed" },
+      { id: "value", group: "财物与结果", text: "购入价格约3200元，使用约两年", source: "当前价值尚未核定", status: "unknown" },
+      { id: "intent", group: "财物与结果", text: "行为人是否具有非法占有目的", source: "当前不能仅凭推走行为直接确认", status: "disputed" }
+    ];
+
+    const questions = [
+      {
+        id: "identity",
+        title: "目前能否排除行为人误认、借用或受托取车？",
+        reason: "这一事实会直接影响行为性质和备选解释。",
+        options: ["有证据可以排除", "目前不能排除", "存在不同说法", "尚未核实"]
+      },
+      {
+        id: "value",
+        title: "是否已有能够反映车辆当前价值的材料？",
+        reason: "车辆当前价值可能影响刑事、行政路径及受立案条件判断。",
+        options: ["已有价格认定或可靠材料", "仅有购买凭证", "暂无价值材料", "尚未核实"]
+      },
+      {
+        id: "retrieval",
+        title: "车辆目前是否已经找回？",
+        reason: "追回情况会影响证据固定、损失结果和后续核查事项。",
+        options: ["已找回且状态完整", "已找回但有损坏", "尚未找回", "尚未核实"]
+      }
+    ];
+
+    const moduleData = [
+      {
+        id: "classification",
+        title: "初步定性分析",
+        subtitle: "主方向、成立条件、排除项与备选方向",
+        body: `
+          <p><span class="mini-label">主要方向</span><br><strong>盗窃行为方向（初步意见—待核验）</strong></p>
+          <ul>
+            <li>支持事实：非所有人于夜间将他人车辆推离原处；所有人未同意。</li>
+            <li>待核验条件：非法占有目的、行为人身份、车辆当前价值。</li>
+            <li>不能排除：误认车辆、受托取车或其他缺少非法占有目的的情形。</li>
+          </ul>
+          <div class="analysis-chain">
+            <div class="chain-step">已确认事实：视频显示男子推走他人车辆</div>
+            <div class="chain-step">分析条件：是否以非法占有为目的秘密取得财物</div>
+            <div class="chain-step">当前状态：行为外观支持，但主观目的仍需核验</div>
+            <div class="chain-step">模块判断：可形成盗窃方向的初步意见，不作最终定性</div>
+          </div>`
+      },
+      {
+        id: "acceptance",
+        title: "受立案条件分析",
+        subtitle: "接报、受案、刑事立案与其他路径分别判断",
+        body: `
+          <p><strong>接报与受案：</strong>已具备记录和初步核查基础。</p>
+          <p><strong>刑事立案：</strong>目前无法仅凭购入价格判断数额条件；需要核验车辆当前价值、行为人主观目的及当地现行标准。</p>
+          <p><strong>行政路径：</strong>如不满足刑事立案条件但能够查明违法行为，应继续核验行政案件路径。</p>
+          <div class="risk-item">不要把“可能涉及盗窃”直接等同于“已满足刑事立案条件”。</div>`
+      },
+      {
+        id: "evidence",
+        title: "核心证据核查清单",
+        subtitle: "围绕待证明事实排序，不自动决定取证措施",
+        body: `
+          <ul>
+            <li><strong>立即固定：</strong>原始公共视频及调取过程，防止覆盖或丢失。</li>
+            <li><strong>优先核查：</strong>车辆特征、车架号、购车凭证与报警人占有情况。</li>
+            <li><strong>优先核查：</strong>行为人身份、行动轨迹及其对取车原因的陈述。</li>
+            <li><strong>一般补充：</strong>车辆使用年限、现状及价值相关材料。</li>
+          </ul>
+          <p>具体调取、检查或扣押权限和审批方式由民警依法判断。</p>`
+      },
+      {
+        id: "interview",
+        title: "分角色询问要点",
+        subtitle: "按事实目标组织，不生成诱导性照读脚本",
+        body: `
+          <p><strong>报警人／车辆所有人：</strong>车辆识别信息、停放经过、许可范围、发现过程、凭证来源。</p>
+          <p><strong>行为人：</strong>如何识别该车、为何取车、拟如何处置、是否受他人委托；先开放陈述，再核对视频细节。</p>
+          <p><strong>视频或场所管理人员：</strong>视频完整性、设备时间准确性、原始文件导出过程。</p>
+          <div class="risk-item">避免用“你偷车后去了哪里”等预设有罪的问题代替事实核实。</div>`
+      },
+      {
+        id: "risk",
+        title: "执法风险提示",
+        subtitle: "按紧急、重要、一般表达处置优先级",
+        body: `
+          <p><strong>重要｜电子数据变化风险</strong><br>公共视频可能循环覆盖，应尽快核验保存状态并依法固定。</p>
+          <p><strong>重要｜路径混同风险</strong><br>当前价值和主观目的未明时，不宜将初步定性意见等同于立案结论。</p>
+          <p><strong>一般｜表述风险</strong><br>报告中应持续区分报警人陈述、视频反映内容和已核验事实。</p>`
+      },
+      {
+        id: "basis",
+        title: "法律依据与可解释链路",
+        subtitle: "查看具体条款、效力状态、版本与支持的判断",
+        body: `
+          <p>本原型只演示依据的展开层级；条文名称和内容为产品结构示意，正式内容必须来自当前有效、已核验的官方法源记录。</p>
+          <div class="source-card" data-source="criminal-law">
+            <button class="source-head" data-action="toggle-source"><span>《中华人民共和国刑法》相关条款（结构示意）</span><span>展开</span></button>
+            <div class="source-text">用于说明盗窃方向的构成条件和刑事路径核验点。正式产品应显示具体条款定位、最小必要原文、施行版本、效力状态和官方链接。<span class="source-meta">状态：演示数据 · 不作为真实执法依据</span></div>
+          </div>
+          <div class="source-card" data-source="procedure-law">
+            <button class="source-head" data-action="toggle-source"><span>受案、立案程序相关规范（结构示意）</span><span>展开</span></button>
+            <div class="source-text">用于区分接报、受案、刑事立案和行政路径。正式产品不得用泛化法规列表替代逐项链路。<span class="source-meta">状态：演示数据 · 不作为真实执法依据</span></div>
+          </div>`
+      }
+    ];
+
+    const initialVariant = new URLSearchParams(location.search).get("variant")?.toUpperCase();
+    const state = {
+      variant: VARIANTS[initialVariant] ? initialVariant : "A",
+      screen: "home",
+      caseText: DEFAULT_CASE,
+      factStatuses: Object.fromEntries(facts.map(f => [f.id, f.status])),
+      answers: {},
+      currentQuestion: 0,
+      openModules: new Set(["classification"]),
+      activeAnchor: "classification",
+      generatingPhase: 0,
+      previousScreen: "home"
+    };
+
+    const app = document.getElementById("app");
+    const device = document.getElementById("device");
+    const toast = document.getElementById("toast");
+    const backdrop = document.getElementById("sheetBackdrop");
+    const bottomSheet = document.getElementById("bottomSheet");
+    let toastTimer;
+    let generateTimer;
+
+    function statusBar() {
+      return `<div class="statusbar"><span>09:41</span><span class="status-icons">● ◒ ▰</span></div>`;
+    }
+
+    function appBar(title, back = true, right = "") {
+      return `<header class="appbar">
+        ${back ? `<button class="icon-btn" data-action="back" aria-label="返回">‹</button>` : `<span></span>`}
+        <h2>${title}</h2>
+        ${right || `<span></span>`}
+      </header>`;
+    }
+
+    function stepper(current) {
+      const labels = ["输入", "确认", "追问", "报告"];
+      const index = { input: 0, facts: 1, questions: 2, report: 3 }[current];
+      return `<div class="stepper">${labels.map((label, i) => `<div class="step ${i < index ? "done" : ""} ${i === index ? "current" : ""}">${label}</div>`).join("")}</div>`;
+    }
+
+    function render() {
+      clearTimeout(generateTimer);
+      device.className = `device variant-${state.variant.toLowerCase()}`;
+      const renderer = {
+        home: renderHome,
+        input: renderInput,
+        facts: renderFacts,
+        questions: renderQuestions,
+        generating: renderGenerating,
+        report: renderReport,
+        documents: renderDocuments,
+        documentDetail: renderDocumentDetail
+      }[state.screen];
+      app.innerHTML = renderer();
+      updatePanels();
+      if (state.screen === "generating") advanceGenerating();
+    }
+
+    function renderHome() {
+      return `<div class="screen">
+        ${statusBar()}
+        <section class="home-hero">
+          <div class="brand-row"><div class="brand-mark">松</div><div><strong>松警伴侣</strong><span>程序辅助工具 · 移动端 H5</span></div></div>
+          <h1>${state.variant === "B" ? "今天要查什么？" : "把复杂案情，整理成可核验的研判线索"}</h1>
+          <p>${state.variant === "B" ? "从案情研判或文书制作指导开始。" : "先确认事实，再查看初步意见、受立案条件、证据核查和法律依据。"}</p>
+        </section>
+        <div class="home-content">
+          <div class="section-label">可用工具</div>
+          <div class="entry-stack">
+            <button class="entry-card primary" data-action="start-analysis">
+              <div><span class="entry-kicker">FACT FIRST · 先确认事实</span><h3>案情分析</h3><p>输入脱敏案情，经事实确认与关键追问后生成结构化报告。</p></div>
+              <span class="entry-arrow">→</span>
+            </button>
+            <button class="entry-card secondary" data-action="open-documents">
+              <span class="entry-arrow">文</span>
+              <div><h3>文书范例</h3><p>按办理阶段检索只读制作指导与虚构示例。</p></div>
+              <span>›</span>
+            </button>
+          </div>
+          <div class="home-note"><span>ⓘ</span><span>本工具提供辅助参考，不替代正式办案系统、现行规范和有权民警判断；不保存分析记录。</span></div>
+        </div>
+      </div>`;
+    }
+
+    function renderInput() {
+      return `<div class="screen">
+        ${statusBar()}
+        ${appBar("新建案情分析")}
+        ${stepper("input")}
+        <div class="content-pad">
+          <div class="notice"><span class="notice-mark">!</span><div><strong>提交前请确认已脱敏</strong>请勿输入姓名、身份证号、手机号、精确住址等真实身份信息。提交内容将发送至 Dify 处理。</div></div>
+          <div class="field-label"><strong>描述案情</strong><span>纯文本 · 最多 10,000 字</span></div>
+          <textarea class="case-input" id="caseInput" aria-label="案情描述" placeholder="说明时间、地点、人员关系、主要行为、财物或结果等……">${escapeHtml(state.caseText)}</textarea>
+          <div class="input-meta"><span>已载入一段虚构演示案情</span><span id="charCount">${state.caseText.length} / 10,000</span></div>
+          <div class="inline-help">点击“提取候选事实”即表示你已自行确认内容完成脱敏。本原型不会发送或保存任何内容。</div>
+        </div>
+        <div class="sticky-action"><button class="primary-btn" data-action="extract-facts">提取候选事实</button></div>
+      </div>`;
+    }
+
+    function factStatusLabel(status) {
+      return { confirmed: "已确认", unknown: "未知", disputed: "有争议", denied: "已否认", candidate: "待确认" }[status];
+    }
+
+    function renderFacts() {
+      const groups = [...new Set(facts.map(f => f.group))];
+      const confirmedCount = Object.values(state.factStatuses).filter(s => s === "confirmed").length;
+      return `<div class="screen">
+        ${statusBar()}
+        ${appBar("确认事实")}
+        ${stepper("facts")}
+        <div class="content-pad">
+          <div class="intro-block"><h1>请确认系统提取的事实</h1><p>只有你确认的事实会直接支撑初步定性意见。点击右侧状态可切换为“未知”或“有争议”。</p></div>
+          <div class="fact-summary"><span><strong>${confirmedCount}</strong> 项已确认</span><span>事实快照 v1 · 尚未生成</span></div>
+          <div class="fact-groups">
+            ${groups.map(group => `<section class="fact-card">
+              <div class="fact-card-head"><strong>${group}</strong><span>${facts.filter(f => f.group === group).length} 项</span></div>
+              ${facts.filter(f => f.group === group).map(f => {
+                const status = state.factStatuses[f.id];
+                return `<div class="fact-row">
+                  <input class="fact-check" type="checkbox" ${status === "confirmed" ? "checked" : ""} data-action="toggle-fact" data-id="${f.id}" aria-label="确认：${f.text}" />
+                  <p>${f.text}<small>${f.source}</small></p>
+                  <button class="fact-status ${status}" data-action="cycle-fact" data-id="${f.id}">${factStatusLabel(status)}</button>
+                </div>`;
+              }).join("")}
+            </section>`).join("")}
+          </div>
+          <div class="inline-help">“未知”和“有争议”不会被静默选定；它们会转为追问、备选分析或人工核验事项。</div>
+        </div>
+        <div class="sticky-action"><div class="split-actions"><button class="secondary-btn" data-action="back">修改原文</button><button class="primary-btn" data-action="confirm-facts">确认事实快照</button></div></div>
+      </div>`;
+    }
+
+    function questionOption(question, option) {
+      return `<button class="option-btn ${state.answers[question.id] === option ? "selected" : ""}" data-action="answer-question" data-question="${question.id}" data-value="${option}"><span>${option}</span><span>${state.answers[question.id] === option ? "✓" : ""}</span></button>`;
+    }
+
+    function renderQuestions() {
+      const grouped = VARIANTS[state.variant].questions === "grouped";
+      const allAnswered = questions.every(q => state.answers[q.id]);
+      let body;
+      if (grouped) {
+        body = `<div class="question-tabs">${questions.map((q, i) => `<button class="question-tab ${state.answers[q.id] ? "done" : ""} ${state.currentQuestion === i ? "current" : ""}" data-action="jump-question" data-index="${i}">${i + 1}</button>`).join("")}</div>
+          <div class="question-progress"><span>集中核验 · 3 个决定性缺口</span><span>${Object.keys(state.answers).length}/3</span></div>
+          ${questions.map((q, i) => `<section class="question-card" style="margin-bottom:10px" data-question-card="${i}">
+            <h2>${i + 1}. ${q.title}</h2><div class="question-reason"><span>为什么问：</span><span>${q.reason}</span></div>
+            <div class="option-list">${q.options.map(o => questionOption(q, o)).join("")}</div>
+          </section>`).join("")}`;
+      } else {
+        const q = questions[state.currentQuestion];
+        body = `<div class="question-progress"><span>关键追问 ${state.currentQuestion + 1} / ${questions.length}</span><span>最多 3 轮 · 12 问</span></div>
+          <section class="question-card">
+            <h2>${q.title}</h2><div class="question-reason"><span>为什么问：</span><span>${q.reason}</span></div>
+            <div class="option-list">${q.options.map(o => questionOption(q, o)).join("")}</div>
+          </section>
+          <div class="inline-help">允许回答“不知道”“尚未核实”或“存在争议”。系统不会反复要求你猜测。</div>`;
+      }
+      const currentAnswered = state.answers[questions[state.currentQuestion].id];
+      return `<div class="screen">
+        ${statusBar()}
+        ${appBar("补充关键事实")}
+        ${stepper("questions")}
+        <div class="content-pad">
+          <div class="intro-block"><h1>${grouped ? "一次核完决定性问题" : "只追问会改变判断的事实"}</h1><p>优先处理会影响定性方向、受立案条件或证据优先级的信息缺口。</p></div>
+          ${body}
+        </div>
+        <div class="sticky-action"><div class="split-actions"><button class="secondary-btn" data-action="back">返回事实</button><button class="primary-btn" data-action="question-next" ${grouped ? (!allAnswered ? "disabled" : "") : (!currentAnswered ? "disabled" : "")}>${grouped || state.currentQuestion === questions.length - 1 ? "生成分析报告" : "下一问"}</button></div></div>
+      </div>`;
+    }
+
+    function renderGenerating() {
+      const phases = ["校验事实快照", "核对法源状态", "生成六模块报告", "检查跨模块一致性"];
+      return `<div class="screen">
+        ${statusBar()}
+        ${appBar("生成报告")}
+        <div class="generating">
+          <div><div class="generating-mark">析</div><h2>正在形成可核验的报告</h2><p>不会展示未经结构和法源校验的半成品。完整报告最多等待 90 秒。</p>
+          <div class="phase-list">${phases.map((p, i) => `<div class="phase-item ${i < state.generatingPhase ? "done" : ""} ${i === state.generatingPhase ? "active" : ""}"><span class="phase-dot"></span><span>${p}</span></div>`).join("")}</div></div>
+        </div>
+        <div class="sticky-action"><button class="danger-btn" style="width:100%" data-action="cancel-generation">取消生成</button></div>
+      </div>`;
+    }
+
+    function renderReport() {
+      const variant = VARIANTS[state.variant];
+      const showIndex = variant.report === "indexed";
+      return `<div class="screen" id="reportScreen">
+        ${statusBar()}
+        ${appBar("案情分析报告", true, `<button class="icon-btn" data-action="clear-analysis" aria-label="清除本次分析">⋯</button>`)}
+        <section class="report-head">
+          <div class="report-meta"><span class="status-pill">● 初步意见—待核验</span><span>事实快照 v1 · 虚构演示</span></div>
+          <div class="report-title">案情级主判断</div>
+          <h1 class="main-conclusion">目前更接近盗窃行为方向，但刑事立案条件仍需核验</h1>
+          <p class="conclusion-qualifier">决定性缺口：行为人是否具有非法占有目的、车辆当前价值及行为人身份。系统意见不替代正式定性或立案决定。</p>
+        </section>
+        <div class="report-quick"><div class="quick-item"><strong>4</strong><span>已确认事实</span></div><div class="quick-item"><strong>3</strong><span>关键缺口</span></div><div class="quick-item"><strong>2</strong><span>重要风险</span></div></div>
+        <div class="report-layout">
+          ${showIndex ? `<nav class="anchor-nav" aria-label="报告模块导航">${moduleData.map((m, i) => `<button class="anchor-btn ${state.activeAnchor === m.id ? "active" : ""}" data-action="jump-module" data-id="${m.id}">${i + 1} ${m.title.replace("分析", "")}</button>`).join("")}</nav>` : ""}
+          <div class="report-modules">${moduleData.map((m, i) => renderModule(m, i, variant)).join("")}</div>
+          <div class="document-task"><strong>可能相关的文书任务</strong><p>如进入受案或后续调查环节，可查看“受案记录制作要点”的只读范例。进入前仍需核验具体程序类别。</p><button class="text-link" data-action="open-document-detail">查看文书范例 →</button></div>
+          <div class="inline-help">生成时间 2026-09-27 09:41 · 内容批次 DEMO-01 · 本页面全部内容为交互结构示意，不作为真实执法依据。</div>
+        </div>
+      </div>`;
+    }
+
+    function renderModule(module, index, variant) {
+      const narrativeOpen = variant.report === "narrative" && index < 3;
+      const open = state.openModules.has(module.id) || narrativeOpen;
+      let body = module.body;
+      if (module.id === "basis" && variant.source === "sheet") {
+        body = `<p>依据与判断逐项关联。为减少长报告中的层层展开，方案 C 将完整条文放在底部抽屉中。</p><button class="secondary-btn" style="min-height:42px" data-action="open-sources-sheet">查看法律原文与版本信息</button>`;
+      }
+      return `<section class="report-module ${open ? "open" : ""}" id="module-${module.id}">
+        <button class="module-trigger" data-action="toggle-module" data-id="${module.id}">
+          <span class="module-no">0${index + 1}</span><span><strong>${module.title}</strong><small>${module.subtitle}</small></span><span class="module-chevron">›</span>
+        </button>
+        <div class="module-body">${body}</div>
+      </section>`;
+    }
+
+    function renderDocuments() {
+      const docs = [
+        ["接报与受理", "受案记录制作要点", "适用于行政或刑事程序衔接前的受案信息记录；选择前需核验程序类别。"],
+        ["调查取证", "被侵害人／被害人询问笔录制作要点", "围绕自由陈述、事实核实和矛盾澄清组织记录。"],
+        ["调查取证", "证人询问笔录制作要点", "说明证人感知来源、时间线和与当事人的关系。"],
+        ["告知与送达", "权利义务告知记录制作要点", "核对告知对象、阶段、内容和留痕方式。"]
+      ];
+      return `<div class="screen">
+        ${statusBar()}
+        ${appBar("文书范例")}
+        <div class="doc-search"><label class="search-box"><span>⌕</span><input aria-label="搜索文书范例" placeholder="搜索名称、别名或办理阶段" /></label></div>
+        <div class="stage-scroll"><button class="stage-chip active">全部阶段</button><button class="stage-chip">接报与受理</button><button class="stage-chip">调查取证</button><button class="stage-chip">告知与送达</button></div>
+        <div class="doc-list">
+          <div class="notice"><span class="notice-mark">!</span><div><strong>辅助参考—不是正式文书模板</strong>不得直接制发，应结合正式办案系统、现行规范和具体案情核验。</div></div>
+          ${docs.map((d, i) => `<button class="doc-card" data-action="open-document-detail"><span class="doc-meta">${d[0]} · 只读指导</span><h3>${d[1]}</h3><p>${d[2]}</p><footer><span>最近核验：演示日期</span><span>查看 ›</span></footer></button>`).join("")}
+        </div>
+      </div>`;
+    }
+
+    function renderDocumentDetail() {
+      return `<div class="screen">
+        ${statusBar()}
+        ${appBar("文书范例")}
+        <section class="doc-detail-head"><span class="status-pill">辅助参考 · 只读</span><h1>受案记录制作要点</h1><p>虚构演示内容。正式名称、格式和要求须以当前有效的官方规范与办案系统为准。</p></section>
+        <section class="doc-section"><h2>适用说明</h2><div class="doc-section-body"><ul><li>适用场景：接报后进入受案信息记录环节。</li><li>选择前核验：刑事／行政程序类别、报案人与事项关系、是否存在紧急处置。</li><li>不适用：不能用本范例代替正式受案登记或系统录入。</li></ul></div></section>
+        <section class="doc-section"><h2>结构与制作要点</h2><div class="doc-section-body"><strong>1. 接报基本情况</strong><br>如实记录接报时间、方式、来源和事项概况，不将未经核验的陈述改写为已查明事实。<div class="example-block"><span class="mini-label">注释式虚构示例</span><br>“2026年×月×日×时，张某某（虚构姓名）通过……反映……”<br><em>注：示例仅说明信息顺序，不提供可直接套用的正式模板。</em></div></div></section>
+        <section class="doc-section"><h2>常见错误</h2><div class="doc-section-body"><ul><li>把报警人陈述直接写成公安机关认定事实。</li><li>缺少接报方式、时间或事项来源。</li><li>未区分紧急处置记录与后续程序记录。</li></ul></div></section>
+        <section class="doc-section"><h2>依据与治理</h2><div class="doc-section-body">正式产品在此显示具体法源、条款定位、格式来源、内容版本、最近核验日期和官方链接。<br><br><span class="mini-label">当前状态</span><br>演示数据 · 不得用于真实文书制作</div></section>
+      </div>`;
+    }
+
+    function updatePanels() {
+      document.getElementById("variantList").innerHTML = Object.entries(VARIANTS).map(([key, value]) => `<button class="variant-choice ${state.variant === key ? "active" : ""}" data-variant="${key}"><span class="variant-key">${key}</span><span class="variant-copy"><strong>${value.name}</strong><span>${value.summary}</span></span></button>`).join("");
+      document.getElementById("prototypeState").innerHTML = `
+        <div class="state-row"><span>方案</span><strong>${state.variant} · ${VARIANTS[state.variant].name}</strong></div>
+        <div class="state-row"><span>当前页面</span><strong>${screenLabel(state.screen)}</strong></div>
+        <div class="state-row"><span>事实快照</span><strong>${["home", "input"].includes(state.screen) ? "尚未形成" : "v1（演示）"}</strong></div>
+        <div class="state-row"><span>追问完成</span><strong>${Object.keys(state.answers).length} / ${questions.length}</strong></div>
+        <div class="state-row"><span>数据保存</span><strong>仅内存，不持久化</strong></div>`;
+      document.getElementById("mobileVariantLabel").textContent = `${state.variant} · ${VARIANTS[state.variant].name}`;
+      document.querySelectorAll("[data-variant]").forEach(button => button.addEventListener("click", () => setVariant(button.dataset.variant)));
+    }
+
+    function screenLabel(screen) {
+      return { home: "首页", input: "案情输入", facts: "事实确认", questions: "关键追问", generating: "报告生成", report: "分析报告", documents: "文书范例列表", documentDetail: "文书范例详情" }[screen];
+    }
+
+    function setVariant(key) {
+      state.variant = key;
+      const params = new URLSearchParams(location.search);
+      params.set("variant", key);
+      history.replaceState(null, "", `${location.pathname}?${params.toString()}`);
+      render();
+      showToast(`已切换到方案 ${key}：${VARIANTS[key].name}`);
+    }
+
+    function cycleVariant(direction) {
+      const keys = Object.keys(VARIANTS);
+      const next = (keys.indexOf(state.variant) + direction + keys.length) % keys.length;
+      setVariant(keys[next]);
+    }
+
+    function navigate(screen) {
+      state.previousScreen = state.screen;
+      state.screen = screen;
+      render();
+    }
+
+    function goBack() {
+      const fallback = {
+        input: "home", facts: "input", questions: "facts", generating: "questions", report: "questions",
+        documents: "home", documentDetail: state.previousScreen === "report" ? "report" : "documents"
+      }[state.screen] || "home";
+      state.screen = fallback;
+      render();
+    }
+
+    function showToast(message) {
+      clearTimeout(toastTimer);
+      toast.textContent = message;
+      toast.classList.add("show");
+      toastTimer = setTimeout(() => toast.classList.remove("show"), 2200);
+    }
+
+    function openSheet(content) {
+      bottomSheet.innerHTML = `<div class="sheet-handle"></div>${content}<button class="primary-btn" data-action="close-sheet">返回报告</button>`;
+      backdrop.classList.add("open");
+    }
+
+    function closeSheet() { backdrop.classList.remove("open"); }
+
+    function advanceGenerating() {
+      if (state.generatingPhase < 3) {
+        generateTimer = setTimeout(() => { state.generatingPhase += 1; render(); }, 480);
+      } else {
+        generateTimer = setTimeout(() => { state.screen = "report"; render(); }, 700);
+      }
+    }
+
+    function resetState() {
+      state.screen = "home";
+      state.caseText = DEFAULT_CASE;
+      state.factStatuses = Object.fromEntries(facts.map(f => [f.id, f.status]));
+      state.answers = {};
+      state.currentQuestion = 0;
+      state.openModules = new Set(["classification"]);
+      state.activeAnchor = "classification";
+      state.generatingPhase = 0;
+      render();
+      showToast("原型已重置");
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>'"]/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#039;", '"': "&quot;" })[char]);
+    }
+
+    app.addEventListener("input", event => {
+      if (event.target.id === "caseInput") {
+        state.caseText = event.target.value;
+        document.getElementById("charCount").textContent = `${state.caseText.length} / 10,000`;
+      }
+    });
+
+    app.addEventListener("click", event => {
+      const target = event.target.closest("[data-action]");
+      if (!target) return;
+      const action = target.dataset.action;
+
+      if (action === "start-analysis") navigate("input");
+      if (action === "open-documents") navigate("documents");
+      if (action === "back") goBack();
+      if (action === "extract-facts") {
+        if (!state.caseText.trim()) return showToast("请先输入案情描述");
+        navigate("facts");
+      }
+      if (action === "toggle-fact") state.factStatuses[target.dataset.id] = target.checked ? "confirmed" : "candidate", render();
+      if (action === "cycle-fact") {
+        const cycle = ["confirmed", "unknown", "disputed", "denied"];
+        const id = target.dataset.id;
+        state.factStatuses[id] = cycle[(cycle.indexOf(state.factStatuses[id]) + 1) % cycle.length];
+        render();
+      }
+      if (action === "confirm-facts") navigate("questions");
+      if (action === "answer-question") {
+        state.answers[target.dataset.question] = target.dataset.value;
+        render();
+        if (VARIANTS[state.variant].questions === "single") showToast("已记录，可继续下一问");
+      }
+      if (action === "jump-question") {
+        state.currentQuestion = Number(target.dataset.index);
+        document.querySelector(`[data-question-card="${state.currentQuestion}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      if (action === "question-next") {
+        if (VARIANTS[state.variant].questions === "single" && state.currentQuestion < questions.length - 1) {
+          state.currentQuestion += 1;
+          render();
+        } else {
+          state.generatingPhase = 0;
+          navigate("generating");
+        }
+      }
+      if (action === "cancel-generation") { state.screen = "questions"; render(); showToast("已取消，不展示半成品"); }
+      if (action === "toggle-module") {
+        const id = target.dataset.id;
+        state.openModules.has(id) ? state.openModules.delete(id) : state.openModules.add(id);
+        state.activeAnchor = id;
+        render();
+        setTimeout(() => document.getElementById(`module-${id}`)?.scrollIntoView({ block: "nearest" }), 0);
+      }
+      if (action === "jump-module") {
+        const id = target.dataset.id;
+        state.activeAnchor = id;
+        state.openModules.add(id);
+        render();
+        setTimeout(() => document.getElementById(`module-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+      }
+      if (action === "toggle-source") target.closest(".source-card").classList.toggle("open");
+      if (action === "open-sources-sheet") openSheet(`
+        <p class="eyebrow">法律依据 · 结构示意</p><h2>逐项查看原文与支持关系</h2>
+        <p>正式产品中的每条依据必须匹配已核验法源记录。本原型不提供真实法律内容。</p>
+        <div class="source-card open"><div class="source-head"><span>盗窃方向相关规范</span><span>演示</span></div><div class="source-text" style="display:block">展示最小必要原文、发布机关、具体条款、施行版本、效力状态、适用地域、最近核验日期和官方链接。<span class="source-meta">支持判断：初步定性分析 · 受立案条件分析</span></div></div>
+        <div class="source-card open"><div class="source-head"><span>受案与立案程序相关规范</span><span>演示</span></div><div class="source-text" style="display:block">明确区分接报、受案和正式立案条件，不以主结论替代程序判断。<span class="source-meta">支持判断：受立案条件分析</span></div></div>`);
+      if (action === "open-document-detail") { state.previousScreen = state.screen; state.screen = "documentDetail"; render(); }
+      if (action === "clear-analysis") openSheet(`<p class="eyebrow">清除本次分析</p><h2>删除当前标签页内的全部内容？</h2><p>将清除案情原文、事实快照、追问答案、报告和短期会话标识。原型不会保存分析历史。</p><div class="split-actions"><button class="secondary-btn" data-action="close-sheet">取消</button><button class="danger-btn" data-action="confirm-clear">确认清除</button></div>`);
+    });
+
+    backdrop.addEventListener("click", event => {
+      const actionTarget = event.target.closest("[data-action]");
+      if (actionTarget?.dataset.action === "close-sheet") closeSheet();
+      if (actionTarget?.dataset.action === "confirm-clear") { closeSheet(); resetState(); }
+      if (event.target === backdrop) closeSheet();
+    });
+
+    document.getElementById("prevVariant").addEventListener("click", () => cycleVariant(-1));
+    document.getElementById("nextVariant").addEventListener("click", () => cycleVariant(1));
+    document.getElementById("reviewHint").addEventListener("click", () => openSheet(`
+      <p class="eyebrow">体验提示</p><h2>当前重点观察</h2>
+      <ul><li>主结论是否能在 3 秒内被找到，并同时看见限制条件？</li><li>事实确认状态是否容易理解，能否放心选择“未知／有争议”？</li><li>六模块是应该渐进展开，还是始终保留索引？</li><li>法律原文在模块内展开还是集中到抽屉，更利于追溯？</li><li>从报告进入文书范例时，是否会被误解为系统自动决定应制作该文书？</li></ul>`));
+
+    document.getElementById("captureDecision").addEventListener("click", async () => {
+      const summary = `原型评审结论\n- 首选方案：${state.variant} · ${VARIANTS[state.variant].name}\n- 首页入口权重：${document.getElementById("homeChoice").value}\n- 追问节奏：${document.getElementById("questionChoice").value}\n- 长报告导航：${document.getElementById("reportChoice").value}\n- 法律原文层级：${document.getElementById("sourceChoice").value}\n- 观察与修改：${document.getElementById("reviewNotes").value.trim() || "无"}`;
+      document.getElementById("decisionOutput").textContent = summary;
+      try { await navigator.clipboard.writeText(summary); showToast("决策摘要已复制"); } catch { showToast("决策摘要已生成"); }
+    });
+    document.getElementById("resetPrototype").addEventListener("click", resetState);
+
+    document.addEventListener("keydown", event => {
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+      if (event.key === "ArrowLeft") cycleVariant(-1);
+      if (event.key === "ArrowRight") cycleVariant(1);
+      if (event.key === "Escape") closeSheet();
+    });
+
+    render();
+  </script>
+</body>
+</html>
