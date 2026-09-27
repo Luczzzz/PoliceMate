@@ -52,6 +52,18 @@ _Avoid_: 自动告知、个性化法律话术
 The visible relationship from 事实选择, through a sourced rule, to every generated 清单任务 or 程序建议. A user must be able to see why an item appeared and which source supports it.
 _Avoid_: 黑盒推荐、无法追溯的自动建议
 
+**内容维护者**:
+第一版中对产品内容承担起草、核验、发布、更新和紧急下架责任的单一维护角色；该角色不代表法制审核、业务审定或机关授权。
+_Avoid_: 法制审核员、审定人、官方发布人
+
+**受治理内容项**:
+可独立核验、版本化和下架的一项法源、分析规则、核查事项、询问要点、风险提示或文书范例。进入产品不表示已经正式审定。
+_Avoid_: 已审定内容、官方口径、知识库全文
+
+**内容发布批次**:
+一组同时激活的受治理内容项及其确定版本，用于标识一次分析可使用的内容范围。批次可回滚，但不得把未经核验的内容混入当前批次。
+_Avoid_: 实时知识库状态、自动生效内容
+
 **程序辅助工具**:
 A tool that presents procedural tasks, time limits, conditions, exceptions, documents, notices, and legal sources for officers to verify. It does not decide case acceptance, case filing, legal classification, punishment, or criminal charges.
 _Avoid_: 执法决定系统、自动办案系统、法律裁判工具
