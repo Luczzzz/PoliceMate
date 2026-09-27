@@ -96,7 +96,7 @@ export function PreAnalysisReviewPage() {
 
   const confirm = async () => {
     if (confirming || snapshotConfirmed) return;
-    if (!window.confirm("确认以上事实摘要并形成分析快照？确认后本次分析的事实与回答将锁定，不能再修改。")) {
+    if (!window.confirm("确认以上事实摘要并形成事实快照？确认后本次分析的事实与回答将锁定，不能再修改。")) {
       return;
     }
     setConfirming(true);
@@ -236,7 +236,7 @@ export function PreAnalysisReviewPage() {
             disabled={confirming}
             data-testid="confirm-snapshot"
           >
-            {confirming ? "正在形成事实快照…" : "确认事实摘要，形成分析快照"}
+            {confirming ? "正在形成事实快照…" : "确认事实摘要，形成事实快照"}
           </button>
           <Link className="button button--secondary" to="/analysis/facts" data-testid="back-to-facts">
             返回调整事实

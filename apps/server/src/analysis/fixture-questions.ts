@@ -270,5 +270,3 @@ export function proposeDecisiveQuestionsFixture(request: QuestionPoolRequest): Q
   const remainingBudget = Math.max(0, Math.min(request.maxQuestions, candidates.length));
   return { questions: candidates.slice(0, remainingBudget) };
 }
-
-export type { AnsweredQuestionSummary };

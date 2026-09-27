@@ -8,7 +8,6 @@ import type {
   AnswerRecord,
   CandidateFact,
   CreateAnalysisRequest,
-  DecisiveAnswer,
   DecisiveQuestion,
   FactStatus,
   UrgentRiskCategory,
