@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import {
@@ -23,6 +21,9 @@ export interface BuildAppDeps {
 }
 
 const CONTRACT_HEADER = "x-pm-contract-version";
+
+/** 健康检查与测试控制接口不参与产品契约校验。 */
+const CONTRACT_EXEMPT_PREFIXES = ["/api/v1/health", "/api/test/"];
 
 function errorBody(
   requestId: string,
@@ -60,8 +61,18 @@ export async function buildApp({ config, fixtures }: BuildAppDeps): Promise<Fast
 
   app.addHook("preHandler", async (request, reply) => {
     if (!request.url.startsWith("/api/")) return;
+    if (CONTRACT_EXEMPT_PREFIXES.some((prefix) => request.url.startsWith(prefix))) return;
+
     const requested = request.headers[CONTRACT_HEADER];
-    if (typeof requested === "string" && requested !== CONTRACT_VERSION) {
+    if (typeof requested !== "string" || requested.trim() === "") {
+      await reply
+        .code(400)
+        .send(
+          errorBody(request.id, "invalid_request", `缺少契约版本请求头 ${CONTRACT_HEADER}。`),
+        );
+      return;
+    }
+    if (requested !== CONTRACT_VERSION) {
       await reply
         .code(409)
         .send(
@@ -130,7 +141,7 @@ export async function buildApp({ config, fixtures }: BuildAppDeps): Promise<Fast
   });
 
   const staticDir = config.staticDir;
-  if (staticDir !== null && existsSync(resolve(staticDir, "index.html"))) {
+  if (staticDir !== null) {
     await app.register(fastifyStatic, { root: staticDir });
   }
 
@@ -138,7 +149,7 @@ export async function buildApp({ config, fixtures }: BuildAppDeps): Promise<Fast
     if (request.url.startsWith("/api/")) {
       return reply.code(404).send(errorBody(request.id, "not_found", "接口不存在。"));
     }
-    if (staticDir !== null && existsSync(resolve(staticDir, "index.html"))) {
+    if (staticDir !== null) {
       return reply.sendFile("index.html");
     }
     return reply.code(404).type("text/plain; charset=utf-8").send("未找到页面。");

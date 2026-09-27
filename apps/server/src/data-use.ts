@@ -1,5 +1,4 @@
-import type { DataUseResponse, DataUseSection } from "@policymate/contracts";
-import type { ServiceDeploymentInfo } from "./config";
+import type { DataUseResponse, DataUseSection, DataUseServiceInfo } from "@policymate/contracts";
 
 /**
  * 使用与数据说明的必需章节。受控试行前必须替换所有主体、联系人和说明占位信息；
@@ -18,9 +17,10 @@ export const DATA_USE_SECTION_IDS = [
 
 export type DataUseSectionId = (typeof DATA_USE_SECTION_IDS)[number];
 
-const SECTIONS: readonly DataUseSection[] = [
-  {
-    id: "purpose",
+type SectionContent = Omit<DataUseSection, "id">;
+
+const SECTIONS: Record<DataUseSectionId, SectionContent> = {
+  purpose: {
     title: "程序辅助工具边界",
     paragraphs: [
       "松警伴侣是面向公安一线民警的程序辅助工具，提供案情研判辅助与文书制作指导。",
@@ -29,8 +29,7 @@ const SECTIONS: readonly DataUseSection[] = [
     ],
     bullets: [],
   },
-  {
-    id: "desensitization",
+  desensitization: {
     title: "脱敏义务",
     paragraphs: [
       "请勿输入姓名、身份证号、手机号、精确住址等真实身份信息；条文与范例中的人物、地址、号码、时间和金额均为虚构。",
@@ -38,8 +37,7 @@ const SECTIONS: readonly DataUseSection[] = [
     ],
     bullets: [],
   },
-  {
-    id: "dify",
+  dify: {
     title: "内容提交与 Dify 处理",
     paragraphs: [
       "案情正文、追问答案等提交内容会经 PoliceMate 后端发送至 Dify（大模型应用编排服务）处理，用于生成候选事实、追问和分析结果。",
@@ -48,8 +46,7 @@ const SECTIONS: readonly DataUseSection[] = [
     ],
     bullets: [],
   },
-  {
-    id: "lifetime",
+  lifetime: {
     title: "当前标签页生命周期",
     paragraphs: [
       "本次分析仅属于当前浏览器标签页：不跨标签页、不跨设备，也不形成分析历史。",
@@ -57,8 +54,7 @@ const SECTIONS: readonly DataUseSection[] = [
     ],
     bullets: [],
   },
-  {
-    id: "metadata",
+  metadata: {
     title: "允许记录的非内容元数据",
     paragraphs: [
       "为排查故障和评估试行，后端可以记录不含案情内容的运行元数据，且不得用于恢复案情会话或反推案情内容：",
@@ -73,8 +69,7 @@ const SECTIONS: readonly DataUseSection[] = [
       "页面或功能状态的匿名计数",
     ],
   },
-  {
-    id: "logging",
+  logging: {
     title: "技术日志与第三方服务边界",
     paragraphs: [
       "案情正文、事实值、候选事实与事实快照正文、追问答案、报告正文、Dify 原始响应、文书检索词和临时工作台标记不写入业务数据库、分析历史、知识库、训练集、可回放日志或第三方分析工具。",
@@ -82,8 +77,7 @@ const SECTIONS: readonly DataUseSection[] = [
     ],
     bullets: [],
   },
-  {
-    id: "distribution",
+  distribution: {
     title: "分发与访问说明",
     paragraphs: [
       "本产品通过定向提供的不公开网址分发。不公开网址只是分发控制，不构成身份认证、权限控制或保密访问；知道网址的人均可能访问。",
@@ -92,8 +86,7 @@ const SECTIONS: readonly DataUseSection[] = [
     ],
     bullets: [],
   },
-  {
-    id: "feedback",
+  feedback: {
     title: "反馈与数据处理说明",
     paragraphs: [
       "结构化反馈只提交预定义类型和不含案情的元数据；需要进一步排查时，由试行组织者另行联系。",
@@ -101,20 +94,24 @@ const SECTIONS: readonly DataUseSection[] = [
     ],
     bullets: [],
   },
-];
+};
 
 export function buildDataUseResponse(
-  service: ServiceDeploymentInfo,
+  service: DataUseServiceInfo,
   contractVersion: string,
 ): DataUseResponse {
   return {
     contractVersion,
     title: "使用与数据说明",
-    sections: SECTIONS.map((section) => ({
-      ...section,
-      paragraphs: [...section.paragraphs],
-      bullets: [...section.bullets],
-    })),
+    sections: DATA_USE_SECTION_IDS.map((id) => {
+      const section = SECTIONS[id];
+      return {
+        id,
+        title: section.title,
+        paragraphs: [...section.paragraphs],
+        bullets: [...section.bullets],
+      };
+    }),
     service: {
       provider: service.provider,
       contact: service.contact,

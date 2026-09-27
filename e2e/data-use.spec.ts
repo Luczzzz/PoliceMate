@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { CONTRACT_VERSION } from "@policymate/contracts";
 
 test.describe("使用与数据说明", () => {
   test("提供必需的非占位章节", async ({ page }) => {
@@ -53,7 +54,9 @@ test.describe("降低搜索引擎收录概率的措施", () => {
   });
 
   test("API 响应带有 x-robots-tag", async ({ request }) => {
-    const response = await request.get("/api/v1/shell");
+    const response = await request.get("/api/v1/shell", {
+      headers: { "x-pm-contract-version": CONTRACT_VERSION },
+    });
 
     expect(response.headers()["x-robots-tag"]).toContain("noindex");
   });

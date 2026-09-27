@@ -13,20 +13,17 @@ export const UNAVAILABLE_REASONS = {
   noVerifiedExamples: "当前没有可用的已核验文书范例",
 } as const;
 
-/** 计算两个入口可用性所需的全部输入。 */
-export interface CapabilityInputs {
-  masterSwitch: boolean;
-  analysisEnabled: boolean;
-  documentsEnabled: boolean;
-  difyAvailable: boolean;
-  difyUnavailableReason: string | null;
-  eligibleExampleCount: number;
-}
-
 export interface CapabilityConfig {
   masterSwitch: boolean;
   analysisEnabled: boolean;
   documentsEnabled: boolean;
+}
+
+/** 计算两个入口可用性所需的全部输入。 */
+export interface CapabilityInputs extends CapabilityConfig {
+  difyAvailable: boolean;
+  difyUnavailableReason: string | null;
+  eligibleExampleCount: number;
 }
 
 /**

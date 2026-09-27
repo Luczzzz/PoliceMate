@@ -92,6 +92,7 @@ bash scripts/install-browser-deps.sh
 | `PM_ANALYSIS_ENABLED` | `on` | 案情分析功能开关 |
 | `PM_DOCUMENTS_ENABLED` | `on` | 文书范例功能开关 |
 | `PM_ENABLE_TEST_CONTROLS` | `off` | 是否挂载替身控制接口（仅测试使用） |
+| `PM_WEB_DIST` | `apps/web/dist` | 后端提供的 H5 构建产物目录；不存在时后端仅提供 API |
 | `PM_SERVICE_PROVIDER` | 未配置 | 使用与数据说明中的实际服务提供者 |
 | `PM_SERVICE_CONTACT` | 未配置 | 试行反馈联系人 |
 | `PM_DATA_PROCESSING_STATEMENT` | 未配置 | 适用的数据处理说明 |

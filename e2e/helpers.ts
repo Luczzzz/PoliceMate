@@ -1,9 +1,7 @@
 import { expect, type APIRequestContext } from "@playwright/test";
+import type { FixtureControlRequest } from "@policymate/contracts";
 
-export interface FixturePatch {
-  difyAvailable?: boolean;
-  eligibleExampleCount?: number;
-}
+export type FixturePatch = FixtureControlRequest;
 
 /** 修改外部边界的确定性替身状态。 */
 export async function setFixture(request: APIRequestContext, patch: FixturePatch): Promise<void> {

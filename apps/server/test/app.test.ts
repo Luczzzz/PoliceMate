@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { CONTRACT_VERSION, type ApiErrorBody, type DataUseResponse, type ProductShellResponse } from "@policymate/contracts";
+import {
+  CONTRACT_VERSION,
+  type ApiErrorBody,
+  type DataUseResponse,
+  type ProductShellResponse,
+} from "@policymate/contracts";
+import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
+
+const contractHeaders = { "x-pm-contract-version": CONTRACT_VERSION };
 
 function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
@@ -30,10 +38,18 @@ async function makeApp(overrides: Partial<AppConfig> = {}) {
   return { app, fixtures };
 }
 
+function getShell(app: FastifyInstance) {
+  return app.inject({ method: "GET", url: "/api/v1/shell", headers: contractHeaders });
+}
+
+function getDataUse(app: FastifyInstance) {
+  return app.inject({ method: "GET", url: "/api/v1/data-use", headers: contractHeaders });
+}
+
 describe("GET /api/v1/shell", () => {
   it("返回两个可用入口和契约版本", async () => {
     const { app } = await makeApp();
-    const response = await app.inject({ method: "GET", url: "/api/v1/shell" });
+    const response = await getShell(app);
 
     expect(response.statusCode).toBe(200);
     const body = response.json<ProductShellResponse>();
@@ -52,8 +68,7 @@ describe("GET /api/v1/shell", () => {
       payload: { difyAvailable: false },
     });
 
-    const response = await app.inject({ method: "GET", url: "/api/v1/shell" });
-    const body = response.json<ProductShellResponse>();
+    const body = (await getShell(app)).json<ProductShellResponse>();
 
     expect(body.entries.caseAnalysis.available).toBe(false);
     expect(body.entries.caseAnalysis.reason).toBeTruthy();
@@ -69,8 +84,7 @@ describe("GET /api/v1/shell", () => {
       payload: { eligibleExampleCount: 0 },
     });
 
-    const response = await app.inject({ method: "GET", url: "/api/v1/shell" });
-    const body = response.json<ProductShellResponse>();
+    const body = (await getShell(app)).json<ProductShellResponse>();
 
     expect(body.entries.documentExamples.available).toBe(false);
     expect(body.entries.caseAnalysis.available).toBe(true);
@@ -79,14 +93,23 @@ describe("GET /api/v1/shell", () => {
 
   it("总开关关闭时两个入口都不可用", async () => {
     const { app } = await makeApp({ masterSwitch: false });
-    const response = await app.inject({ method: "GET", url: "/api/v1/shell" });
-    const body = response.json<ProductShellResponse>();
+    const body = (await getShell(app)).json<ProductShellResponse>();
 
     expect(body.entries.caseAnalysis.available).toBe(false);
     expect(body.entries.documentExamples.available).toBe(false);
     await app.close();
   });
 
+  it("设置降低搜索引擎收录概率的响应头", async () => {
+    const { app } = await makeApp();
+    const response = await app.inject({ method: "GET", url: "/api/v1/health" });
+
+    expect(response.headers["x-robots-tag"]).toContain("noindex");
+    await app.close();
+  });
+});
+
+describe("契约版本校验", () => {
   it("拒绝不兼容的契约版本", async () => {
     const { app } = await makeApp();
     const response = await app.inject({
@@ -102,11 +125,22 @@ describe("GET /api/v1/shell", () => {
     await app.close();
   });
 
-  it("设置降低搜索引擎收录概率的响应头", async () => {
+  it("拒绝缺少契约版本的请求", async () => {
     const { app } = await makeApp();
-    const response = await app.inject({ method: "GET", url: "/api/v1/health" });
+    const response = await app.inject({ method: "GET", url: "/api/v1/shell" });
 
-    expect(response.headers["x-robots-tag"]).toContain("noindex");
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ApiErrorBody>().error.code).toBe("invalid_request");
+    await app.close();
+  });
+
+  it("健康检查与测试控制接口不要求契约版本", async () => {
+    const { app } = await makeApp();
+    const health = await app.inject({ method: "GET", url: "/api/v1/health" });
+    const controls = await app.inject({ method: "POST", url: "/api/test/fixtures/reset" });
+
+    expect(health.statusCode).toBe(200);
+    expect(controls.statusCode).toBe(200);
     await app.close();
   });
 });
@@ -142,8 +176,7 @@ describe("替身控制接口", () => {
     const response = await app.inject({ method: "POST", url: "/api/test/fixtures", payload: {} });
 
     expect(response.statusCode).toBe(404);
-    const body = response.json<ApiErrorBody>();
-    expect(body.error.code).toBe("not_found");
+    expect(response.json<ApiErrorBody>().error.code).toBe("not_found");
     await app.close();
   });
 });
@@ -151,7 +184,7 @@ describe("替身控制接口", () => {
 describe("GET /api/v1/data-use", () => {
   it("提供使用与数据说明的必需章节", async () => {
     const { app } = await makeApp();
-    const response = await app.inject({ method: "GET", url: "/api/v1/data-use" });
+    const response = await getDataUse(app);
     const body = response.json<DataUseResponse>();
     const ids = body.sections.map((section) => section.id);
 
@@ -172,8 +205,7 @@ describe("GET /api/v1/data-use", () => {
 
   it("未配置部署信息时如实返回 null，而不是编造主体", async () => {
     const { app } = await makeApp();
-    const response = await app.inject({ method: "GET", url: "/api/v1/data-use" });
-    const body = response.json<DataUseResponse>();
+    const body = (await getDataUse(app)).json<DataUseResponse>();
 
     expect(body.service.provider).toBeNull();
     expect(body.service.contact).toBeNull();
@@ -189,8 +221,7 @@ describe("GET /api/v1/data-use", () => {
         technicalLoggingBoundary: ["云主机访问日志保留 7 天"],
       },
     });
-    const response = await app.inject({ method: "GET", url: "/api/v1/data-use" });
-    const body = response.json<DataUseResponse>();
+    const body = (await getDataUse(app)).json<DataUseResponse>();
 
     expect(body.service.provider).toBe("示例运维单位");
     expect(body.service.technicalLoggingBoundary).toEqual(["云主机访问日志保留 7 天"]);
@@ -201,7 +232,11 @@ describe("GET /api/v1/data-use", () => {
 describe("API 未匹配路由", () => {
   it("对 API 路径返回结构化 404", async () => {
     const { app } = await makeApp();
-    const response = await app.inject({ method: "GET", url: "/api/v1/does-not-exist" });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/does-not-exist",
+      headers: contractHeaders,
+    });
 
     expect(response.statusCode).toBe(404);
     expect(response.json<ApiErrorBody>().error.code).toBe("not_found");

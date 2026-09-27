@@ -18,7 +18,6 @@ export interface FixtureState {
 }
 
 export interface FixtureControls extends Providers {
-  getState(): FixtureState;
   updateState(patch: Partial<FixtureState>): FixtureState;
   reset(): FixtureState;
 }
@@ -41,7 +40,6 @@ export function createFixtureControls(initial: Partial<FixtureState> = {}): Fixt
   let state = normalize({ ...DEFAULT_FIXTURE_STATE, ...initial });
 
   const dify: DifyProvider = {
-    kind: "fixture",
     async getAvailability(): Promise<ServiceAvailability> {
       return state.difyAvailable
         ? { available: true, reason: null }
@@ -50,7 +48,6 @@ export function createFixtureControls(initial: Partial<FixtureState> = {}): Fixt
   };
 
   const content: GovernedContentProvider = {
-    kind: "fixture",
     async getActiveRelease(): Promise<GovernedContentRelease> {
       return {
         releaseId: FIXTURE_RELEASE_ID,
@@ -62,7 +59,6 @@ export function createFixtureControls(initial: Partial<FixtureState> = {}): Fixt
   return {
     dify,
     content,
-    getState: () => ({ ...state }),
     updateState(patch) {
       state = normalize({ ...state, ...patch });
       return { ...state };

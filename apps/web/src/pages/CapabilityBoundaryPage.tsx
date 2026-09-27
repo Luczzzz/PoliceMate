@@ -131,7 +131,7 @@ export function CapabilityBoundaryPage({ capability }: CapabilityBoundaryPagePro
           variant="unavailable"
           title="功能暂不可用"
           impact={`“${copy.title}”当前无法进入，页面不会加载任何未经验证的内容。`}
-          nextStep="请稍后返回首页重试，或先使用另一个入口。若持续不可用，请通过“使用与数据说明”中的联系方式反馈。"
+          nextStep="请稍后返回首页重试；若持续不可用，请通过“使用与数据说明”中的联系方式反馈。"
           testId="capability-unavailable"
           extra={
             <p className="status-panel__note" data-testid="capability-unavailable-reason">

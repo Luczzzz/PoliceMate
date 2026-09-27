@@ -14,7 +14,6 @@ export interface ServiceAvailability {
 
 /** Dify 集成适配层的可用性边界。后续切片在此之上增加结构化结果契约。 */
 export interface DifyProvider {
-  readonly kind: string;
   getAvailability(): Promise<ServiceAvailability>;
 }
 
@@ -27,7 +26,6 @@ export interface GovernedContentRelease {
 
 /** 受治理内容读取边界。 */
 export interface GovernedContentProvider {
-  readonly kind: string;
   getActiveRelease(): Promise<GovernedContentRelease>;
 }
 

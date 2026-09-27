@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { DataUseServiceInfo } from "@policymate/contracts";
 
 /**
  * 运行配置。所有影响能力可用性的输入都必须来自配置或外部边界提供者，
@@ -17,20 +18,13 @@ export interface AppConfig {
   masterSwitch: boolean;
   analysisEnabled: boolean;
   documentsEnabled: boolean;
-  /** 构建后的 H5 静态资源目录；不存在时仅提供 API。 */
+  /** 构建后的 H5 静态资源目录；不存在时仅为 null（后端只提供 API）。 */
   staticDir: string | null;
-  service: ServiceDeploymentInfo;
-}
-
-/**
- * 部署相关的服务信息。受控试行前必须填写实际值；未配置时保持 `null`，
- * 页面必须如实显示“尚未配置”，不得使用虚构主体或联系人。
- */
-export interface ServiceDeploymentInfo {
-  provider: string | null;
-  contact: string | null;
-  dataProcessingStatement: string | null;
-  technicalLoggingBoundary: string[];
+  /**
+   * 部署相关的服务信息。受控试行前必须填写实际值；未配置时保持 `null`，
+   * 页面必须如实显示“尚未配置”，不得使用虚构主体或联系人。
+   */
+  service: DataUseServiceInfo;
 }
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
