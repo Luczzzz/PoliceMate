@@ -32,6 +32,10 @@ _Avoid_: 法定结论、系统截止时间
 A traceable suggestion generated from the officer's 事实选择 that identifies a procedural path, next check, document, notice, approval, or missing time input. It is not a finding of fact, legal classification, punishment recommendation, or official decision.
 _Avoid_: 法律结论、自动定性、处罚建议
 
+**初步定性意见**:
+An analytical opinion generated from confirmed 事实选择 and cited public legal sources about a possible offense or case category and its conditions. It is for officer review and verification, not an official case classification, filing decision, punishment recommendation, or legal determination.
+_Avoid_: 案件定性结论、系统认定、最终定性
+
 **文书任务**:
 A 清单任务 that tells the officer which legal document may need to be prepared, approved, served, or checked, together with its trigger, required content, timing, and legal source. PoliceMate does not create or export the official document.
 _Avoid_: 文书生成、电子文书、正式文书模板
