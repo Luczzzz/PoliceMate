@@ -12,6 +12,9 @@ export function App() {
   return (
     <BrowserRouter>
       <ErrorBoundary>
+        <a className="skip-link" href="#main">
+          跳到主要内容
+        </a>
         <div className="app-shell">
           <OfflineBanner />
           <main id="main" className="app-main">

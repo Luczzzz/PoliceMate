@@ -1,11 +1,12 @@
 import { useNavigate } from "react-router-dom";
 import type { CapabilityId } from "@policymate/contracts";
+import { Icon, type IconName } from "./Icon";
 
 export interface EntryCardProps {
   capability: CapabilityId;
   title: string;
   description: string;
-  icon: string;
+  icon: IconName;
   available: boolean;
   reason: string | null;
   to: string;
@@ -36,7 +37,7 @@ export function EntryCard({
     >
       <div className="entry-card__head">
         <span className="entry-card__icon" aria-hidden="true">
-          {icon}
+          <Icon name={icon} size={25} />
         </span>
         <div className="entry-card__headings">
           <h2 className="entry-card__title">{title}</h2>
@@ -44,8 +45,9 @@ export function EntryCard({
             className={`entry-card__status ${available ? "is-available" : "is-unavailable"}`}
             data-testid={`entry-status-${capability}`}
           >
-            <span aria-hidden="true">{available ? "✓" : "!"}</span>
-            {available ? "可用" : "暂不可用"}
+            <Icon name={available ? "check" : "alert"} size={13} strokeWidth={2.2} />
+            {available ? null : <span className="visually-hidden">!</span>}
+            {available ? "服务可用" : "暂不可用"}
           </span>
         </div>
       </div>
@@ -63,7 +65,7 @@ export function EntryCard({
           onClick={() => navigate(to)}
         >
           进入{title}
-          <span aria-hidden="true">›</span>
+          <Icon name="arrowRight" size={19} />
         </button>
       ) : (
         <>
@@ -74,9 +76,9 @@ export function EntryCard({
             type="button"
             className="button button--muted entry-card__action"
             data-testid={`entry-action-${capability}`}
+            disabled
             aria-disabled="true"
             aria-describedby={`${descriptionId} ${reasonId}`}
-            onClick={(event) => event.preventDefault()}
           >
             暂不可用
           </button>

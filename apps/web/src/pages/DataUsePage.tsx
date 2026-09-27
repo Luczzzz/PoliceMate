@@ -1,6 +1,7 @@
 import type { DataUseResponse } from "@policymate/contracts";
 import { Link } from "react-router-dom";
 import { FailurePanel } from "../components/FailurePanel";
+import { Icon } from "../components/Icon";
 import { useJsonResource } from "../hooks/useJsonResource";
 
 function ServiceValue({ value }: { value: string | null }) {
@@ -18,18 +19,22 @@ export function DataUsePage() {
   const { state, reload } = useJsonResource<DataUseResponse>("/api/v1/data-use");
 
   return (
-    <div className="page">
-      <p className="breadcrumb">
-        <Link className="link-button" to="/" data-testid="back-home">
-          ‹ 返回首页
+    <div className="page page--reading">
+      <header className="subpage-header">
+        <Link className="back-link" to="/" data-testid="back-home">
+          <Icon name="arrowLeft" size={18} />
+          返回首页
         </Link>
-      </p>
-
-      <header className="page-header">
+        <span className="subpage-mark" aria-hidden="true">
+          <Icon name="shield" size={42} strokeWidth={1.4} />
+        </span>
         <h1 className="page-title">使用与数据说明</h1>
         <p className="page-lead">
-          请在使用前了解工具边界、脱敏义务、内容处理方式和当前标签页的会话生命周期。
+          使用前请了解工具边界、脱敏义务、内容处理方式和当前标签页的会话生命周期。
         </p>
+        <div className="command-tag">
+          <code>边界 · 脱敏 · Dify 处理 · 会话生命周期</code>
+        </div>
       </header>
 
       {state.status === "loading" ? (
@@ -43,30 +48,39 @@ export function DataUsePage() {
       ) : null}
 
       {state.status === "ready" ? (
-        <>
-          {state.data.sections.map((section) => (
+        <div className="document-list">
+          {state.data.sections.map((section, sectionIndex) => (
             <section
               key={section.id}
               className="info-section"
               data-testid={`data-use-section-${section.id}`}
             >
-              <h2 className="info-section__title">{section.title}</h2>
-              {section.paragraphs.map((paragraph, index) => (
-                <p key={`p-${index}`}>{paragraph}</p>
-              ))}
-              {section.bullets.length > 0 ? (
-                <ul>
-                  {section.bullets.map((bullet, index) => (
-                    <li key={`b-${index}`}>{bullet}</li>
-                  ))}
-                </ul>
-              ) : null}
+              <span className="info-section__index" aria-hidden="true">
+                {String(sectionIndex + 1).padStart(2, "0")}
+              </span>
+              <div className="info-section__content">
+                <h2 className="info-section__title">{section.title}</h2>
+                {section.paragraphs.map((paragraph, index) => (
+                  <p key={`p-${index}`}>{paragraph}</p>
+                ))}
+                {section.bullets.length > 0 ? (
+                  <ul>
+                    {section.bullets.map((bullet, index) => (
+                      <li key={`b-${index}`}>{bullet}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
             </section>
           ))}
 
-          <section className="info-section" data-testid="data-use-service">
-            <h2 className="info-section__title">服务与联系信息</h2>
-            <dl className="service-list">
+          <section className="info-section info-section--service" data-testid="data-use-service">
+            <span className="info-section__index" aria-hidden="true">
+              {String(state.data.sections.length + 1).padStart(2, "0")}
+            </span>
+            <div className="info-section__content">
+              <h2 className="info-section__title">服务与联系信息</h2>
+              <dl className="service-list">
               <dt>服务提供者</dt>
               <dd>
                 <ServiceValue value={state.data.service.provider} />
@@ -91,9 +105,10 @@ export function DataUsePage() {
                   </ul>
                 )}
               </dd>
-            </dl>
+              </dl>
+            </div>
           </section>
-        </>
+        </div>
       ) : null}
     </div>
   );

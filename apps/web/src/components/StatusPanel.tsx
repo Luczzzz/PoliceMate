@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Icon, type IconName } from "./Icon";
 
 export type StatusVariant =
   | "offline"
@@ -8,13 +9,13 @@ export type StatusVariant =
   | "not_found"
   | "page_error";
 
-const SYMBOLS: Record<StatusVariant, string> = {
-  offline: "⚠",
-  service: "⚠",
-  contract: "⟳",
-  unavailable: "!",
-  not_found: "?",
-  page_error: "⚠",
+const SYMBOLS: Record<StatusVariant, IconName> = {
+  offline: "wifiOff",
+  service: "alert",
+  contract: "refresh",
+  unavailable: "alert",
+  not_found: "help",
+  page_error: "alert",
 };
 
 const ALERT_VARIANTS: ReadonlySet<StatusVariant> = new Set([
@@ -56,7 +57,7 @@ export function StatusPanel({
       aria-live={ALERT_VARIANTS.has(variant) ? "assertive" : "polite"}
     >
       <span className="status-panel__symbol" aria-hidden="true">
-        {SYMBOLS[variant]}
+        <Icon name={SYMBOLS[variant]} size={23} />
       </span>
       <h2 className="status-panel__title">{title}</h2>
       <dl className="status-panel__detail">

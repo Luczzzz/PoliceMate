@@ -2,6 +2,7 @@ import type { CapabilityId } from "@policymate/contracts";
 import { Link } from "react-router-dom";
 import { useShell } from "../app/ShellContext";
 import { FailurePanel } from "../components/FailurePanel";
+import { Icon, type IconName } from "../components/Icon";
 import { StatusPanel } from "../components/StatusPanel";
 
 interface BoundarySection {
@@ -12,6 +13,8 @@ interface BoundarySection {
 interface CapabilityCopy {
   title: string;
   intro: string;
+  icon: IconName;
+  command: string;
   sections: readonly BoundarySection[];
 }
 
@@ -22,7 +25,9 @@ interface CapabilityCopy {
 const CAPABILITY_COPY: Record<CapabilityId, CapabilityCopy> = {
   caseAnalysis: {
     title: "案情分析",
-    intro: "开始输入前，请先确认以下边界。",
+    intro: "开始输入前，请先确认程序责任、脱敏和会话边界。",
+    icon: "analysis",
+    command: "事实确认 → 决定性追问 → 结构化分析",
     sections: [
       {
         title: "程序辅助工具边界",
@@ -55,7 +60,9 @@ const CAPABILITY_COPY: Record<CapabilityId, CapabilityCopy> = {
   },
   documentExamples: {
     title: "文书范例",
-    intro: "浏览前，请先确认文书范例的定位。",
+    intro: "浏览前，请先确认文书范例的定位和使用边界。",
+    icon: "document",
+    command: "办理阶段 → 适用条件 → 制作指导",
     sections: [
       {
         title: "只读制作指导",
@@ -91,20 +98,25 @@ export function CapabilityBoundaryPage({ capability }: CapabilityBoundaryPagePro
   const copy = CAPABILITY_COPY[capability];
 
   const header = (
-    <header className="page-header">
-      <p className="breadcrumb">
-        <Link className="link-button" to="/">
-          ‹ 返回首页
-        </Link>
-      </p>
+    <header className="subpage-header">
+      <Link className="back-link" to="/">
+        <Icon name="arrowLeft" size={18} />
+        返回首页
+      </Link>
+      <span className="subpage-mark" aria-hidden="true">
+        <Icon name={copy.icon} size={42} strokeWidth={1.4} />
+      </span>
       <h1 className="page-title">{copy.title}</h1>
       <p className="page-lead">{copy.intro}</p>
+      <div className="command-tag">
+        <code>{copy.command}</code>
+      </div>
     </header>
   );
 
   if (state.status === "loading") {
     return (
-      <div className="page" data-testid="capability-loading">
+      <div className="page page--reading" data-testid="capability-loading">
         {header}
         <p className="loading-text" role="status">
           正在读取入口状态…
@@ -115,7 +127,7 @@ export function CapabilityBoundaryPage({ capability }: CapabilityBoundaryPagePro
 
   if (state.status === "error") {
     return (
-      <div className="page">
+      <div className="page page--reading">
         {header}
         <FailurePanel failure={state.failure} onRetry={reload} testId="capability-failure" />
       </div>
@@ -125,7 +137,7 @@ export function CapabilityBoundaryPage({ capability }: CapabilityBoundaryPagePro
   const availability = state.data.entries[capability];
   if (!availability.available) {
     return (
-      <div className="page">
+      <div className="page page--reading">
         {header}
         <StatusPanel
           variant="unavailable"
@@ -149,16 +161,23 @@ export function CapabilityBoundaryPage({ capability }: CapabilityBoundaryPagePro
   }
 
   return (
-    <div className="page" data-testid={`capability-${capability}`}>
+    <div className="page page--reading" data-testid={`capability-${capability}`}>
       {header}
-      {copy.sections.map((section) => (
-        <section key={section.title} className="info-section">
-          <h2 className="info-section__title">{section.title}</h2>
-          {section.paragraphs.map((paragraph, index) => (
-            <p key={`p-${index}`}>{paragraph}</p>
-          ))}
-        </section>
-      ))}
+      <div className="document-list">
+        {copy.sections.map((section, sectionIndex) => (
+          <section key={section.title} className="info-section">
+            <span className="info-section__index" aria-hidden="true">
+              {String(sectionIndex + 1).padStart(2, "0")}
+            </span>
+            <div className="info-section__content">
+              <h2 className="info-section__title">{section.title}</h2>
+              {section.paragraphs.map((paragraph, index) => (
+                <p key={`p-${index}`}>{paragraph}</p>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
     </div>
   );
 }
