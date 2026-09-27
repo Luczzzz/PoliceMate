@@ -16,6 +16,10 @@ _Avoid_: App内案件、电子案卷、业务台账
 A structured fact confirmed by the officer and used by PoliceMate to select procedural branches. It is user input, not a fact inferred from police business data or a legal finding made by the app.
 _Avoid_: 自动识别、系统认定、案情录入
 
+**派出所重点案情**:
+第一版优先整理公开法源、分流条件和测试案例的一组派出所常见或高风险案情，包括派出所直接办理及首先接报、初步处置后可能移交的案情。它是内部内容建设清单，不代表官方发案率排名、产品对外承诺或用户可见的覆盖等级。
+_Avoid_: 官方高发案由排名、专项覆盖等级、仅限派出所承办案件
+
 **清单任务**:
 A procedural action or verification item within a 办案清单. Marking it complete means the officer confirms it has been handled or checked; it does not mean PoliceMate has determined that the procedure is legally complete.
 _Avoid_: 系统审批、自动合规判定
