@@ -64,6 +64,10 @@ _Avoid_: 案件定性结论、系统认定、最终定性
 A 清单任务 that tells the officer which legal document may need to be prepared, approved, served, or checked, together with its trigger, required content, timing, and legal source. PoliceMate does not create or export the official document.
 _Avoid_: 文书生成、电子文书、正式文书模板
 
+**文书范例**:
+一项只读、可追溯的制作指导内容，按适用条件说明文书结构、制作要点、常见错误和注释式虚构示例。它不是可直接套用的正式模板，不接收案情自动填充，也不替代办案系统中的现行格式。
+_Avoid_: 正式文书模板、文书生成器、可直接制发的文书
+
 **告知任务**:
 A 清单任务 that identifies who must be informed, when, what must be covered, what record or service step may be required, and the governing legal source. It is a verification aid, not personalized legal wording to be read verbatim.
 _Avoid_: 自动告知、个性化法律话术
