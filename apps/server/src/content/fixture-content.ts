@@ -8,6 +8,10 @@ import {
   createPublicOrderDrugCaseFocuses,
   createPublicOrderDrugSources,
 } from "./public-order-drug-content";
+import {
+  createFamilyMinorCaseFocuses,
+  createFamilyMinorSources,
+} from "./family-minor-content";
 
 /**
  * 仅用于受控试行功能演示与自动化测试的确定性内容源。
@@ -465,7 +469,8 @@ const RELEASE: ContentReleaseManifest = {
   version: "1.0.0",
   activatedAt: "2026-08-22T00:00:00.000Z",
   maintainer: MAINTAINER,
-  changeNote: "受控试行测试内容首批激活；同时装载财产与经济类、治安秩序与毒品类重点案情内容包。",
+  changeNote:
+    "受控试行测试内容首批激活；同时装载财产与经济类、治安秩序与毒品类、家庭与未成年人高风险派出所重点案情内容包。",
   items: EXAMPLES.map((item) => ({ exampleId: item.exampleId, version: item.version })),
   caseFocuses: [],
   legalSources: [ADMIN_SOURCE, CRIMINAL_SOURCE].map((source) => ({
@@ -487,19 +492,21 @@ function mergeSources(...groups: LegalSourceRecord[][]): LegalSourceRecord[] {
 /**
  * 每次调用返回全新的可重置种子，避免测试之间共享可变状态。
  *
- * 除占位文书范例与测试法源外，种子同时装载财产与经济类、治安秩序与毒品类
- * 派出所重点案情内容包（真实国家公开法源）；这些内容包是第 33、34 号切片的
- * 交付物，文书范例的正式内容由第 36 号切片另行发布。
+ * 除占位文书范例与测试法源外，种子同时装载财产与经济类、治安秩序与毒品类、
+ * 家庭与未成年人高风险派出所重点案情内容包（真实国家公开法源）；这些内容包
+ * 是第 33、34、35 号切片的交付物，文书范例的正式内容由第 36 号切片另行发布。
  */
 export function createFixtureContent(): GovernedContentSeed {
   const caseFocuses = [
     ...createPropertyEconomicCaseFocuses(),
     ...createPublicOrderDrugCaseFocuses(),
+    ...createFamilyMinorCaseFocuses(),
   ];
   const sources = mergeSources(
     [ADMIN_SOURCE, CRIMINAL_SOURCE],
     createPropertyEconomicSources(),
     createPublicOrderDrugSources(),
+    createFamilyMinorSources(),
   );
 
   return {

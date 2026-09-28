@@ -294,8 +294,39 @@ function matchPlace(sentence: string): string | null {
   return match === null ? null : match[0].replace(/^在/, "");
 }
 
+/**
+ * 家庭关系表述：用于把家庭暴力与一般打架斗殴伤害区分开，
+ * 只作为行为标签线索，不据此自动认定违法犯罪或者紧急状态。
+ */
+const FAMILY_RELATION =
+  "妻子|丈夫|配偶|前妻|前夫|女友|男友|前女友|前男友|同居|家庭成员|恋人|伴侣";
+/** 未成年人表述：用于把侵害未成年人与成年人之间的同类行为区分开。 */
+const MINOR_SUBJECT = "未成年|儿童|幼女|幼童|幼儿|婴儿|学生|孩子|养子女|继子女";
+/** 家庭暴力的具体行为方式（反家庭暴力法第二条）。 */
+const DOMESTIC_ACT =
+  "殴打|打伤|掌掴|推搡|威胁|恐吓|辱骂|跟踪|骚扰|纠缠|拘禁|捆绑|残害|家暴|家庭暴力";
+/** 侵害未成年人的具体行为方式。 */
+const MINOR_ACT =
+  "虐待|遗弃|殴打|打伤|掌掴|推搡|猥亵|性侵|强奸|奸淫|拐卖|拐骗|收买|强迫|教唆|利用|组织|家暴|家庭暴力|暴力伤害";
+
 /** 行为词库：匹配词 → 中性行为标签。 */
 const BEHAVIOR_LEXICON: Array<{ pattern: RegExp; label: string }> = [
+  // 涉未成年人侵害与家庭暴力置于一般暴力之前，避免与相邻重点案情混淆。
+  { pattern: /猥亵|性侵|强奸|奸淫|性骚扰/, label: "性侵害" },
+  {
+    pattern: new RegExp(
+      `(?:${MINOR_ACT})[^。！？；]{0,12}(?:${MINOR_SUBJECT})|(?:${MINOR_SUBJECT})[^。！？；]{0,12}(?:${MINOR_ACT})`,
+    ),
+    label: "侵害未成年人",
+  },
+  { pattern: /拐卖|拐骗|收买被拐卖/, label: "拐卖儿童" },
+  { pattern: /家暴|家庭暴力/, label: "家庭暴力" },
+  {
+    pattern: new RegExp(
+      `(?:${FAMILY_RELATION})[^。！？；]{0,12}(?:${DOMESTIC_ACT})|(?:${DOMESTIC_ACT})[^。！？；]{0,12}(?:${FAMILY_RELATION})`,
+    ),
+    label: "家庭暴力",
+  },
   { pattern: /持刀|拿刀|持械|匕首/, label: "持械" },
   { pattern: /扬言伤人|扬言报复|威胁|恐吓/, label: "威胁恐吓" },
   { pattern: /殴打|打伤|打了|动手打|推搡|推倒|掌掴|打架|斗殴|互殴/, label: "殴打推搡" },

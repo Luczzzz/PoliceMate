@@ -1,6 +1,7 @@
 import {
   type AnalysisReport,
   type CandidateFact,
+  type FactCategory,
   type GenerateReportRequest,
   type UrgentRiskPrompt,
 } from "@policymate/contracts";
@@ -54,14 +55,29 @@ export interface ScenarioOutcome {
   urgentPrompts: UrgentRiskPrompt[];
 }
 
-export async function runScenario(harness: Harness, caseText: string): Promise<ScenarioOutcome> {
+export interface ScenarioOptions {
+  /** 需要标记为“存在争议”的事实类别；其余事实一律确认。 */
+  disputedCategories?: FactCategory[];
+}
+
+export async function runScenario(
+  harness: Harness,
+  caseText: string,
+  options: ScenarioOptions = {},
+): Promise<ScenarioOutcome> {
   const { fixtures, engine } = harness;
   const created = await engine.createSession({ caseText }, SCENARIO_NOW);
   await engine.advanceRound(created.sessionId, { answers: [] }, SCENARIO_NOW);
 
   const mutable = engine.getSession(created.sessionId, SCENARIO_NOW);
+  const disputed = new Set(options.disputedCategories ?? []);
   for (const fact of mutable.facts) {
-    await engine.setFactStatus(created.sessionId, fact.factId, "confirmed", SCENARIO_NOW);
+    await engine.setFactStatus(
+      created.sessionId,
+      fact.factId,
+      disputed.has(fact.category) ? "disputed" : "confirmed",
+      SCENARIO_NOW,
+    );
   }
 
   const confirmed = await engine.confirmSnapshot(created.sessionId, SCENARIO_NOW);

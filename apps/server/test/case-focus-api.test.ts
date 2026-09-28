@@ -9,6 +9,7 @@ import {
   THEFT_FOCUS_ID,
 } from "../src/content/property-economic-content";
 import { REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS } from "../src/content/public-order-drug-content";
+import { REQUIRED_FAMILY_MINOR_CASE_FOCUS_IDS } from "../src/content/family-minor-content";
 
 /**
  * 重点案情在统一 HTTP 流程中的接线验证。
@@ -26,7 +27,8 @@ const headers = {
 /** 当前批次应装载的全部已发布重点案情数量。 */
 const TOTAL_CASE_FOCUS_COUNT =
   REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS.length +
-  REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS.length;
+  REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS.length +
+  REQUIRED_FAMILY_MINOR_CASE_FOCUS_IDS.length;
 
 const THEFT_CASE = "3月2日，张某先后两次盗窃李某停放在楼下的电动车，价值3000元。";
 

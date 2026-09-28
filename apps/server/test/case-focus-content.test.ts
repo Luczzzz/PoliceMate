@@ -20,6 +20,7 @@ import {
   THEFT_FOCUS_ID,
 } from "../src/content/property-economic-content";
 import { REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS } from "../src/content/public-order-drug-content";
+import { REQUIRED_FAMILY_MINOR_CASE_FOCUS_IDS } from "../src/content/family-minor-content";
 import { validateRelease } from "../src/content/release";
 import { createGovernedContentStore } from "../src/content/store";
 import { extractCaseFactsFixture } from "../src/analysis/fixture-extract";
@@ -30,7 +31,8 @@ const NOW = new Date("2026-10-01T00:00:00.000Z");
 /** 当前批次应装载的全部已发布重点案情数量（财产与经济类 + 治安秩序与毒品类）。 */
 const TOTAL_CASE_FOCUS_COUNT =
   REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS.length +
-  REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS.length;
+  REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS.length +
+  REQUIRED_FAMILY_MINOR_CASE_FOCUS_IDS.length;
 
 function contextOf(store: ReturnType<typeof createGovernedContentStore>): EligibilityContext {
   return store.eligibilityContext(NOW);
