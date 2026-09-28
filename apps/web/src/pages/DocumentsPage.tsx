@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import type {
-  DocumentExampleFacetOption,
-  DocumentExampleListResponse,
-  DocumentExampleVariantSummary,
-  DocumentTaskCandidate,
-  DocumentTaskCandidatesResponse,
-  ProcedureCategory,
-  HandlingStageId,
+import {
+  matchesDocumentExampleKeyword,
+  type DocumentExampleFacetOption,
+  type DocumentExampleListResponse,
+  type DocumentExampleVariantSummary,
+  type DocumentTaskCandidate,
+  type DocumentTaskCandidatesResponse,
+  type ProcedureCategory,
+  type HandlingStageId,
 } from "@policymate/contracts";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ApiFailure, requestJson } from "../api/client";
@@ -33,26 +34,6 @@ export function DocumentsRoute() {
       <DocumentExamplesIndex />
     </CapabilityGate>
   );
-}
-
-/** 关键词匹配：大小写与空格不敏感，覆盖正式名称、别名、文书类型与案情标签。 */
-function normalize(value: string): string {
-  return value.replace(/\s+/g, "").toLowerCase();
-}
-
-function matchesKeyword(item: DocumentExampleVariantSummary, keyword: string): boolean {
-  const haystack = normalize(
-    [
-      item.formalName,
-      ...item.aliases,
-      item.documentTypeName,
-      item.stageLabel,
-      item.procedureCategoryLabel,
-      ...item.caseTags,
-      ...item.applicableRoles,
-    ].join(" "),
-  );
-  return haystack.includes(normalize(keyword));
 }
 
 interface ActiveFilter {
@@ -277,7 +258,7 @@ function DocumentExamplesList({ data }: { data: DocumentExampleListResponse }) {
         if (procedure !== null && item.procedureCategory !== procedure) return false;
         if (stage !== null && item.stageId !== stage) return false;
         if (documentType !== null && item.documentTypeId !== documentType) return false;
-        if (keyword.trim() !== "" && !matchesKeyword(item, keyword)) return false;
+        if (keyword.trim() !== "" && !matchesDocumentExampleKeyword(item, keyword)) return false;
         return true;
       }),
     [data.items, procedure, stage, documentType, keyword],

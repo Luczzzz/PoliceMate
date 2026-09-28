@@ -75,7 +75,7 @@ test.describe("文书范例：浏览与检索", () => {
     await page.getByTestId("filter-procedure-all").click();
     await page.getByTestId("filter-stage-measures_approval").click();
     await expect(page.getByTestId("active-filter-stage")).toContainText("办理阶段：措施与审批");
-    await expect(page.getByTestId("example-list").locator(".example-card")).toHaveCount(1);
+    await expect(page.getByTestId("example-list").locator(".example-card")).toHaveCount(2);
 
     await page.getByTestId("filter-stage-all").click();
     await page.getByTestId("filter-documentType-doc-type-admin-inquiry").click();

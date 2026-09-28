@@ -443,7 +443,11 @@ describe("POST /api/v1/document-examples/task-candidates", () => {
       headers: contractHeaders,
       payload: { ...base, stageId: "investigation_evidence", caseTags: ["调查取证"] },
     });
-    expect(single.json().candidates).toHaveLength(1);
+    expect(single.json().candidates).toHaveLength(2);
+    for (const candidate of single.json().candidates) {
+      expect(candidate.procedureCategoryLabel).toBe("行政程序");
+      expect(candidate.stageLabel).toBe("调查取证");
+    }
     await app.close();
   });
 

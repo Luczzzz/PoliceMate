@@ -454,7 +454,7 @@ describe("文书范例入口停用与总开关", () => {
     expect(list.items).toEqual([]);
     expect(list.releaseId).toBe("");
 
-    const exampleId = "doc-test-reception-register";
+    const exampleId = "doc-reception-register";
     const detail = await getExampleDetail(app, exampleId);
     expect(detail.statusCode).toBe(410);
     expect(detail.json<ApiErrorBody>().error.code).toBe("content_unavailable");
@@ -466,7 +466,7 @@ describe("文书范例入口停用与总开关", () => {
     const list = (await getExampleList(app)).json<DocumentExampleListResponse>();
     expect(list.items).toEqual([]);
 
-    const detail = await getExampleDetail(app, "doc-test-reception-register");
+    const detail = await getExampleDetail(app, "doc-reception-register");
     expect(detail.statusCode).toBe(410);
     await app.close();
   });

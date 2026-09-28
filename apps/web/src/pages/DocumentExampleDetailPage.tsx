@@ -126,7 +126,7 @@ function ExampleDetail({ example }: { example: DocumentExampleVariantDetail }) {
       </InfoSection>
 
       <InfoSection index={2} title="适用与排除" testId="example-applicability">
-        <Bullets title="适用场景" items={example.applicableScenarios} />
+        <Bullets title="适用场景（触发条件）" items={example.applicableScenarios} />
         <Bullets title="不适用情形" items={example.exclusions} />
         <Bullets title="前置条件" items={example.prerequisites} />
         <Bullets title="选择前必须核验的事实" items={example.preflightChecks} />

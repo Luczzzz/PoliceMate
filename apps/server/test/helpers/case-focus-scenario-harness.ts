@@ -100,7 +100,7 @@ export async function runScenario(
     } satisfies GenerateReportRequest,
     await listLegalSources(),
     SCENARIO_NOW,
-    "release-test-0001",
+    "release-trial-0001",
     (facts, now) => resolveCaseFocus(facts, now),
   );
 

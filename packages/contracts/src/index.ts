@@ -722,6 +722,39 @@ export interface DocumentExampleVariantSummary {
   nextReviewDueAt: string;
 }
 
+/**
+ * 文书范例关键词匹配：大小写与空格不敏感，覆盖正式名称、别名、文书类型、
+ * 办理阶段、程序类别、适用案情标签与适用对象。服务端验收测试与 H5 共用同一
+ * 实现，避免检索口径漂移。
+ */
+export function matchesDocumentExampleKeyword(
+  item: Pick<
+    DocumentExampleVariantSummary,
+    | "formalName"
+    | "aliases"
+    | "documentTypeName"
+    | "stageLabel"
+    | "procedureCategoryLabel"
+    | "caseTags"
+    | "applicableRoles"
+  >,
+  keyword: string,
+): boolean {
+  const normalize = (value: string): string => value.replace(/\s+/g, "").toLowerCase();
+  const haystack = normalize(
+    [
+      item.formalName,
+      ...item.aliases,
+      item.documentTypeName,
+      item.stageLabel,
+      item.procedureCategoryLabel,
+      ...item.caseTags,
+      ...item.applicableRoles,
+    ].join(" "),
+  );
+  return haystack.includes(normalize(keyword));
+}
+
 /** 与相邻变体的区别说明；只包含当前批次中仍可展示的相邻变体。 */
 export interface DocumentExampleNeighbor {
   exampleId: string;

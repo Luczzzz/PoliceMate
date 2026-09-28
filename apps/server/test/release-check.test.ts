@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig, resolveRuntimeConfig, type AppConfig } from "../src/config";
+import { REQUIRED_DOCUMENT_EXAMPLE_STAGES } from "../src/content/document-example-content";
 import {
   checkDataUseReadiness,
   checkReleaseReadiness,
@@ -84,6 +85,55 @@ describe("受控试行发布检查", () => {
     const result = run(testConfig());
     expect(result.ok).toBe(true);
     expect(result.failures).toEqual([]);
+  });
+
+  it("文书范例缺少必需办理阶段时失败", () => {
+    const config = testConfig();
+    const result = checkReleaseReadiness({
+      config,
+      runtime: resolveRuntimeConfig(config),
+      eligibleExampleCount: MIN_ELIGIBLE_DOCUMENT_EXAMPLES,
+      documentExampleCoverage: {
+        requiredStages: REQUIRED_DOCUMENT_EXAMPLE_STAGES,
+        eligibleStages: ["reception_acceptance", "investigation_evidence"],
+      },
+    });
+    expect(result.ok).toBe(false);
+    const joined = result.failures.join("\n");
+    expect(joined).toContain("办理阶段");
+    expect(joined).toContain("measures_approval");
+  });
+
+  it("文书范例覆盖全部必需阶段时通过", () => {
+    const config = testConfig();
+    const result = checkReleaseReadiness({
+      config,
+      runtime: resolveRuntimeConfig(config),
+      eligibleExampleCount: MIN_ELIGIBLE_DOCUMENT_EXAMPLES,
+      documentExampleCoverage: {
+        requiredStages: REQUIRED_DOCUMENT_EXAMPLE_STAGES,
+        eligibleStages: REQUIRED_DOCUMENT_EXAMPLE_STAGES,
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
+
+  it("缺少高风险程序环节的合格范例时失败", () => {
+    const config = testConfig();
+    const result = checkReleaseReadiness({
+      config,
+      runtime: resolveRuntimeConfig(config),
+      eligibleExampleCount: MIN_ELIGIBLE_DOCUMENT_EXAMPLES,
+      documentExampleCoverage: {
+        requiredStages: REQUIRED_DOCUMENT_EXAMPLE_STAGES,
+        eligibleStages: REQUIRED_DOCUMENT_EXAMPLE_STAGES,
+        requiredHighRiskCount: 1,
+        eligibleHighRiskCount: 0,
+      },
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures.join("\n")).toContain("高风险");
   });
 
   it("重点案情未达到发布门槛时失败", () => {

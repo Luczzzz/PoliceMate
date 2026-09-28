@@ -249,8 +249,8 @@ test.describe("报告文书任务候选跳转", () => {
     await expect(page.getByTestId("task-selection-boundary")).toContainText("不代表必须制作");
     const candidates = page.getByTestId("task-candidate-list").locator(".task-candidate");
     await expect(candidates).toHaveCount(2);
-    await expect(page.getByTestId("task-candidate-doc-test-reception-register")).toContainText("选择前需核验");
-    await expect(page.getByTestId("task-candidate-doc-test-reception-register")).toContainText("差异说明");
+    await expect(page.getByTestId("task-candidate-doc-reception-register")).toContainText("选择前需核验");
+    await expect(page.getByTestId("task-candidate-doc-reception-register")).toContainText("差异说明");
     // URL 不含任何案情事实或筛选标签。
     expect(page.url()).not.toMatch(/受案|接报|案情/);
 

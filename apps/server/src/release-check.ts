@@ -48,6 +48,17 @@ export interface ReleaseCheckInput {
   /** 当前激活批次中通过治理门槛的文书范例变体数量。 */
   eligibleExampleCount: number;
   /**
+   * 文书范例阶段覆盖门槛：`requiredStages` 是必须覆盖的办理阶段 ID，
+   * `eligibleStages` 是当前激活批次中实际合格的文书范例所处阶段。未提供时不检查。
+   * `requiredHighRiskCount` / `eligibleHighRiskCount` 用于要求至少一个高风险程序环节的合格范例。
+   */
+  documentExampleCoverage?: {
+    requiredStages: readonly string[];
+    eligibleStages: readonly string[];
+    requiredHighRiskCount?: number;
+    eligibleHighRiskCount?: number;
+  };
+  /**
    * 重点案情覆盖门槛：`required` 是必须达到门槛的重点案情 ID，
    * `eligible` 是当前激活批次中实际合格的重点案情 ID。未提供时不检查。
    */
@@ -69,6 +80,26 @@ export function checkReleaseReadiness(input: ReleaseCheckInput): ReleaseCheckRes
     failures.push(
       `当前仅 ${input.eligibleExampleCount} 个合格文书范例，低于受控试行要求的 ${MIN_ELIGIBLE_DOCUMENT_EXAMPLES} 个。`,
     );
+  }
+
+  if (input.documentExampleCoverage !== undefined) {
+    const eligible = new Set(input.documentExampleCoverage.eligibleStages);
+    const missing = input.documentExampleCoverage.requiredStages.filter(
+      (stageId) => !eligible.has(stageId),
+    );
+    if (missing.length > 0) {
+      failures.push(
+        `以下办理阶段没有合格文书范例（内容禁用、法源失效、已到期或不在激活批次内）：${missing.join("、")}。`,
+      );
+    }
+    if (input.documentExampleCoverage.requiredHighRiskCount !== undefined) {
+      const highRiskCount = input.documentExampleCoverage.eligibleHighRiskCount ?? 0;
+      if (highRiskCount < input.documentExampleCoverage.requiredHighRiskCount) {
+        failures.push(
+          `当前仅 ${highRiskCount} 个合格的高风险程序环节文书范例，低于受控试行要求的 ${input.documentExampleCoverage.requiredHighRiskCount} 个。`,
+        );
+      }
+    }
   }
 
   if (input.caseFocusCoverage !== undefined) {
