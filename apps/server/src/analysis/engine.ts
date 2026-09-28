@@ -5,6 +5,7 @@ import type {
   AnalysisGap,
   AnalysisSessionState,
   AnalysisStage,
+  AnalysisReport,
   AnswerRecord,
   CandidateFact,
   CreateAnalysisRequest,
@@ -12,6 +13,8 @@ import type {
   FactStatus,
   UrgentRiskCategory,
   UrgentRiskPrompt,
+  GenerateReportRequest,
+  LegalSourceReference,
 } from "@policymate/contracts";import {
   ANALYSIS_PER_ROUND_LIMIT,
   ANALYSIS_ROUND_LIMIT,
@@ -29,7 +32,9 @@ import type {
   CaseExtractionResult,
   CaseAnalysisProvider,
   QuestionPoolResult,
+  ReportGenerationRequest,
 } from "../providers/types";
+import { buildReport, validateReportResult } from "./report";
 
 /**
  * 案情分析状态机。
@@ -43,7 +48,7 @@ import type {
 
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 
-export type EngineDeps = Pick<CaseAnalysisProvider, "extractCaseFacts" | "proposeDecisiveQuestions">;
+export type EngineDeps = Pick<CaseAnalysisProvider, "extractCaseFacts" | "proposeDecisiveQuestions" | "generateReport">;
 
 interface AnalysisSession {
   sessionId: string;
@@ -396,6 +401,35 @@ export class AnalysisEngine {
 
   getSession(sessionId: string, now = new Date()): AnalysisSessionState {
     return toSessionState(this.getLiveSession(sessionId, now.getTime()), now);
+  }
+
+  async generateReport(
+    sessionId: string,
+    request: GenerateReportRequest,
+    legalSources: LegalSourceReference[],
+    now = new Date(),
+    releaseId = "",
+  ): Promise<AnalysisReport> {
+    const session = this.getLiveSession(sessionId, now.getTime());
+    if (session.stage !== "snapshot_confirmed" || session.snapshot === null) {
+      throw new AnalysisInputError("只有确认事实快照后才能生成完整分析报告。", 409);
+    }
+    if (request.contractVersion !== "1.0" || request.requestId === "" ||
+      request.snapshotVersion !== session.snapshot.snapshotVersion || request.snapshotHash !== session.snapshot.snapshotHash) {
+      throw new AnalysisInputError("报告请求的契约或事实快照版本不匹配，已丢弃本次请求。", 409);
+    }
+    if (this.deps.generateReport === undefined) {
+      throw new AnalysisContractError("报告生成边界不可用。");
+    }
+    const providerRequest: ReportGenerationRequest = {
+      facts: session.facts.map((fact) => ({ ...fact })),
+      snapshot: { ...session.snapshot },
+      legalSources: legalSources.map((source) => ({ ...source, articles: source.articles.map((article) => ({ ...article })) })),
+    };
+    const result = await this.deps.generateReport(providerRequest);
+    const state = toSessionState(session, now);
+    validateReportResult(result, state, legalSources);
+    return buildReport(state, request.requestId, now.toISOString(), result, releaseId);
   }
 
   clearSession(sessionId: string, now = new Date()): void {

@@ -7,6 +7,7 @@ import { CaseInputPage } from "./pages/analysis/CaseInputPage";
 import { CandidateFactsPage } from "./pages/analysis/CandidateFactsPage";
 import { DecisiveQuestionsPage } from "./pages/analysis/DecisiveQuestionsPage";
 import { PreAnalysisReviewPage } from "./pages/analysis/PreAnalysisReviewPage";
+import { AnalysisReportPage } from "./pages/analysis/AnalysisReportPage";
 import { DataUsePage } from "./pages/DataUsePage";
 import { DocumentExampleDetailPage } from "./pages/DocumentExampleDetailPage";
 import { DocumentsRoute } from "./pages/DocumentsPage";
@@ -33,6 +34,7 @@ export function App() {
                   <Route path="/analysis/facts" element={<CandidateFactsPage />} />
                   <Route path="/analysis/questions" element={<DecisiveQuestionsPage />} />
                   <Route path="/analysis/review" element={<PreAnalysisReviewPage />} />
+                  <Route path="/analysis/report" element={<AnalysisReportPage />} />
                   <Route
                     path="/documents"
                     element={<DocumentsRoute />}

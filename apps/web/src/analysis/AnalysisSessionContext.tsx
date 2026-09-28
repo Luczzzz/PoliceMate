@@ -9,6 +9,7 @@ import {
 } from "react";
 import type {
   AdvanceRoundRequest,
+  AnalysisReport,
   AnalysisSessionState,
   DecisiveAnswer,
   FactStatus,
@@ -40,6 +41,7 @@ interface AnalysisFlowContextValue {
   addFact: (statement: string) => Promise<AnalysisSessionState>;
   advanceRound: (answers: DecisiveAnswer[]) => Promise<AnalysisSessionState>;
   confirmSnapshot: () => Promise<AnalysisSessionState>;
+  generateReport: () => Promise<AnalysisReport>;
   clear: () => Promise<void>;
   dismissSessionGone: () => void;
 }
@@ -169,6 +171,26 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     return mutate(`/api/v1/analysis/sessions/${sessionId}/snapshot`, "POST", {});
   }, [mutate]);
 
+  const generateReport = useCallback(async () => {
+    const sessionId = sessionIdRef.current;
+    if (sessionId === null || status.kind !== "ready" || status.state.snapshot === null) {
+      throw new ApiFailure("server", "请先确认事实快照后再生成报告。", { status: 409 });
+    }
+    const requestId = crypto.randomUUID();
+    const snapshot = status.state.snapshot;
+    return run(async () => {
+      const report = await requestJson<AnalysisReport>(`/api/v1/analysis/sessions/${sessionId}/report`, {
+        method: "POST",
+        body: { contractVersion: "1.0", requestId, snapshotVersion: snapshot.snapshotVersion, snapshotHash: snapshot.snapshotHash },
+        timeoutMs: 30_000,
+      });
+      if (report.requestId !== requestId || report.snapshotHash !== snapshot.snapshotHash) {
+        throw new ApiFailure("contract", "报告响应与当前事实快照不匹配，已丢弃。", { status: 409 });
+      }
+      return report;
+    });
+  }, [run, status]);
+
   const clear = useCallback(async () => {
     const sessionId = sessionIdRef.current;
     sessionIdRef.current = null;
@@ -197,6 +219,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       addFact,
       advanceRound,
       confirmSnapshot,
+      generateReport,
       clear,
       dismissSessionGone,
     }),
@@ -210,6 +233,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       addFact,
       advanceRound,
       confirmSnapshot,
+      generateReport,
       clear,
       dismissSessionGone,
     ],

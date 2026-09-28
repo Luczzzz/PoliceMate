@@ -18,6 +18,8 @@ import { AnalysisInputError, type AnalysisEngine } from "./engine";
  */
 export interface AnalysisRoutesOptions {
   engine: AnalysisEngine;
+  legalSources: () => Promise<import("@policymate/contracts").LegalSourceReference[]>;
+  activeReleaseId: () => Promise<string>;
   analysisCapabilityEnabled: () => boolean;
   analysisBoundaryAvailable: () => Promise<{ available: boolean; reason: string | null }>;
 }
@@ -153,6 +155,23 @@ export async function registerAnalysisRoutes(
       try {
         await assertCapability();
         return await engine.advanceRound(request.params.sessionId, request.body);
+      } catch (error) {
+        return handleError(error, request.id, reply);
+      }
+    },
+  );
+
+  // 生成完整报告：必须携带请求 ID 与已确认事实快照版本，迟到/错版本请求失败关闭。
+  app.post<{ Params: { sessionId: string }; Body: import("@policymate/contracts").GenerateReportRequest }>(
+    "/api/v1/analysis/sessions/:sessionId/report",
+    async (request, reply) => {
+      try {
+        await assertCapability();
+        const [legalSources, activeReleaseId] = await Promise.all([
+          options.legalSources(),
+          options.activeReleaseId(),
+        ]);
+        return await engine.generateReport(request.params.sessionId, request.body, legalSources, undefined, activeReleaseId);
       } catch (error) {
         return handleError(error, request.id, reply);
       }

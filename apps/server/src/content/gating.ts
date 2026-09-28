@@ -136,7 +136,7 @@ export function toSummary(
   };
 }
 
-function toLegalSourceReference(source: LegalSourceRecord): LegalSourceReference {
+export function toLegalSourceReference(source: LegalSourceRecord): LegalSourceReference {
   return {
     sourceId: source.sourceId,
     version: source.version,

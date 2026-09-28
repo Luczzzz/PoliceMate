@@ -162,6 +162,7 @@ export function PreAnalysisReviewPage() {
           <p>
             事实快照已锁定且不可修改；后续生成分析报告时将绑定该快照版本。未知、争议和候选事实不会直接支撑主结论。
           </p>
+          <Link className="button button--primary" to="/analysis/report" data-testid="go-report">进入六模块报告</Link>
         </section>
       ) : null}
 
@@ -227,7 +228,13 @@ export function PreAnalysisReviewPage() {
         </p>
       ) : null}
 
-      {!snapshotConfirmed ? (
+      {snapshotConfirmed ? (
+        <div className="analysis-actions">
+          <Link className="button button--primary" to="/analysis/report" data-testid="go-to-report">
+            生成六模块分析报告
+          </Link>
+        </div>
+      ) : (
         <div className="analysis-actions">
           <button
             type="button"
@@ -242,7 +249,7 @@ export function PreAnalysisReviewPage() {
             返回调整事实
           </Link>
         </div>
-      ) : null}
+      )}
       <p className="field__note">
         {FACT_STATUS_LABELS.candidate}、未知和争议事实不会直接支撑主结论；生成分析报告需在快照确认后另行发起。
       </p>

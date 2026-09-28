@@ -299,6 +299,126 @@ export interface FactSnapshot {
   confirmedAt: string;
 }
 
+/* ---------- 六模块分析报告 ---------- */
+
+export type ReportStatus =
+  | "complete"
+  | "insufficient_facts"
+  | "conflicting"
+  | "basis_unavailable"
+  | "generation_failed"
+  | "partial_failure";
+
+export type ReportModuleStatus =
+  | "present"
+  | "not_applicable"
+  | "insufficient_facts"
+  | "basis_unavailable"
+  | "conflicting"
+  | "generation_failed";
+
+export type ReportModuleId =
+  | "preliminary_qualification"
+  | "filing_conditions"
+  | "evidence_checklist"
+  | "interview_points"
+  | "enforcement_risks"
+  | "legal_basis_trace";
+
+export const REPORT_MODULE_LABELS: Record<ReportModuleId, string> = {
+  preliminary_qualification: "初步定性分析",
+  filing_conditions: "受立案条件分析",
+  evidence_checklist: "核心证据核查清单",
+  interview_points: "分角色询问要点",
+  enforcement_risks: "执法风险提示",
+  legal_basis_trace: "法律依据与可解释链路",
+};
+
+export interface ReportFactReference {
+  factId: string;
+  statement: string;
+  status: FactStatus;
+}
+
+export interface ReportLegalBasis {
+  sourceId: string;
+  version: string;
+  title: string;
+  issuingAuthority: string;
+  documentNumber: string;
+  article: string;
+  minimalText: string;
+  status: LegalSourceStatus;
+  region: string;
+  publishedAt: string;
+  lastVerifiedAt: string;
+  retrievedAt: string;
+  officialUrl: string | null;
+}
+
+export interface ReportTraceLink {
+  factIds: string[];
+  condition: string;
+  conditionStatus: "satisfied" | "not_satisfied" | "unknown" | "conflicting";
+  judgment: string;
+  basis: ReportLegalBasis | null;
+  basisKind: "formal_basis" | "practical_check";
+}
+
+export interface ReportModule {
+  id: ReportModuleId;
+  label: string;
+  status: ReportModuleStatus;
+  summary: string | null;
+  items: string[];
+  traceLinks: ReportTraceLink[];
+  failureReason: string | null;
+}
+
+export interface ReportParticipantBehaviorSummary {
+  participant: string;
+  behavior: string;
+  factIds: string[];
+  note: string;
+}
+
+export interface AnalysisReport {
+  contractVersion: string;
+  requestId: string;
+  generatedAt: string;
+  sessionId: string;
+  status: ReportStatus;
+  statusLabel: string;
+  headline: string;
+  participantBehaviorSummary: ReportParticipantBehaviorSummary[];
+  factLimitations: string[];
+  snapshotVersion: number;
+  snapshotHash: string;
+  contentReleaseId: string;
+  workflowVersion: string;
+  modules: ReportModule[];
+}
+
+export interface GenerateReportRequest {
+  contractVersion: string;
+  requestId: string;
+  snapshotVersion: number;
+  snapshotHash: string;
+}
+
+export interface ReportFailureControls {
+  reportMode?: "complete" | "insufficient_facts" | "conflicting" | "basis_unavailable" | "critical_failure" | "partial_failure" | "contradiction";
+}
+
+export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
+  complete: "初步意见—待核验",
+  insufficient_facts: "条件不足—需补充事实",
+  conflicting: "存在多种可能—不可单一判断",
+  basis_unavailable: "依据不可用—停止形成主判断",
+  generation_failed: "报告生成失败—未展示未经校验内容",
+  partial_failure: "部分模块失败—仅展示已校验内容",
+};
+
 /** 独立事项检测结果。系统提示拆分分析，不把独立事项合并为一个连续案情。 */
 export interface IndependentMatters {
   detected: boolean;
@@ -550,6 +670,7 @@ export interface FixtureExampleStatusPatch {
  */
 export interface FixtureControlRequest {
   difyAvailable?: boolean;
+  reportMode?: ReportFailureControls["reportMode"];
   /** 测试控制：重置全部文书范例的内容状态。 */
   exampleStatusAll?: ContentStatus;
   /** 测试控制：修改指定文书范例的内容状态，用于验证单项下架与旧链接阻断。 */

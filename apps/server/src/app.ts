@@ -56,8 +56,13 @@ function readContentStatus(value: unknown): ContentStatus | null {
 
 function readFixturePatch(body: unknown): FixturePatch | null {
   if (!isRecord(body)) return null;
-  const candidate = body as FixtureControlRequest;
+  const candidate = body as FixtureControlRequest & { reportMode?: string };
   const patch: FixturePatch = {};
+  if ("reportMode" in candidate) {
+    const modes = ["complete", "insufficient_facts", "conflicting", "basis_unavailable", "critical_failure", "partial_failure", "contradiction"];
+    if (typeof candidate.reportMode !== "string" || !modes.includes(candidate.reportMode)) return null;
+    patch.reportMode = candidate.reportMode as NonNullable<FixturePatch["reportMode"]>;
+  }
 
   if ("difyAvailable" in candidate) {
     if (typeof candidate.difyAvailable !== "boolean") return null;
@@ -234,6 +239,8 @@ export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDep
   const analysisEngineResolved = analysisEngine ?? new AnalysisEngine(fixtures.analysis);
   await registerAnalysisRoutes(app, {
     engine: analysisEngineResolved,
+    legalSources: async () => (fixtures.content.listLegalSources ? fixtures.content.listLegalSources() : []),
+    activeReleaseId: async () => (await fixtures.content.getActiveRelease()).releaseId,
     analysisCapabilityEnabled: () => config.masterSwitch && config.analysisEnabled,
     analysisBoundaryAvailable: async () => fixtures.dify.getAvailability(),
   });

@@ -1,4 +1,5 @@
 import type {
+  AnalysisReport,
   CandidateFact,
   DecisiveAnswerKind,
   DocumentExampleFacets,
@@ -10,6 +11,10 @@ import type {
   IndependentMatters,
   QuestionTopic,
   UrgentRiskCategory,
+  FactSnapshot,
+  LegalSourceReference,
+  ReportModule,
+  ReportStatus,
 } from "@policymate/contracts";
 
 /**
@@ -81,6 +86,23 @@ export interface QuestionPoolResult {
   questions: ProposedQuestion[];
 }
 
+export interface ReportGenerationRequest {
+  facts: CandidateFact[];
+  snapshot: FactSnapshot;
+  legalSources: LegalSourceReference[];
+  mode?: string;
+}
+
+export interface ReportGenerationResult {
+  status: ReportStatus;
+  headline: string;
+  participantBehaviorSummary: AnalysisReport["participantBehaviorSummary"];
+  factLimitations: string[];
+  modules: ReportModule[];
+  contentReleaseId: string;
+  workflowVersion: string;
+}
+
 /**
  * 案情分析边界：候选事实提取与决定性追问选题。
  * 真实 Dify 接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
@@ -88,6 +110,7 @@ export interface QuestionPoolResult {
 export interface CaseAnalysisProvider {
   extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult>;
   proposeDecisiveQuestions(request: QuestionPoolRequest): Promise<QuestionPoolResult>;
+  generateReport?(request: ReportGenerationRequest): Promise<ReportGenerationResult>;
 }
 
 /** 当前激活的不可变内容发布批次摘要。 */
@@ -125,6 +148,7 @@ export interface GovernedContentProvider {
   getActiveRelease(): Promise<GovernedContentRelease>;
   listExamples(): Promise<GovernedContentExampleIndex>;
   getExample(exampleId: string): Promise<GovernedContentExampleLookup>;
+  listLegalSources?(): Promise<LegalSourceReference[]>;
 }
 
 export interface Providers {
