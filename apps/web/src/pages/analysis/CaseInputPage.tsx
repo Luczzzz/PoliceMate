@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
-import { CASE_TEXT_MAX_CHARACTERS } from "@policymate/contracts";
+import { CASE_TEXT_MAX_CHARACTERS, countCharacters } from "@policymate/contracts";
 import { useNavigate } from "react-router-dom";
 import { ApiFailure } from "../../api/client";
 import { useAnalysisFlow } from "../../analysis/AnalysisSessionContext";
 import { CapabilityGate } from "../../components/CapabilityGate";
 import { FailurePanel } from "../../components/FailurePanel";
+import { InlineFailure } from "../../components/InlineFailure";
 import { InfoSection } from "../../components/InfoSection";
 
 /**
@@ -30,17 +31,12 @@ const BOUNDARY_SECTIONS: ReadonlyArray<{ title: string; paragraphs: string[] }> 
   },
 ];
 
-/** 按 Unicode 码点计数，与后端口径一致。 */
-function countCharacters(text: string): number {
-  return Array.from(text).length;
-}
-
 export function CaseInputPage() {
   const { start } = useAnalysisFlow();
   const navigate = useNavigate();
   const [caseText, setCaseText] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [failure, setFailure] = useState<{ message: string; requestId: string | null } | null>(null);
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
 
   const characterCount = useMemo(() => countCharacters(caseText), [caseText]);
   const overLimit = characterCount > CASE_TEXT_MAX_CHARACTERS;
@@ -54,11 +50,11 @@ export function CaseInputPage() {
       await start(caseText);
       navigate("/analysis/facts");
     } catch (error) {
-      const apiFailure =
+      setFailure(
         error instanceof ApiFailure
           ? error
-          : new ApiFailure("server", "服务暂时不可用，请稍后重试。");
-      setFailure({ message: apiFailure.message, requestId: apiFailure.requestId });
+          : new ApiFailure("server", "服务暂时不可用，请稍后重试。"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -119,14 +115,7 @@ export function CaseInputPage() {
             案情内容超过 {CASE_TEXT_MAX_CHARACTERS.toLocaleString("zh-Hans-CN")} 字符上限，无法提交；系统不会截断内容，请分段精简后重新输入。
           </p>
         ) : null}
-        {failure !== null ? (
-          <p className="case-input__error" data-testid="case-input-failure" role="alert">
-            {failure.message}
-            {failure.requestId === null ? null : (
-              <span className="case-input__request-id">（排查用请求编号：{failure.requestId}）</span>
-            )}
-          </p>
-        ) : null}
+        {failure !== null ? <InlineFailure failure={failure} testId="case-input-failure" /> : null}
 
         <button
           type="button"

@@ -33,6 +33,16 @@ export type AnalysisFlowStatus =
 
 /** 会话空闲上限：与产品规格一致（30 分钟不可恢复）。 */
 export const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
+/** 事实提取与追问最多等待 30 秒（含一次自动重试）；客户端留出传输余量。 */
+export const ANALYSIS_REQUEST_TIMEOUT_MS = 35 * 1000;
+/** 完整报告最多等待 90 秒（含一次自动重试）；客户端留出传输余量。 */
+export const REPORT_REQUEST_TIMEOUT_MS = 95 * 1000;
+
+/** 正在进行的真实阶段。只描述真实处理阶段，不显示虚假百分比。 */
+export interface PendingOperation {
+  label: string;
+  startedAt: number;
+}
 
 interface AnalysisFlowContextValue {
   status: AnalysisFlowStatus;
@@ -41,6 +51,8 @@ interface AnalysisFlowContextValue {
   sessionGone: boolean;
   /** 当前有效的六模块报告；仅在绑定的事实快照仍有效时保留。 */
   report: AnalysisReport | null;
+  /** 正在进行的长任务（真实阶段 + 已等待时间由界面计算）。 */
+  pendingOperation: PendingOperation | null;
   start: (caseText: string) => Promise<AnalysisSessionState>;
   refresh: () => Promise<void>;
   setFactStatus: (factId: string, status: FactStatus) => Promise<AnalysisSessionState>;
@@ -55,6 +67,8 @@ interface AnalysisFlowContextValue {
   beginModification: () => Promise<AnalysisSessionState>;
   discardModification: () => Promise<AnalysisSessionState>;
   generateReport: () => Promise<AnalysisReport>;
+  /** 取消在途请求：迟到响应会被拒绝，不写回页面。 */
+  cancel: () => void;
   clear: () => Promise<void>;
   dismissSessionGone: () => void;
 }
@@ -69,31 +83,59 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AnalysisFlowStatus>({ kind: "idle" });
   const [sessionGone, setSessionGone] = useState(false);
   const [report, setReport] = useState<AnalysisReport | null>(null);
+  const [hasSession, setHasSession] = useState(false);
+  const [pendingOperation, setPendingOperation] = useState<PendingOperation | null>(null);
   const sessionIdRef = useRef<string | null>(null);
   const busyRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  /** 在途请求代次：清除、取消或新快照后递增，迟到响应不得写回。 */
+  const epochRef = useRef(0);
 
   const applyState = useCallback((state: AnalysisSessionState) => {
     sessionIdRef.current = state.sessionId;
+    setHasSession(true);
     setStatus({ kind: "ready", state });
     return state;
   }, []);
 
+  /** 取消当前在途请求，并使所有迟到响应失效。 */
+  const invalidateInFlight = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    epochRef.current += 1;
+    busyRef.current = false;
+    setPendingOperation(null);
+  }, []);
+
   const run = useCallback(
-    async <T,>(action: () => Promise<T>): Promise<T> => {
+    async <T,>(label: string, action: (signal: AbortSignal) => Promise<T>): Promise<T> => {
       if (busyRef.current) {
         throw new ApiFailure("server", "上一次请求仍在处理中，请稍候。");
       }
       busyRef.current = true;
+      const epoch = epochRef.current;
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setPendingOperation({ label, startedAt: Date.now() });
       setStatus((prev) => (prev.kind === "ready" ? prev : { kind: "busy" }));
       try {
-        return await action();
+        const result = await action(controller.signal);
+        if (epochRef.current !== epoch) {
+          throw new ApiFailure("cancelled", "请求已取消。");
+        }
+        return result;
       } catch (error) {
         const failure =
           error instanceof ApiFailure
             ? error
             : new ApiFailure("server", "服务暂时不可用，请稍后重试。");
+        // 已被取消或清除的请求不得覆盖当前页面状态。
+        if (epochRef.current !== epoch) {
+          throw failure;
+        }
         if (extractSessionGone(failure)) {
           sessionIdRef.current = null;
+          setHasSession(false);
           setStatus({ kind: "idle" });
           setSessionGone(true);
         } else {
@@ -101,7 +143,11 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
         }
         throw failure;
       } finally {
-        busyRef.current = false;
+        if (abortRef.current === controller) abortRef.current = null;
+        if (epochRef.current === epoch) {
+          busyRef.current = false;
+          setPendingOperation(null);
+        }
       }
     },
     [],
@@ -125,13 +171,14 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(
     (caseText: string) =>
-      run(async () => {
+      run("提取候选事实", async (signal) => {
         setSessionGone(false);
         setReport(null);
         const state = await requestJson<AnalysisSessionState>("/api/v1/analysis/sessions", {
           method: "POST",
           body: { caseText },
-          timeoutMs: 15_000,
+          timeoutMs: ANALYSIS_REQUEST_TIMEOUT_MS,
+          signal,
         });
         return applyState(state);
       }),
@@ -141,19 +188,30 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const sessionId = sessionIdRef.current;
     if (sessionId === null) return;
-    await run(async () => {
+    await run("读取本次分析状态", async (signal) => {
       const state = await requestJson<AnalysisSessionState>(
         `/api/v1/analysis/sessions/${sessionId}`,
-        { method: "GET" },
+        { method: "GET", signal },
       );
       return applyState(state);
     });
   }, [applyState, run]);
 
   const mutate = useCallback(
-    (path: string, method: "POST" | "PUT" | "DELETE", body?: unknown) =>
-      run(async () => {
-        const state = await requestJson<AnalysisSessionState>(path, { method, body });
+    (
+      label: string,
+      path: string,
+      method: "POST" | "PUT" | "DELETE",
+      body?: unknown,
+      timeoutMs?: number,
+    ) =>
+      run(label, async (signal) => {
+        const state = await requestJson<AnalysisSessionState>(path, {
+          method,
+          body,
+          signal,
+          timeoutMs,
+        });
         return applyState(state);
       }),
     [applyState, run],
@@ -162,9 +220,12 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const setFactStatus = useCallback(
     (factId: string, status: FactStatus) => {
       const sessionId = sessionIdRef.current;
-      return mutate(`/api/v1/analysis/sessions/${sessionId}/facts/${factId}/status`, "POST", {
-        status,
-      });
+      return mutate(
+        "更新事实状态",
+        `/api/v1/analysis/sessions/${sessionId}/facts/${factId}/status`,
+        "POST",
+        { status },
+      );
     },
     [mutate],
   );
@@ -172,9 +233,12 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const setFactExclusion = useCallback(
     (factId: string, excluded: boolean) => {
       const sessionId = sessionIdRef.current;
-      return mutate(`/api/v1/analysis/sessions/${sessionId}/facts/${factId}/exclusion`, "PUT", {
-        excluded,
-      });
+      return mutate(
+        "更新事实范围",
+        `/api/v1/analysis/sessions/${sessionId}/facts/${factId}/exclusion`,
+        "PUT",
+        { excluded },
+      );
     },
     [mutate],
   );
@@ -182,7 +246,9 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const addFact = useCallback(
     (statement: string) => {
       const sessionId = sessionIdRef.current;
-      return mutate(`/api/v1/analysis/sessions/${sessionId}/facts`, "POST", { statement });
+      return mutate("新增事实", `/api/v1/analysis/sessions/${sessionId}/facts`, "POST", {
+        statement,
+      });
     },
     [mutate],
   );
@@ -191,6 +257,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     (factId: string, request: ReviseFactRequest) => {
       const sessionId = sessionIdRef.current;
       return mutate(
+        "创建替代事实项",
         `/api/v1/analysis/sessions/${sessionId}/facts/${factId}/revision`,
         "POST",
         request,
@@ -202,26 +269,47 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const advanceRound = useCallback(
     (answers: DecisiveAnswer[]) => {
       const sessionId = sessionIdRef.current;
-      return mutate(`/api/v1/analysis/sessions/${sessionId}/rounds`, "POST", {
-        answers,
-      } satisfies AdvanceRoundRequest);
+      return mutate(
+        "生成决定性追问",
+        `/api/v1/analysis/sessions/${sessionId}/rounds`,
+        "POST",
+        { answers } satisfies AdvanceRoundRequest,
+        ANALYSIS_REQUEST_TIMEOUT_MS,
+      );
     },
     [mutate],
   );
 
   const confirmSnapshot = useCallback(() => {
     const sessionId = sessionIdRef.current;
-    return mutate(`/api/v1/analysis/sessions/${sessionId}/snapshot`, "POST", {});
-  }, [mutate]);
+    // 形成新快照会废弃依赖旧快照的在途工作与迟到响应。
+    invalidateInFlight();
+    return mutate(
+      "确认事实快照并重新计算追问",
+      `/api/v1/analysis/sessions/${sessionId}/snapshot`,
+      "POST",
+      {},
+      ANALYSIS_REQUEST_TIMEOUT_MS,
+    );
+  }, [invalidateInFlight, mutate]);
 
   const beginModification = useCallback(() => {
     const sessionId = sessionIdRef.current;
-    return mutate(`/api/v1/analysis/sessions/${sessionId}/modifications`, "POST", {});
+    return mutate(
+      "进入补充或修改事实",
+      `/api/v1/analysis/sessions/${sessionId}/modifications`,
+      "POST",
+      {},
+    );
   }, [mutate]);
 
   const discardModification = useCallback(() => {
     const sessionId = sessionIdRef.current;
-    return mutate(`/api/v1/analysis/sessions/${sessionId}/modifications`, "DELETE");
+    return mutate(
+      "放弃未确认的修改",
+      `/api/v1/analysis/sessions/${sessionId}/modifications`,
+      "DELETE",
+    );
   }, [mutate]);
 
   const generateReport = useCallback(async () => {
@@ -231,12 +319,21 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     }
     const requestId = crypto.randomUUID();
     const snapshot = status.state.snapshot;
-    return run(async () => {
-      const created = await requestJson<AnalysisReport>(`/api/v1/analysis/sessions/${sessionId}/report`, {
-        method: "POST",
-        body: { contractVersion: "1.0", requestId, snapshotVersion: snapshot.snapshotVersion, snapshotHash: snapshot.snapshotHash },
-        timeoutMs: 30_000,
-      });
+    return run("生成并校验完整报告", async (signal) => {
+      const created = await requestJson<AnalysisReport>(
+        `/api/v1/analysis/sessions/${sessionId}/report`,
+        {
+          method: "POST",
+          body: {
+            contractVersion: "1.0",
+            requestId,
+            snapshotVersion: snapshot.snapshotVersion,
+            snapshotHash: snapshot.snapshotHash,
+          },
+          timeoutMs: REPORT_REQUEST_TIMEOUT_MS,
+          signal,
+        },
+      );
       if (created.requestId !== requestId || created.snapshotHash !== snapshot.snapshotHash) {
         throw new ApiFailure("contract", "报告响应与当前事实快照不匹配，已丢弃。", { status: 409 });
       }
@@ -245,9 +342,16 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     });
   }, [run, status]);
 
+  const cancel = useCallback(() => {
+    invalidateInFlight();
+    setStatus((prev) => (prev.kind === "busy" ? { kind: "idle" } : prev));
+  }, [invalidateInFlight]);
+
   const clear = useCallback(async () => {
     const sessionId = sessionIdRef.current;
+    invalidateInFlight();
     sessionIdRef.current = null;
+    setHasSession(false);
     setStatus({ kind: "idle" });
     setSessionGone(false);
     setReport(null);
@@ -258,16 +362,30 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
         // 清除失败不阻断本地重置：服务端会话会随空闲过期失效。
       }
     }
-  }, []);
+  }, [invalidateInFlight]);
 
   const dismissSessionGone = useCallback(() => setSessionGone(false), []);
+
+  /**
+   * 存在未清除案情时设置通用离开提醒。提醒不含案情摘要，也不承诺恢复；
+   * 浏览器不显示提醒时产品不承诺恢复任何内容。
+   */
+  useEffect(() => {
+    if (!hasSession) return;
+    const handler = (event: BeforeUnloadEvent): void => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasSession]);
 
   /**
    * 空闲 30 分钟后会话不可恢复：清除事实、报告、临时标记、筛选与折叠状态。
    * 任意用户交互重置计时；计时器只在会话仍然存在时运行。
    */
   useEffect(() => {
-    if (status.kind !== "ready" && status.kind !== "busy") return;
+    if (!hasSession) return;
     let timer: ReturnType<typeof setTimeout>;
     const reset = (): void => {
       clearTimeout(timer);
@@ -284,7 +402,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       for (const event of events) window.removeEventListener(event, reset);
       document.removeEventListener("visibilitychange", reset);
     };
-  }, [status.kind, clear]);
+  }, [hasSession, clear]);
 
   const value = useMemo<AnalysisFlowContextValue>(
     () => ({
@@ -292,6 +410,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       sessionId: sessionIdRef.current,
       sessionGone,
       report,
+      pendingOperation,
       start,
       refresh,
       setFactStatus,
@@ -303,6 +422,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       beginModification,
       discardModification,
       generateReport,
+      cancel,
       clear,
       dismissSessionGone,
     }),
@@ -310,6 +430,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       status,
       sessionGone,
       report,
+      pendingOperation,
       start,
       refresh,
       setFactStatus,
@@ -321,6 +442,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       beginModification,
       discardModification,
       generateReport,
+      cancel,
       clear,
       dismissSessionGone,
     ],

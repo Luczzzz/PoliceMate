@@ -58,13 +58,29 @@ export interface HealthResponse {
   providerMode: string;
 }
 
+/**
+ * 短期匿名令牌响应。令牌是随机字符串，不编码案情、身份或权限；
+ * 到期后必须失败关闭。它只用于限制未授权流量，不构成身份认证。
+ */
+export interface AnonymousTokenResponse {
+  contractVersion: string;
+  token: string;
+  expiresAt: string;
+}
+
 /** 面向用户的错误分类；不得泄露内部堆栈、服务拓扑或密钥。 */
 export type ApiErrorCode =
   | "invalid_request"
+  | "invalid_input"
   | "not_found"
   | "service_unavailable"
   | "contract_incompatible"
   | "content_unavailable"
+  | "rate_limited"
+  | "request_too_large"
+  | "origin_not_allowed"
+  | "token_invalid"
+  | "feature_disabled"
   | "internal_error";
 
 export interface ApiErrorBody {
@@ -494,7 +510,18 @@ export interface GenerateReportRequest {
 }
 
 export interface ReportFailureControls {
-  reportMode?: "complete" | "insufficient_facts" | "conflicting" | "basis_unavailable" | "critical_failure" | "partial_failure" | "contradiction";
+  reportMode?:
+    | "complete"
+    | "insufficient_facts"
+    | "conflicting"
+    | "basis_unavailable"
+    | "critical_failure"
+    | "partial_failure"
+    | "contradiction"
+    | "empty"
+    | "malformed"
+    | "unmatched_source"
+    | "timeout";
 }
 
 export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
@@ -559,6 +586,21 @@ export const ANALYSIS_TOTAL_QUESTION_LIMIT = 12;
 /** 案情输入与追问答案的锁定上限。 */
 export const CASE_TEXT_MAX_CHARACTERS = 10_000;
 export const ANSWER_MAX_CHARACTERS = 2_000;
+
+/**
+ * 需要短期匿名令牌保护的接口前缀。前后端共用同一份定义，避免两处漂移；
+ * 令牌只用于限制未授权流量，不构成身份认证。
+ */
+export const PROTECTED_API_PREFIXES = [
+  "/api/v1/analysis/",
+  "/api/v1/document-examples",
+  "/api/v1/feedback",
+] as const;
+
+/** 字符数统一按 Unicode 码点计算，避免把代理对算作两个字符。 */
+export function countCharacters(text: string): number {
+  return Array.from(text).length;
+}
 
 /** `POST /api/v1/analysis/sessions` 请求。 */
 export interface CreateAnalysisRequest {
@@ -817,7 +859,21 @@ export interface FixtureControlRequest {
   legalSourceStatusAll?: LegalSourceStatus;
   /** 测试控制：使全部文书范例的复核期限变为已过期。 */
   examplesExpired?: boolean;
+  /** 测试控制：候选事实提取边界的失败模式。 */
+  extractionMode?: UpstreamFailureMode;
+  /** 测试控制：决定性追问选题边界的失败模式。 */
+  questionMode?: UpstreamFailureMode;
 }
+
+/**
+ * 外部边界替身的失败模式，用于验证“最多自动重试一次后失败关闭”。
+ *
+ * - `normal`：正常返回；
+ * - `empty`：返回空结果；
+ * - `malformed`：返回不符合结构契约的结果；
+ * - `timeout`：返回时间超过边界超时上限。
+ */
+export type UpstreamFailureMode = "normal" | "empty" | "malformed" | "timeout";
 
 /** 替身中单个测试范例的可观测治理状态；`eligible` 由状态门控实时推导。 */
 export interface FixtureExampleState {
@@ -839,4 +895,53 @@ export interface FixtureControlResponse {
   eligibleExampleCount: number;
   examples: FixtureExampleState[];
   legalSources: FixtureLegalSourceState[];
+  extractionMode: UpstreamFailureMode;
+  questionMode: UpstreamFailureMode;
+  reportMode: NonNullable<ReportFailureControls["reportMode"]>;
+}
+
+/* ---------- 结构化反馈与运行元数据 ---------- */
+
+/**
+ * 结构化反馈的预定义类型。第一版不提供自由文本框，也不上传页面文本、
+ * 案情、事实、报告或检索词。
+ */
+export type FeedbackCategory =
+  | "conclusion_hard_to_understand"
+  | "basis_unopenable"
+  | "operation_difficult"
+  | "status_unclear"
+  | "result_conflicts_with_manual";
+
+export const FEEDBACK_CATEGORY_LABELS: Record<FeedbackCategory, string> = {
+  conclusion_hard_to_understand: "结论难理解",
+  basis_unopenable: "依据无法打开",
+  operation_difficult: "页面操作困难",
+  status_unclear: "状态说明不清楚",
+  result_conflicts_with_manual: "结果与人工研判不一致",
+};
+
+/**
+ * 反馈允许携带的非内容元数据。字段是固定白名单，不接受任意键，
+ * 也不接受自由文本。
+ */
+export interface FeedbackMetadata {
+  pageId?: string;
+  featureState?: string;
+  contentReleaseId?: string;
+  workflowVersion?: string;
+}
+
+export interface FeedbackRequest {
+  contractVersion: string;
+  category: FeedbackCategory;
+  metadata?: FeedbackMetadata;
+}
+
+/** `POST /api/v1/feedback` 响应。只回执随机请求编号，不含用户输入内容。 */
+export interface FeedbackResponse {
+  contractVersion: string;
+  requestId: string;
+  accepted: true;
+  categoryLabel: string;
 }

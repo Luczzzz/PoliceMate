@@ -1,6 +1,7 @@
 import type { DataUseResponse } from "@policymate/contracts";
 import { Link } from "react-router-dom";
 import { FailurePanel } from "../components/FailurePanel";
+import { FeedbackPanel } from "../components/FeedbackPanel";
 import { Icon } from "../components/Icon";
 import { useJsonResource } from "../hooks/useJsonResource";
 
@@ -108,6 +109,8 @@ export function DataUsePage() {
               </dl>
             </div>
           </section>
+
+          <FeedbackPanel />
         </div>
       ) : null}
     </div>

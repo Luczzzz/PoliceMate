@@ -4,6 +4,7 @@ import { FACT_STATUS_LABELS } from "@policymate/contracts";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ApiFailure } from "../../api/client";
 import { useAnalysisFlow } from "../../analysis/AnalysisSessionContext";
+import { ClearAnalysisButton } from "../../components/ClearAnalysisButton";
 import { FailurePanel } from "../../components/FailurePanel";
 
 /**
@@ -149,7 +150,7 @@ function FactCard({
 }
 
 export function CandidateFactsPage() {
-  const { status, refresh, setFactStatus, setFactExclusion, addFact, advanceRound, clear } = useAnalysisFlow();
+  const { status, refresh, setFactStatus, setFactExclusion, addFact, advanceRound } = useAnalysisFlow();
   const navigate = useNavigate();
   const [newFact, setNewFact] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
@@ -208,14 +209,6 @@ export function CandidateFactsPage() {
       await addFact(newFact);
       setNewFact("");
     });
-  };
-
-  const clearAll = async () => {
-    if (!window.confirm("确定清除本次分析？当前标签页中的案情、事实与回答将全部删除，且无法恢复。")) {
-      return;
-    }
-    await clear();
-    navigate("/analysis");
   };
 
   const counts = {
@@ -336,9 +329,7 @@ export function CandidateFactsPage() {
             完成事实确认，进入决定性追问
           </button>
         )}
-        <button type="button" className="button button--muted" onClick={() => void clearAll()} data-testid="clear-analysis">
-          清除本次分析
-        </button>
+        <ClearAnalysisButton testId="clear-analysis" />
       </div>
       <p className="field__note">
         清除会删除当前标签页与服务端本次会话中的案情、事实和回答，取消进行中的请求，且无法恢复。

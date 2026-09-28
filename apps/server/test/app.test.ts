@@ -13,7 +13,12 @@ import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
 
-const contractHeaders = { "x-pm-contract-version": CONTRACT_VERSION };
+import { anonymousTokens } from "../src/security";
+
+const contractHeaders = {
+  "x-pm-contract-version": CONTRACT_VERSION,
+  "x-pm-anonymous-token": anonymousTokens.issue().token,
+};
 
 function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {

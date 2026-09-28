@@ -8,7 +8,8 @@ import type {
   ReviseFactRequest,
 } from "@policymate/contracts";
 import { CONTRACT_VERSION } from "@policymate/contracts";
-import { AnalysisInputError, type AnalysisEngine } from "./engine";
+import { AnalysisInputError, AnalysisUpstreamError, type AnalysisEngine } from "./engine";
+import type { ConcurrencyGate } from "../security";
 
 /**
  * 案情分析路由。
@@ -23,16 +24,36 @@ export interface AnalysisRoutesOptions {
   activeReleaseId: () => Promise<string>;
   analysisCapabilityEnabled: () => boolean;
   analysisBoundaryAvailable: () => Promise<{ available: boolean; reason: string | null }>;
+  /** 并发闸门：同一令牌在途分析请求不得超过上限。 */
+  concurrencyGate: ConcurrencyGate;
 }
 
-function errorBody(requestId: string, message: string, statusCode: number): ApiErrorBody {
+function errorBody(
+  requestId: string,
+  message: string,
+  statusCode: number,
+  explicitCode?: ApiErrorBody["error"]["code"],
+): ApiErrorBody {
+  const code: ApiErrorBody["error"]["code"] =
+    explicitCode ??
+    (statusCode === 503
+      ? "service_unavailable"
+      : statusCode === 404
+        ? "not_found"
+        : statusCode === 429
+          ? "rate_limited"
+          : statusCode === 413
+            ? "request_too_large"
+            : statusCode === 401
+              ? "token_invalid"
+              : statusCode === 403
+                ? "origin_not_allowed"
+                : statusCode === 400
+                  ? "invalid_input"
+                  : "invalid_request");
   return {
     contractVersion: CONTRACT_VERSION,
-    error: {
-      code: statusCode === 503 ? "service_unavailable" : statusCode === 404 ? "not_found" : "invalid_request",
-      message,
-      requestId,
-    },
+    error: { code, message, requestId },
   };
 }
 
@@ -44,7 +65,7 @@ export async function registerAnalysisRoutes(
 
   const assertCapability = async (): Promise<void> => {
     if (!options.analysisCapabilityEnabled()) {
-      throw new AnalysisInputError("案情分析功能已临时停用。", 503);
+      throw new AnalysisInputError("案情分析功能已临时停用。", 503, "feature_disabled");
     }
     const boundary = await options.analysisBoundaryAvailable();
     if (!boundary.available) {
@@ -60,12 +81,30 @@ export async function registerAnalysisRoutes(
     requestId: string,
     reply: FastifyReply,
   ): Promise<FastifyReply> => {
-    if (error instanceof AnalysisInputError) {
+    if (error instanceof AnalysisInputError || error instanceof AnalysisUpstreamError) {
       return reply
         .code(error.statusCode)
-        .send(errorBody(requestId, error.message, error.statusCode));
+        .send(errorBody(requestId, error.message, error.statusCode, error.apiCode));
     }
     throw error;
+  };
+
+  /** 同一令牌的并发在途请求；超过上限时失败关闭并提示稍后重试。 */
+  const withConcurrency = async <T>(
+    request: { headers: Record<string, unknown>; ip: string },
+    action: () => Promise<T>,
+  ): Promise<T> => {
+    const token = request.headers["x-pm-anonymous-token"];
+    const key = typeof token === "string" && token !== "" ? token : request.ip;
+    const release = options.concurrencyGate.tryAcquire(key);
+    if (release === null) {
+      throw new AnalysisInputError("请求并发过多，请稍后重试。", 429);
+    }
+    try {
+      return await action();
+    } finally {
+      release();
+    }
   };
 
   // 创建会话并提取候选事实。
@@ -74,7 +113,7 @@ export async function registerAnalysisRoutes(
     async (request, reply) => {
       try {
         await assertCapability();
-        const state = await engine.createSession(request.body);
+        const state = await withConcurrency(request, () => engine.createSession(request.body));
         return reply.code(201).send(state);
       } catch (error) {
         return handleError(error, request.id, reply);
@@ -155,7 +194,9 @@ export async function registerAnalysisRoutes(
     async (request, reply) => {
       try {
         await assertCapability();
-        return await engine.advanceRound(request.params.sessionId, request.body);
+        return await withConcurrency(request, () =>
+          engine.advanceRound(request.params.sessionId, request.body),
+        );
       } catch (error) {
         return handleError(error, request.id, reply);
       }
@@ -172,7 +213,9 @@ export async function registerAnalysisRoutes(
           options.legalSources(),
           options.activeReleaseId(),
         ]);
-        return await engine.generateReport(request.params.sessionId, request.body, legalSources, undefined, activeReleaseId);
+        return await withConcurrency(request, () =>
+          engine.generateReport(request.params.sessionId, request.body, legalSources, undefined, activeReleaseId),
+        );
       } catch (error) {
         return handleError(error, request.id, reply);
       }
@@ -185,7 +228,7 @@ export async function registerAnalysisRoutes(
     async (request, reply) => {
       try {
         await assertCapability();
-        return await engine.confirmSnapshot(request.params.sessionId);
+        return await withConcurrency(request, () => engine.confirmSnapshot(request.params.sessionId));
       } catch (error) {
         return handleError(error, request.id, reply);
       }

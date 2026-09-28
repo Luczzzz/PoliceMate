@@ -3,7 +3,10 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import {
   CONTRACT_VERSION,
+  FEEDBACK_CATEGORY_LABELS,
+  PROTECTED_API_PREFIXES,
   REPORT_DOCUMENT_TASK_BOUNDARY,
+  type AnonymousTokenResponse,
   type ApiErrorBody,
   type ContentStatus,
   type DataUseResponse,
@@ -11,31 +14,100 @@ import {
   type DocumentExampleListResponse,
   type DocumentTaskCandidateRequest,
   type DocumentTaskCandidatesResponse,
+  type FeedbackCategory,
+  type FeedbackMetadata,
+  type FeedbackRequest,
+  type FeedbackResponse,
   type FixtureControlRequest,
   type FixtureControlResponse,
   type HealthResponse,
+  type LegalSourceReference,
   type ProductShellResponse,
+  type UpstreamFailureMode,
 } from "@policymate/contracts";
 import { HANDLING_STAGE_CATALOG } from "./content/catalog";
 import { buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } from "./capabilities";
-import type { AppConfig } from "./config";
+import { resolveRuntimeConfig, type AppConfig, type ResolvedRuntimeConfig } from "./config";
 import { buildDataUseResponse } from "./data-use";
 import { buildFacets } from "./content/gating";
 import { AnalysisEngine } from "./analysis/engine";
 import { registerAnalysisRoutes } from "./analysis/routes";
 import type { FixtureControls, FixturePatch } from "./providers/fixture";
+import {
+  AnonymousTokenService,
+  ConcurrencyGate,
+  FixedWindowRateLimiter,
+  anonymousTokens,
+  isOriginAllowed,
+  sanitizeOfficialUrl,
+} from "./security";
+import {
+  classifyStatus,
+  createMemoryTelemetrySink,
+  type TelemetrySink,
+} from "./telemetry";
 
 export interface BuildAppDeps {
   config: AppConfig;
   fixtures: FixtureControls;
-  /** 测试可以注入固定引擎以控制会话状态；默认使用共享引擎。 */
+  /** 测试可以注入固定引擎以控制会话状态；默认使用按配置构造的引擎。 */
   analysisEngine?: AnalysisEngine;
+  /** 运行元数据接收端；默认只保存在内存。 */
+  telemetry?: TelemetrySink;
+  /** 传输层安全服务；默认为进程级实例，测试可注入以控制时钟与上限。 */
+  tokenService?: AnonymousTokenService;
+  rateLimiter?: FixedWindowRateLimiter;
+  concurrencyGate?: ConcurrencyGate;
+  runtime?: ResolvedRuntimeConfig;
 }
 
 const CONTRACT_HEADER = "x-pm-contract-version";
+const TOKEN_HEADER = "x-pm-anonymous-token";
 
 /** 健康检查与测试控制接口不参与产品契约校验。 */
 const CONTRACT_EXEMPT_PREFIXES = ["/api/v1/health", "/api/test/"];
+
+/** 需要短期匿名令牌与频率限制保护的接口前缀。 */
+const PROTECTED_PREFIXES = PROTECTED_API_PREFIXES;
+
+const CONTENT_STATUSES = ["draft", "pending_verification", "trial", "withdrawn"] as const;
+const LEGAL_SOURCE_STATUSES = ["current", "future", "superseded", "repealed", "uncertain"] as const;
+const PROCEDURE_CATEGORIES = ["administrative", "criminal"] as const;
+const HANDLING_STAGE_IDS = HANDLING_STAGE_CATALOG.map((stage) => stage.id);
+const UPSTREAM_FAILURE_MODES: readonly UpstreamFailureMode[] = ["normal", "empty", "malformed", "timeout"];
+const REPORT_MODES = [
+  "complete",
+  "insufficient_facts",
+  "conflicting",
+  "basis_unavailable",
+  "critical_failure",
+  "partial_failure",
+  "contradiction",
+  "empty",
+  "malformed",
+  "unmatched_source",
+  "timeout",
+] as const;
+
+const FEEDBACK_CATEGORIES = Object.keys(FEEDBACK_CATEGORY_LABELS) as FeedbackCategory[];
+const FEEDBACK_PAGE_IDS = new Set([
+  "home",
+  "analysis_input",
+  "analysis_facts",
+  "analysis_questions",
+  "analysis_review",
+  "analysis_report",
+  "analysis_modify",
+  "documents",
+  "document_detail",
+  "data_use",
+]);
+const FEEDBACK_FEATURE_STATES = new Set([
+  "case_analysis",
+  "document_examples",
+  "unavailable",
+  "failed",
+]);
 
 function errorBody(
   requestId: string,
@@ -45,10 +117,9 @@ function errorBody(
   return { contractVersion: CONTRACT_VERSION, error: { code, message, requestId } };
 }
 
-const CONTENT_STATUSES = ["draft", "pending_verification", "trial", "withdrawn"] as const;
-const LEGAL_SOURCE_STATUSES = ["current", "future", "superseded", "repealed", "uncertain"] as const;
-const PROCEDURE_CATEGORIES = ["administrative", "criminal"] as const;
-const HANDLING_STAGE_IDS = HANDLING_STAGE_CATALOG.map((stage) => stage.id);
+function isProtected(url: string): boolean {
+  return PROTECTED_PREFIXES.some((prefix) => url.startsWith(prefix));
+}
 
 function readTaskCandidateRequest(body: unknown): DocumentTaskCandidateRequest | null {
   if (!isRecord(body)) return null;
@@ -90,14 +161,33 @@ function readContentStatus(value: unknown): ContentStatus | null {
     : null;
 }
 
+function readUpstreamMode(value: unknown): UpstreamFailureMode | null {
+  return typeof value === "string" && (UPSTREAM_FAILURE_MODES as readonly string[]).includes(value)
+    ? (value as UpstreamFailureMode)
+    : null;
+}
+
 function readFixturePatch(body: unknown): FixturePatch | null {
   if (!isRecord(body)) return null;
-  const candidate = body as FixtureControlRequest & { reportMode?: string };
+  const candidate = body as FixtureControlRequest;
   const patch: FixturePatch = {};
   if ("reportMode" in candidate) {
-    const modes = ["complete", "insufficient_facts", "conflicting", "basis_unavailable", "critical_failure", "partial_failure", "contradiction"];
-    if (typeof candidate.reportMode !== "string" || !modes.includes(candidate.reportMode)) return null;
+    if (typeof candidate.reportMode !== "string" || !(REPORT_MODES as readonly string[]).includes(candidate.reportMode)) {
+      return null;
+    }
     patch.reportMode = candidate.reportMode as NonNullable<FixturePatch["reportMode"]>;
+  }
+
+  if ("extractionMode" in candidate) {
+    const mode = readUpstreamMode(candidate.extractionMode);
+    if (mode === null) return null;
+    patch.extractionMode = mode;
+  }
+
+  if ("questionMode" in candidate) {
+    const mode = readUpstreamMode(candidate.questionMode);
+    if (mode === null) return null;
+    patch.questionMode = mode;
   }
 
   if ("difyAvailable" in candidate) {
@@ -141,37 +231,156 @@ function readFixturePatch(body: unknown): FixturePatch | null {
 }
 
 /**
+ * 反馈只接受预定义类型和允许的非内容元数据。任何额外键、自由文本或不在
+ * 白名单内的取值都拒绝，避免页面文本、案情或检索词被夹带上传。
+ */
+function readFeedbackRequest(
+  body: unknown,
+): { category: FeedbackCategory; metadata: FeedbackMetadata } | null {
+  if (!isRecord(body)) return null;
+  for (const key of Object.keys(body)) {
+    if (!["contractVersion", "category", "metadata"].includes(key)) return null;
+  }
+  if (body.contractVersion !== CONTRACT_VERSION) return null;
+  const category = body.category;
+  if (typeof category !== "string" || !FEEDBACK_CATEGORIES.includes(category as FeedbackCategory)) {
+    return null;
+  }
+  const metadata: FeedbackMetadata = {};
+  const rawMetadata = body.metadata;
+  if (rawMetadata !== undefined) {
+    if (!isRecord(rawMetadata)) return null;
+    for (const key of Object.keys(rawMetadata)) {
+      if (!["pageId", "featureState", "contentReleaseId", "workflowVersion"].includes(key)) {
+        return null;
+      }
+    }
+    if (rawMetadata.pageId !== undefined) {
+      if (typeof rawMetadata.pageId !== "string" || !FEEDBACK_PAGE_IDS.has(rawMetadata.pageId)) {
+        return null;
+      }
+      metadata.pageId = rawMetadata.pageId;
+    }
+    if (rawMetadata.featureState !== undefined) {
+      if (
+        typeof rawMetadata.featureState !== "string" ||
+        !FEEDBACK_FEATURE_STATES.has(rawMetadata.featureState)
+      ) {
+        return null;
+      }
+      metadata.featureState = rawMetadata.featureState;
+    }
+    if (rawMetadata.contentReleaseId !== undefined) {
+      if (typeof rawMetadata.contentReleaseId !== "string" || rawMetadata.contentReleaseId.length > 128) {
+        return null;
+      }
+      metadata.contentReleaseId = rawMetadata.contentReleaseId;
+    }
+    if (rawMetadata.workflowVersion !== undefined) {
+      if (typeof rawMetadata.workflowVersion !== "string" || rawMetadata.workflowVersion.length > 128) {
+        return null;
+      }
+      metadata.workflowVersion = rawMetadata.workflowVersion;
+    }
+  }
+  return { category: category as FeedbackCategory, metadata };
+}
+
+/** 官方链接只允许 http(s)；非法协议在返回用户前被移除。 */
+function sanitizeLegalSource(source: LegalSourceReference): LegalSourceReference {
+  return { ...source, officialUrl: sanitizeOfficialUrl(source.officialUrl) };
+}
+
+/**
  * 构建 PoliceMate 后端。该函数不负责监听端口，便于测试直接使用 `inject`。
  */
-export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDeps): Promise<FastifyInstance> {
+export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
+  const { config, fixtures } = deps;
+  const runtime = deps.runtime ?? resolveRuntimeConfig(config);
+  const telemetry = deps.telemetry ?? createMemoryTelemetrySink();
+  const tokenService = deps.tokenService ?? anonymousTokens;
+  const rateLimiter = deps.rateLimiter ?? new FixedWindowRateLimiter(runtime.rateLimitMax, runtime.rateLimitWindowMs);
+  const concurrencyGate = deps.concurrencyGate ?? new ConcurrencyGate(runtime.maxConcurrency);
+
   const app = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
+    bodyLimit: runtime.bodyLimitBytes,
+  });
+
+  // 来源限制：先于业务处理拒绝非允许来源，避免把未授权流量带入状态机。
+  app.addHook("onRequest", async (request, reply) => {
+    if (!request.url.startsWith("/api/")) return;
+    const origin = request.headers.origin;
+    if (!isOriginAllowed(origin, request.headers.host, runtime.allowedOrigins)) {
+      await reply
+        .code(403)
+        .send(errorBody(request.id, "origin_not_allowed", "当前来源不允许访问该接口。"));
+    }
   });
 
   app.addHook("preHandler", async (request, reply) => {
     if (!request.url.startsWith("/api/")) return;
-    if (CONTRACT_EXEMPT_PREFIXES.some((prefix) => request.url.startsWith(prefix))) return;
+    const exempt = CONTRACT_EXEMPT_PREFIXES.some((prefix) => request.url.startsWith(prefix));
+    if (!exempt) {
+      const requested = request.headers[CONTRACT_HEADER];
+      if (typeof requested !== "string" || requested.trim() === "") {
+        await reply
+          .code(400)
+          .send(
+            errorBody(request.id, "invalid_request", `缺少契约版本请求头 ${CONTRACT_HEADER}。`),
+          );
+        return;
+      }
+      if (requested !== CONTRACT_VERSION) {
+        await reply
+          .code(409)
+          .send(
+            errorBody(
+              request.id,
+              "contract_incompatible",
+              `契约版本不兼容（客户端 ${requested}，服务端 ${CONTRACT_VERSION}），请刷新或更新页面。`,
+            ),
+          );
+        return;
+      }
+    }
 
-    const requested = request.headers[CONTRACT_HEADER];
-    if (typeof requested !== "string" || requested.trim() === "") {
-      await reply
-        .code(400)
-        .send(
-          errorBody(request.id, "invalid_request", `缺少契约版本请求头 ${CONTRACT_HEADER}。`),
-        );
+    if (!isProtected(request.url)) {
+      // 令牌签发本身也需要限流，但按来源 IP 计数，避免无限签发。
+      if (request.url.startsWith("/api/v1/anonymous-tokens")) {
+        const decision = rateLimiter.check(`ip:${request.ip}`);
+        if (!decision.allowed) {
+          reply.header("retry-after", String(Math.ceil(decision.retryAfterMs / 1000)));
+          await reply
+            .code(429)
+            .send(errorBody(request.id, "rate_limited", "请求过于频繁，请稍后再试。"));
+        }
+      }
       return;
     }
-    if (requested !== CONTRACT_VERSION) {
+
+    const token = request.headers[TOKEN_HEADER];
+    if (!tokenService.verify(token)) {
       await reply
-        .code(409)
+        .code(401)
         .send(
           errorBody(
             request.id,
-            "contract_incompatible",
-            `契约版本不兼容（客户端 ${requested}，服务端 ${CONTRACT_VERSION}），请刷新或更新页面。`,
+            "token_invalid",
+            "匿名访问令牌缺失或已过期，请刷新页面后重试。",
           ),
         );
+      return;
+    }
+
+    const key = typeof token === "string" ? token : request.ip;
+    const decision = rateLimiter.check(key);
+    if (!decision.allowed) {
+      reply.header("retry-after", String(Math.ceil(decision.retryAfterMs / 1000)));
+      await reply
+        .code(429)
+        .send(errorBody(request.id, "rate_limited", "请求过于频繁，请稍后再试。"));
     }
   });
 
@@ -183,8 +392,34 @@ export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDep
     return payload;
   });
 
+  // 只记录非内容运行元数据：路由、状态、耗时、版本。不读取响应正文，
+  // 也不记录查询字符串（可能包含检索词）。
+  app.addHook("onResponse", async (request, reply) => {
+    if (!request.url.startsWith("/api/")) return;
+    telemetry.record({
+      requestId: request.id,
+      timestamp: new Date().toISOString(),
+      kind: "http.request",
+      outcome: classifyStatus(reply.statusCode),
+      status: reply.statusCode,
+      durationMs: Math.round(reply.elapsedTime),
+      contractVersion: CONTRACT_VERSION,
+      featureState: request.routeOptions?.url ?? "unknown",
+    });
+  });
+
   app.get("/api/v1/health", async (): Promise<HealthResponse> => {
     return { contractVersion: CONTRACT_VERSION, status: "ok", providerMode: config.providerMode };
+  });
+
+  // 短期匿名令牌：随机、不编码内容、不构成身份认证；到期后失败关闭。
+  app.post("/api/v1/anonymous-tokens", async (): Promise<AnonymousTokenResponse> => {
+    const record = tokenService.issue();
+    return {
+      contractVersion: CONTRACT_VERSION,
+      token: record.token,
+      expiresAt: new Date(record.expiresAt).toISOString(),
+    };
   });
 
   app.get("/api/v1/shell", async (): Promise<ProductShellResponse> => {
@@ -201,6 +436,33 @@ export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDep
 
   app.get("/api/v1/data-use", async (): Promise<DataUseResponse> => {
     return buildDataUseResponse(config.service, CONTRACT_VERSION);
+  });
+
+  // 结构化反馈：只接受预定义类型与白名单元数据，不接收自由文本或页面文本。
+  app.post<{ Body: FeedbackRequest }>("/api/v1/feedback", async (request, reply) => {
+    const parsed = readFeedbackRequest(request.body);
+    if (parsed === null) {
+      return reply
+        .code(400)
+        .send(errorBody(request.id, "invalid_request", "反馈内容或类型无效。"));
+    }
+    telemetry.record({
+      requestId: request.id,
+      timestamp: new Date().toISOString(),
+      kind: "feedback",
+      outcome: "ok",
+      featureState: parsed.metadata.featureState ?? parsed.category,
+      contentReleaseId: parsed.metadata.contentReleaseId,
+      workflowVersion: parsed.metadata.workflowVersion,
+      featureCount: 1,
+    });
+    const response: FeedbackResponse = {
+      contractVersion: CONTRACT_VERSION,
+      requestId: request.id,
+      accepted: true,
+      categoryLabel: FEEDBACK_CATEGORY_LABELS[parsed.category],
+    };
+    return response;
   });
 
   // 文书范例检索与打开都重新执行当前状态门控；响应禁止缓存。
@@ -281,12 +543,16 @@ export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDep
             ),
           );
       }
+      const example = {
+        ...lookup.example,
+        legalSources: lookup.example.legalSources.map(sanitizeLegalSource),
+      };
       const response: DocumentExampleDetailResponse = {
         contractVersion: CONTRACT_VERSION,
         generatedAt: new Date().toISOString(),
         releaseId: lookup.releaseId,
         notice: lookup.notice,
-        example: lookup.example,
+        example,
       };
       return response;
     },
@@ -310,23 +576,45 @@ export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDep
   }
 
   // 案情分析：会话存于短暂运行内存；能力停用或边界不可用时失败关闭。
-  const analysisEngineResolved = analysisEngine ?? new AnalysisEngine(fixtures.analysis);
+  const analysisEngineResolved =
+    deps.analysisEngine ??
+    new AnalysisEngine(fixtures.analysis, {
+      analysisTimeoutMs: runtime.analysisTimeoutMs,
+      reportTimeoutMs: runtime.reportTimeoutMs,
+      maxAttempts: runtime.maxProviderAttempts,
+      telemetry,
+    });
+  const legalSources = async (): Promise<LegalSourceReference[]> =>
+    (fixtures.content.listLegalSources ? await fixtures.content.listLegalSources() : []).map(
+      sanitizeLegalSource,
+    );
   await registerAnalysisRoutes(app, {
     engine: analysisEngineResolved,
-    legalSources: async () => (fixtures.content.listLegalSources ? fixtures.content.listLegalSources() : []),
+    legalSources,
     activeReleaseId: async () => (await fixtures.content.getActiveRelease()).releaseId,
     analysisCapabilityEnabled: () => config.masterSwitch && config.analysisEnabled,
     analysisBoundaryAvailable: async () => fixtures.dify.getAvailability(),
+    concurrencyGate,
   });
 
   app.setErrorHandler(async (error: FastifyError, request, reply) => {
-    const status =
-      typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500
+    const tooLarge = error.code === "FST_ERR_CTP_BODY_TOO_LARGE";
+    const status = tooLarge
+      ? 413
+      : typeof error.statusCode === "number" && error.statusCode >= 400 && error.statusCode < 500
         ? error.statusCode
         : 500;
-    const message =
-      status === 500 ? "服务暂时不可用，请稍后重试。" : (error.message ?? "请求无法处理。");
-    await reply.code(status).send(errorBody(request.id, status === 500 ? "internal_error" : "invalid_request", message));
+    const code: ApiErrorBody["error"]["code"] = tooLarge
+      ? "request_too_large"
+      : status === 500
+        ? "internal_error"
+        : "invalid_request";
+    const message = tooLarge
+      ? "请求体超过大小上限，请精简后重试。"
+      : status === 500
+        ? "服务暂时不可用，请稍后重试。"
+        : (error.message ?? "请求无法处理。");
+    await reply.code(status).send(errorBody(request.id, code, message));
   });
 
   const staticDir = config.staticDir;

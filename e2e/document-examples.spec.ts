@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { resetFixture, setFixture } from "./helpers";
+import { resetFixture, setFixture, apiHeaders } from "./helpers";
 
 test.beforeEach(async ({ request }) => {
   await resetFixture(request);
@@ -213,7 +213,7 @@ test.describe("文书范例：状态失效与旧链接阻断", () => {
 
     // 重新请求同一地址仍返回失效状态，而不是使用缓存。
     const blocked = await request.get(`/api/v1/document-examples/${encodeURIComponent(exampleId)}`, {
-      headers: { "x-pm-contract-version": "1.0" },
+      headers: await apiHeaders(request),
     });
     expect(blocked.status()).toBe(410);
   });

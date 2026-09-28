@@ -3,6 +3,7 @@ import type { AnalysisReport, ReportModule, ReportDocumentTask } from "@policyma
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ApiFailure } from "../../api/client";
 import { useAnalysisFlow } from "../../analysis/AnalysisSessionContext";
+import { ClearAnalysisButton } from "../../components/ClearAnalysisButton";
 import { FailurePanel } from "../../components/FailurePanel";
 import { EvidenceChecklistWorkbench, InterviewPointsWorkbench } from "../../components/ReportWorkbench";
 
@@ -161,6 +162,7 @@ function ReportBody({
           >
             {modifying ? "正在进入修改…" : "补充或修改事实"}
           </button>
+          <ClearAnalysisButton testId="clear-analysis-report" />
         </div>
       )}
       {modifyError !== null ? (

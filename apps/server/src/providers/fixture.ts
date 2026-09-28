@@ -1,4 +1,7 @@
-import { REPORT_MODULE_LABELS, REPORT_DOCUMENT_TASK_BOUNDARY } from "@policymate/contracts";
+import {
+  REPORT_MODULE_LABELS,
+  REPORT_DOCUMENT_TASK_BOUNDARY,
+} from "@policymate/contracts";
 import type {
   ContentStatus,
   FixtureControlResponse,
@@ -9,6 +12,7 @@ import type {
   ReportEvidenceChecklistItem,
   ReportFailureControls,
   ReportInterviewPointItem,
+  UpstreamFailureMode,
 } from "@policymate/contracts";
 import { createFixtureContent } from "../content/fixture-content";
 import { DOCUMENT_EXAMPLE_NOTICE } from "../content/catalog";
@@ -29,6 +33,7 @@ import type {
   Providers,
   QuestionPoolRequest,
   QuestionPoolResult,
+  ReportGenerationResult,
   ServiceAvailability,
 } from "./types";
 
@@ -44,6 +49,15 @@ export interface FixturePatch extends ReportFailureControls {
   exampleStatus?: { exampleId: string; status: ContentStatus };
   legalSourceStatusAll?: LegalSourceStatus;
   examplesExpired?: boolean;
+  extractionMode?: UpstreamFailureMode;
+  questionMode?: UpstreamFailureMode;
+}
+
+/** 替身超时模式等待时长；必须明显长于测试注入的引擎超时上限。 */
+export const FIXTURE_TIMEOUT_DELAY_MS = 250;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export interface FixtureControls extends Providers {
@@ -55,11 +69,15 @@ export interface FixtureControls extends Providers {
 export function createFixtureControls(initial: FixturePatch = {}): FixtureControls {
   const store = createGovernedContentStore(createFixtureContent());
   let difyAvailable = true;
-  let reportMode: ReportFailureControls["reportMode"] = undefined;
+  let reportMode: NonNullable<ReportFailureControls["reportMode"]> = "complete";
+  let extractionMode: UpstreamFailureMode = "normal";
+  let questionMode: UpstreamFailureMode = "normal";
 
   const applyPatch = (patch: FixturePatch) => {
     if (patch.difyAvailable !== undefined) difyAvailable = patch.difyAvailable;
     if (patch.reportMode !== undefined) reportMode = patch.reportMode;
+    if (patch.extractionMode !== undefined) extractionMode = patch.extractionMode;
+    if (patch.questionMode !== undefined) questionMode = patch.questionMode;
     if (patch.exampleStatusAll !== undefined) store.setAllExampleStatus(patch.exampleStatusAll);
     if (patch.exampleStatus !== undefined) {
       store.setExampleStatus(patch.exampleStatus.exampleId, patch.exampleStatus.status);
@@ -79,6 +97,9 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       eligibleExampleCount: snapshot.eligibleExampleCount,
       examples,
       legalSources: snapshot.legalSources.map((source) => ({ ...source })),
+      extractionMode,
+      questionMode,
+      reportMode,
     };
   };
 
@@ -98,9 +119,24 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
    */
   const analysis: CaseAnalysisProvider = {
     async extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult> {
+      if (extractionMode === "timeout") await delay(FIXTURE_TIMEOUT_DELAY_MS);
+      if (extractionMode === "empty") {
+        return { facts: [], independentMatters: { detected: false, note: null } };
+      }
+      if (extractionMode === "malformed") {
+        return {
+          facts: [{ factId: "" }] as unknown as CaseExtractionResult["facts"],
+          independentMatters: { detected: false, note: null },
+        };
+      }
       return extractCaseFactsFixture(request.caseText);
     },
     async proposeDecisiveQuestions(request: QuestionPoolRequest): Promise<QuestionPoolResult> {
+      if (questionMode === "timeout") await delay(FIXTURE_TIMEOUT_DELAY_MS);
+      if (questionMode === "malformed") {
+        return { questions: [{ questionId: "" }] as unknown as QuestionPoolResult["questions"] };
+      }
+      if (questionMode === "empty") return { questions: [] };
       return proposeDecisiveQuestionsFixture(request);
     },
     async generateReport(request) {
@@ -203,7 +239,12 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
         },
       ];
       const mode = reportMode;
+      if (mode === "timeout") await delay(FIXTURE_TIMEOUT_DELAY_MS);
       if (mode === "critical_failure") throw new Error("报告生成边界返回结构错误。");
+      if (mode === "empty") return {} as unknown as ReportGenerationResult;
+      if (mode === "malformed") {
+        return { status: "complete", headline: "", modules: [] } as unknown as ReportGenerationResult;
+      }
       const insufficient = mode === "insufficient_facts" || confirmedFacts.length === 0;
       const conflicting = mode === "conflicting" || active.some((fact) => fact.status === "disputed");
       const unavailable = mode === "basis_unavailable" || basis === null;
@@ -218,7 +259,26 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
         module("enforcement_risks", "present", ["核查紧急风险、程序期限和告知送达记录。"]),
         module("legal_basis_trace", unavailable ? "basis_unavailable" : "present", [unavailable ? "没有可匹配的当前有效受治理法源。" : "每项判断均展示事实、条件、状态和法源链路。"]),
       ];
-      return { status, headline: status === "complete" ? "存在可供核验的初步方向" : status === "conflicting" ? "存在多种可能，不能单一判断" : status === "insufficient_facts" ? "当前事实不足，需补充核验" : "当前不能形成受法源支持的主判断", participantBehaviorSummary: active.flatMap((fact) => fact.participantRefs.flatMap((participant) => fact.behaviorRefs.map((behavior) => ({ participant, behavior, factIds: [fact.factId], note: fact.statement })))), factLimitations: active.filter((fact) => fact.status !== "confirmed").map((fact) => `${fact.statement}（${fact.statusLabel}）`), modules, documentTasks, contentReleaseId: "release-fixture-2026-08", workflowVersion: "report-fixture-v1" };
+      const effectiveModules =
+        mode === "contradiction"
+          ? modules.map((item) =>
+              item.id === "filing_conditions" ? { ...item, status: "basis_unavailable" as const } : item,
+            )
+          : mode === "unmatched_source"
+            ? modules.map((item) =>
+                item.traceLinks.length === 0
+                  ? item
+                  : {
+                      ...item,
+                      traceLinks: item.traceLinks.map((trace, index) =>
+                        index === 0 && trace.basis !== null
+                          ? { ...trace, basis: { ...trace.basis, sourceId: "source-does-not-exist" } }
+                          : trace,
+                      ),
+                    },
+              )
+            : modules;
+      return { status, headline: status === "complete" ? "存在可供核验的初步方向" : status === "conflicting" ? "存在多种可能，不能单一判断" : status === "insufficient_facts" ? "当前事实不足，需补充核验" : "当前不能形成受法源支持的主判断", participantBehaviorSummary: active.flatMap((fact) => fact.participantRefs.flatMap((participant) => fact.behaviorRefs.map((behavior) => ({ participant, behavior, factIds: [fact.factId], note: fact.statement })))), factLimitations: active.filter((fact) => fact.status !== "confirmed").map((fact) => `${fact.statement}（${fact.statusLabel}）`), modules: effectiveModules, documentTasks, contentReleaseId: "release-fixture-2026-08", workflowVersion: "report-fixture-v1" };
     },
   };
 
@@ -260,7 +320,9 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     },
     reset: () => {
       difyAvailable = true;
-      reportMode = undefined;
+      reportMode = "complete";
+      extractionMode = "normal";
+      questionMode = "normal";
       store.reset();
       return describe();
     },

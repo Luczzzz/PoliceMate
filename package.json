@@ -12,6 +12,7 @@
     "typecheck": "npm run typecheck -w @policymate/contracts && npm run typecheck -w @policymate/server && npm run typecheck -w @policymate/web && tsc -p e2e/tsconfig.json",
     "test": "npm run test -w @policymate/server",
     "test:e2e": "playwright test",
+    "release:check": "tsx scripts/release-check.ts",
     "verify": "npm run typecheck && npm run test && npm run build && npm run test:e2e"
   },
   "devDependencies": {

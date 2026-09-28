@@ -2,6 +2,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AnalysisFlowProvider } from "./analysis/AnalysisSessionContext";
 import { WorkbenchProvider } from "./analysis/WorkbenchContext";
 import { ShellProvider } from "./app/ShellContext";
+import { AnalysisProgress } from "./components/AnalysisProgress";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { CaseInputPage } from "./pages/analysis/CaseInputPage";
@@ -30,6 +31,7 @@ export function App() {
             <ShellProvider>
               <AnalysisFlowProvider>
                 <WorkbenchProvider>
+                  <AnalysisProgress />
                   <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/data-use" element={<DataUsePage />} />

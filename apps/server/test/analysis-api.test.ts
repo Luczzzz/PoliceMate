@@ -3,10 +3,15 @@ import type { CandidateFact, CreateAnalysisRequest } from "@policymate/contracts
 import { ANALYSIS_TOTAL_QUESTION_LIMIT } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
-import { AnalysisEngine } from "../src/analysis/engine";
+import { AnalysisEngine, SESSION_IDLE_TTL_MS } from "../src/analysis/engine";
 import { createFixtureControls } from "../src/providers/fixture";
 
-const contractHeaders = { "x-pm-contract-version": "1.0" };
+import { anonymousTokens } from "../src/security";
+
+const contractHeaders = {
+  "x-pm-contract-version": "1.0",
+  "x-pm-anonymous-token": anonymousTokens.issue().token,
+};
 
 function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   return {
@@ -81,6 +86,7 @@ describe("POST /api/v1/analysis/sessions", () => {
       payload: { caseText: "案情\u0000内容" },
     });
     expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("invalid_input");
     expect(response.json().error.message).toContain("纯文本");
     await app.close();
   });
@@ -132,6 +138,7 @@ describe("POST /api/v1/analysis/sessions", () => {
       payload: { caseText: SAMPLE_TEXT },
     });
     expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe("feature_disabled");
     await app.close();
   });
 });
@@ -567,7 +574,26 @@ describe("契约校验失败关闭", () => {
       headers: contractHeaders,
       payload: { caseText: SAMPLE_TEXT },
     });
-    expect(response.statusCode).toBe(500);
+    expect(response.statusCode).toBe(503);
+    const body = response.json();
+    expect(body.error.code).toBe("service_unavailable");
+    expect(body.error.requestId).toBeTruthy();
+    expect(JSON.stringify(body)).not.toContain(SAMPLE_TEXT);
     await app.close();
+  });
+});
+
+describe("会话空闲失效", () => {
+  it("空闲超过 30 分钟后服务端会话不可恢复", async () => {
+    const fixtures = createFixtureControls();
+    const engine = new AnalysisEngine(fixtures.analysis);
+    const t0 = new Date("2026-01-01T00:00:00.000Z");
+    const state = await engine.createSession({ caseText: SAMPLE_TEXT }, t0);
+
+    expect(engine.getSession(state.sessionId, t0).sessionId).toBe(state.sessionId);
+
+    const t1 = new Date(t0.getTime() + SESSION_IDLE_TTL_MS + 1);
+    expect(() => engine.getSession(state.sessionId, t1)).toThrow(/会话不存在或已结束/);
+    engine.resetForTests();
   });
 });

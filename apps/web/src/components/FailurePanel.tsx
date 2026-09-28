@@ -40,6 +40,34 @@ export function describeFailure(failure: ApiFailure): FailureCopy {
         impact: "当前无法读取入口状态，未获得任何未经验证的结果。",
         nextStep: "请稍后重试；若持续失败，请通过“使用与数据说明”中的联系方式反馈。",
       };
+    case "throttled":
+      return {
+        variant: "throttled",
+        title: "请求过于频繁",
+        impact: "短时间内的请求数量超过后端限制，本次请求未被执行。",
+        nextStep: "请稍等片刻后重试，避免连续重复提交。",
+      };
+    case "too_large":
+      return {
+        variant: "input",
+        title: "内容过长或格式不支持",
+        impact: "提交内容超过允许的大小或包含不支持的格式，后端已拒绝且不会截断内容。",
+        nextStep: "请精简内容、仅保留纯文本后重新提交。",
+      };
+    case "cancelled":
+      return {
+        variant: "unavailable",
+        title: "请求已取消",
+        impact: "本次请求已被取消，未获得任何结果，页面内容不会因迟到响应而改变。",
+        nextStep: "如需继续，请重新提交。",
+      };
+    case "disabled":
+      return {
+        variant: "unavailable",
+        title: "功能暂不可用",
+        impact: "当前功能已被临时停用，未获得任何未经校验的结果。",
+        nextStep: "请稍后返回首页重试；已加载的其他入口仍可使用。",
+      };
   }
 }
 

@@ -8,6 +8,7 @@ import { useJsonResource } from "../hooks/useJsonResource";
 import { DocumentNotice } from "../components/DocumentNotice";
 import { FailurePanel } from "../components/FailurePanel";
 import { Icon } from "../components/Icon";
+import { safeExternalUrl } from "../util/safeUrl";
 import { InfoSection } from "../components/InfoSection";
 import { StatusPanel } from "../components/StatusPanel";
 
@@ -239,18 +240,27 @@ function LegalSourceCard({ source }: { source: LegalSourceReference }) {
           ))}
         </ul>
       </div>
-      {source.officialUrl === null ? (
-        <p className="source-card__link source-card__link--missing" data-testid={`source-link-missing-${source.sourceId}`}>
-          官方链接未提供，请自行到官方渠道核验。
-        </p>
-      ) : (
-        <p className="source-card__link">
-          <a href={source.officialUrl} rel="noreferrer noopener" target="_blank">
-            打开官方来源
-          </a>
-          <span className="source-card__retrieved">（取得日期：{formatDate(source.retrievedAt)}）</span>
-        </p>
-      )}
+      {(() => {
+        const officialUrl = safeExternalUrl(source.officialUrl);
+        if (officialUrl === null) {
+          return (
+            <p
+              className="source-card__link source-card__link--missing"
+              data-testid={`source-link-missing-${source.sourceId}`}
+            >
+              官方链接未提供或协议不受支持，请自行到官方渠道核验。
+            </p>
+          );
+        }
+        return (
+          <p className="source-card__link">
+            <a href={officialUrl} rel="noreferrer noopener" target="_blank">
+              打开官方来源
+            </a>
+            <span className="source-card__retrieved">（取得日期：{formatDate(source.retrievedAt)}）</span>
+          </p>
+        );
+      })()}
     </article>
   );
 }

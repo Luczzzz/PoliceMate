@@ -24,6 +24,7 @@ import type {
   ANALYSIS_TOTAL_QUESTION_LIMIT,
   ANSWER_MAX_CHARACTERS,
   CASE_TEXT_MAX_CHARACTERS,
+  countCharacters,
   DECISIVE_ANSWER_KIND_LABELS,
   FACT_CATEGORY_LABELS,
   FACT_STATUS_LABELS,
@@ -36,6 +37,7 @@ import type {
   QuestionPoolResult,
   ReportGenerationRequest,
 } from "../providers/types";
+import type { TelemetrySink } from "../telemetry";
 import { buildReport, validateReportResult } from "./report";
 
 /**
@@ -50,7 +52,61 @@ import { buildReport, validateReportResult } from "./report";
 
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 
-export type EngineDeps = Pick<CaseAnalysisProvider, "extractCaseFacts" | "proposeDecisiveQuestions" | "generateReport">;
+/** 事实提取与追问单次最多等待 30 秒；完整报告最多等待 90 秒。 */
+export const DEFAULT_ANALYSIS_TIMEOUT_MS = 30 * 1000;
+export const DEFAULT_REPORT_TIMEOUT_MS = 90 * 1000;
+/** 空结果、结构错误、来源校验失败或超时最多自动重试一次。 */
+export const DEFAULT_MAX_ATTEMPTS = 2;
+
+export type EngineDeps = Pick<
+  CaseAnalysisProvider,
+  "extractCaseFacts" | "proposeDecisiveQuestions" | "generateReport"
+>;
+
+/** 外部边界超时；测试可注入更短的上限。 */
+export class AnalysisTimeoutError extends Error {
+  constructor(readonly timeoutMs: number) {
+    super(`外部边界在 ${timeoutMs} 毫秒内没有返回结果。`);
+    this.name = "AnalysisTimeoutError";
+  }
+}
+
+/** 外部边界在有限次重试后仍不可用；必须整体失败关闭。 */
+export class AnalysisUpstreamError extends Error {
+  readonly statusCode = 503;
+  readonly apiCode = "service_unavailable" as const;
+  constructor(
+    message: string,
+    readonly attempts: number,
+    readonly underlying: unknown,
+  ) {
+    super(message);
+    this.name = "AnalysisUpstreamError";
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new AnalysisTimeoutError(timeoutMs)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+export interface AnalysisEngineOptions {
+  analysisTimeoutMs?: number;
+  reportTimeoutMs?: number;
+  maxAttempts?: number;
+  telemetry?: TelemetrySink;
+}
 
 interface AnalysisSession {
   sessionId: string;
@@ -86,10 +142,17 @@ interface SnapshotBackup {
 /** 输入校验失败；message 为面向民警的说明。 */
 export class AnalysisInputError extends Error {
   readonly statusCode: number;
-  constructor(message: string, statusCode = 400) {
+  /** 可选的显式用户可见错误分类；未给出时按状态码推导。 */
+  readonly apiCode?: import("@policymate/contracts").ApiErrorCode;
+  constructor(
+    message: string,
+    statusCode = 400,
+    apiCode?: import("@policymate/contracts").ApiErrorCode,
+  ) {
     super(message);
     this.name = "AnalysisInputError";
     this.statusCode = statusCode;
+    this.apiCode = apiCode;
   }
 }
 
@@ -119,14 +182,14 @@ export function validateCaseText(raw: unknown): string {
     throw new AnalysisInputError("案情内容必须以纯文本提交。");
   }
   // 按 Unicode 码点计数，避免把代理对算作两个字符。
-  const codePoints = Array.from(raw);
-  if (codePoints.length === 0 || raw.trim() === "") {
+  const codePointCount = countCharacters(raw);
+  if (codePointCount === 0 || raw.trim() === "") {
     throw new AnalysisInputError("请输入案情内容后再提交。");
   }
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(raw)) {
     throw new AnalysisInputError("案情内容包含不支持的格式或特殊字符，仅接受纯文本。");
   }
-  if (codePoints.length > CASE_TEXT_MAX_CHARACTERS) {
+  if (codePointCount > CASE_TEXT_MAX_CHARACTERS) {
     throw new AnalysisInputError(
       `案情内容超过 ${CASE_TEXT_MAX_CHARACTERS.toLocaleString("zh-Hans-CN")} 字符上限，请精简后重新输入；系统不会截断内容。`,
     );
@@ -145,7 +208,7 @@ export function validateStatementText(raw: unknown, label: string, maxCharacters
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(trimmed)) {
     throw new AnalysisInputError(`${label}包含不支持的格式或特殊字符，仅接受纯文本。`);
   }
-  if (Array.from(trimmed).length > maxCharacters) {
+  if (countCharacters(trimmed) > maxCharacters) {
     throw new AnalysisInputError(`${label}超过 ${maxCharacters.toLocaleString("zh-Hans-CN")} 字符上限；系统不会截断内容。`);
   }
   return trimmed;
@@ -157,6 +220,9 @@ export function validateExtractionResult(result: CaseExtractionResult): void {
     throw new AnalysisContractError("提取结果缺少事实列表。");
   }
   const seen = new Set<string>();
+  if (result.facts.length === 0) {
+    throw new AnalysisContractError("提取结果为空，未形成任何候选事实。");
+  }
   for (const fact of result.facts) {
     if (!isRecord(fact)) throw new AnalysisContractError("候选事实格式无效。");
     const factId = fact.factId;
@@ -368,8 +434,53 @@ function toDecisiveQuestions(
 
 export class AnalysisEngine {
   private readonly sessions = new Map<string, AnalysisSession>();
+  private readonly analysisTimeoutMs: number;
+  private readonly reportTimeoutMs: number;
+  private readonly maxAttempts: number;
+  private readonly telemetry: TelemetrySink | undefined;
 
-  constructor(private readonly deps: EngineDeps) {}
+  constructor(
+    private readonly deps: EngineDeps,
+    options: AnalysisEngineOptions = {},
+  ) {
+    this.analysisTimeoutMs = options.analysisTimeoutMs ?? DEFAULT_ANALYSIS_TIMEOUT_MS;
+    this.reportTimeoutMs = options.reportTimeoutMs ?? DEFAULT_REPORT_TIMEOUT_MS;
+    this.maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
+    this.telemetry = options.telemetry;
+  }
+
+  /**
+   * 调用外部边界：在总超时预算内，空结果、结构错误、来源校验失败或超时
+   * 最多自动重试一次；仍失败则整体失败关闭，不展示半成品。
+   *
+   * 单次尝试的时限为 `总预算 / 最多尝试次数`，保证“最多等待 30 秒 / 90 秒”
+   * 是包含重试在内的总预算，而不是单次尝试翻倍。
+   */
+  private async callUpstream<T>(
+    label: string,
+    kind: string,
+    totalTimeoutMs: number,
+    attempt: () => Promise<T>,
+  ): Promise<T> {
+    const perAttemptMs = Math.max(1, Math.floor(totalTimeoutMs / this.maxAttempts));
+    let lastError: unknown;
+    for (let tries = 1; tries <= this.maxAttempts; tries += 1) {
+      try {
+        return await withTimeout(attempt(), perAttemptMs);
+      } catch (error) {
+        lastError = error;
+        const wasTimeout = error instanceof AnalysisTimeoutError;
+        this.telemetry?.record({
+          requestId: randomUUID(),
+          timestamp: new Date().toISOString(),
+          kind,
+          outcome: tries < this.maxAttempts ? "retry" : wasTimeout ? "timeout" : "error",
+          attempts: tries,
+        });
+      }
+    }
+    throw new AnalysisUpstreamError(`${label}暂时不可用，已停止本次处理。`, this.maxAttempts, lastError);
+  }
 
   private pruneExpired(now: number): void {
     for (const [sessionId, session] of this.sessions) {
@@ -400,15 +511,32 @@ export class AnalysisEngine {
     const caseText = validateCaseText(request?.caseText);
     this.pruneExpired(now.getTime());
 
-    const extraction = await this.deps.extractCaseFacts({ caseText });
-    validateExtractionResult(extraction);
+    const extraction = await this.callUpstream(
+      "候选事实提取",
+      "analysis.extraction",
+      this.analysisTimeoutMs,
+      async () => {
+        const result = await this.deps.extractCaseFacts({ caseText });
+        validateExtractionResult(result);
+        return result;
+      },
+    );
+    this.telemetry?.record({
+      requestId: randomUUID(),
+      timestamp: new Date().toISOString(),
+      kind: "analysis.extraction",
+      outcome: "ok",
+      inputCharacters: countCharacters(caseText),
+      outputItems: extraction.facts.length,
+      attempts: 1,
+    });
 
     const session: AnalysisSession = {
       sessionId: randomUUID(),
       createdAt: now.getTime(),
       lastActiveAt: now.getTime(),
       stage: "confirming_facts",
-      caseCharacterCount: Array.from(caseText).length,
+      caseCharacterCount: countCharacters(caseText),
       facts: extraction.facts.map((fact) => ({ ...fact })),
       questions: [],
       answers: [],
@@ -452,9 +580,28 @@ export class AnalysisEngine {
       snapshot: { ...session.snapshot },
       legalSources: legalSources.map((source) => ({ ...source, articles: source.articles.map((article) => ({ ...article })) })),
     };
-    const result = await this.deps.generateReport(providerRequest);
     const state = toSessionState(session, now);
-    validateReportResult(result, state, legalSources);
+    const result = await this.callUpstream(
+      "报告生成",
+      "analysis.report",
+      this.reportTimeoutMs,
+      async () => {
+        const generated = await this.deps.generateReport!(providerRequest);
+        validateReportResult(generated, state, legalSources);
+        return generated;
+      },
+    );
+    this.telemetry?.record({
+      requestId: request.requestId,
+      timestamp: new Date().toISOString(),
+      kind: "analysis.report",
+      outcome: "ok",
+      outputItems: result.modules.length,
+      matchedSourceIds: legalSources
+        .filter((source) => source.status === "current")
+        .map((source) => source.sourceId),
+      attempts: 1,
+    });
     return buildReport(state, request.requestId, now.toISOString(), result, releaseId);
   }
 
@@ -590,16 +737,25 @@ export class AnalysisEngine {
       return toSessionState(session, now);
     }
 
-    const pool = await this.deps.proposeDecisiveQuestions({
-      facts: session.facts.map((fact) => ({ ...fact })),
-      answers: session.answers.map((answer) => ({
-        questionId: answer.questionId,
-        topic: answer.topic,
-        kind: answer.kind,
-      })),
-      askedQuestionIds: session.answers.map((answer) => answer.questionId),
-      maxQuestions: perRoundBudget,
-    });    validateQuestionPoolResult(pool);
+    const pool = await this.callUpstream(
+      "决定性追问选题",
+      "analysis.questions",
+      this.analysisTimeoutMs,
+      async () => {
+        const proposed = await this.deps.proposeDecisiveQuestions({
+          facts: session.facts.map((fact) => ({ ...fact })),
+          answers: session.answers.map((answer) => ({
+            questionId: answer.questionId,
+            topic: answer.topic,
+            kind: answer.kind,
+          })),
+          askedQuestionIds: session.answers.map((answer) => answer.questionId),
+          maxQuestions: perRoundBudget,
+        });
+        validateQuestionPoolResult(proposed);
+        return proposed;
+      },
+    );
 
     if (pool.questions.length === 0) {
       this.endFollowUp(session, "no_gaps");
@@ -800,13 +956,21 @@ export class AnalysisEngine {
 
     const remainingTotal = ANALYSIS_TOTAL_QUESTION_LIMIT - session.questionsAskedTotal;
     const perRoundBudget = Math.min(ANALYSIS_PER_ROUND_LIMIT, remainingTotal);
-    const pool = await this.deps.proposeDecisiveQuestions({
-      facts: session.facts.map((fact) => ({ ...fact })),
-      answers: [],
-      askedQuestionIds: [],
-      maxQuestions: perRoundBudget,
-    });
-    validateQuestionPoolResult(pool);
+    const pool = await this.callUpstream(
+      "决定性追问选题",
+      "analysis.questions",
+      this.analysisTimeoutMs,
+      async () => {
+        const proposed = await this.deps.proposeDecisiveQuestions({
+          facts: session.facts.map((fact) => ({ ...fact })),
+          answers: [],
+          askedQuestionIds: [],
+          maxQuestions: perRoundBudget,
+        });
+        validateQuestionPoolResult(proposed);
+        return proposed;
+      },
+    );
 
     if (pool.questions.length === 0 || perRoundBudget <= 0) {
       this.endFollowUp(session, "no_gaps");

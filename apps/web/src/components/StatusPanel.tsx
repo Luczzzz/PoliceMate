@@ -7,7 +7,9 @@ export type StatusVariant =
   | "contract"
   | "unavailable"
   | "not_found"
-  | "page_error";
+  | "page_error"
+  | "throttled"
+  | "input";
 
 const SYMBOLS: Record<StatusVariant, IconName> = {
   offline: "wifiOff",
@@ -16,6 +18,8 @@ const SYMBOLS: Record<StatusVariant, IconName> = {
   unavailable: "alert",
   not_found: "help",
   page_error: "alert",
+  throttled: "clock",
+  input: "input",
 };
 
 const ALERT_VARIANTS: ReadonlySet<StatusVariant> = new Set([
@@ -23,6 +27,8 @@ const ALERT_VARIANTS: ReadonlySet<StatusVariant> = new Set([
   "service",
   "contract",
   "page_error",
+  "throttled",
+  "input",
 ]);
 
 export interface StatusPanelProps {

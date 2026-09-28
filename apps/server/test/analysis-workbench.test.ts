@@ -5,7 +5,12 @@ import type { AppConfig } from "../src/config";
 import { AnalysisEngine } from "../src/analysis/engine";
 import { createFixtureControls } from "../src/providers/fixture";
 
-const contractHeaders = { "x-pm-contract-version": "1.0" };
+import { anonymousTokens } from "../src/security";
+
+const contractHeaders = {
+  "x-pm-contract-version": "1.0",
+  "x-pm-anonymous-token": anonymousTokens.issue().token,
+};
 const SAMPLE_TEXT = "3月2日晚上，张某在城南市场门口殴打李某。李某手部擦伤。";
 
 function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
@@ -203,7 +208,8 @@ describe("六模块报告：临时工作台结构化内容", () => {
         snapshotHash: session.snapshotHash,
       },
     });
-    expect(response.statusCode).toBe(500);
+    expect(response.statusCode).toBe(503);
+    expect(response.json().error.code).toBe("service_unavailable");
     await app.close();
   });
 });
