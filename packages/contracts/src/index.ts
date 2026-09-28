@@ -83,7 +83,8 @@ export type AnalysisStage =
   | "confirming_facts"
   | "collecting_answers"
   | "ready_to_analyze"
-  | "snapshot_confirmed";
+  | "snapshot_confirmed"
+  | "modifying_facts";
 
 /** 事实状态。只有 `confirmed` 可以直接支撑主结论。 */
 export type FactStatus = "candidate" | "confirmed" | "denied" | "unknown" | "disputed";
@@ -198,6 +199,10 @@ export interface CandidateFact {
   riskCategory: UrgentRiskCategory | null;
   /** 是否已被排除（不纳入本次分析）。 */
   excluded: boolean;
+  /** 被本事实替代的旧事实项 ID；本事实不是替代项时为 `null`。 */
+  replacesFactId: string | null;
+  /** 替代本事实的较新事实项 ID；本事实未被替代时为 `null`。 */
+  supersededByFactId: string | null;
 }
 
 /** 决定性追问主题，对应锁定的选择优先级。 */
@@ -299,6 +304,18 @@ export interface FactSnapshot {
   confirmedAt: string;
 }
 
+/**
+ * 待确认的事实修改。民警从报告进入补充或修改事实时创建；
+ * 在确认新事实快照前，旧报告仍然可见并必须显示“修改尚未应用”。
+ */
+export interface PendingFactModification {
+  /** 修改所基于的快照版本。 */
+  baseSnapshotVersion: number;
+  /** 修改所基于的快照哈希。 */
+  baseSnapshotHash: string;
+  startedAt: string;
+}
+
 /* ---------- 六模块分析报告 ---------- */
 
 export type ReportStatus =
@@ -365,6 +382,49 @@ export interface ReportTraceLink {
   basisKind: "formal_basis" | "practical_check";
 }
 
+/** 证据核查清单的优先级；展示名称由后端目录提供。 */
+export type EvidencePriority = "high" | "medium" | "low";
+
+export const EVIDENCE_PRIORITY_LABELS: Record<EvidencePriority, string> = {
+  high: "高优先级",
+  medium: "中优先级",
+  low: "低优先级",
+};
+
+/** 证据当前掌握状态；这是报告结构化内容，不是临时标记。 */
+export type EvidenceHoldingStatus = "held" | "partial" | "not_held" | "unknown";
+
+export const EVIDENCE_HOLDING_STATUS_LABELS: Record<EvidenceHoldingStatus, string> = {
+  held: "已掌握",
+  partial: "部分掌握",
+  not_held: "尚未掌握",
+  unknown: "情况不明",
+};
+
+/** 核心证据核查清单中的一条结构化项目。 */
+export interface ReportEvidenceChecklistItem {
+  /** 批次内稳定项目 ID，用于临时标记；不写入事实或 Dify 请求。 */
+  itemId: string;
+  text: string;
+  purpose: string | null;
+  sourceHint: string | null;
+  preservationRisk: string | null;
+  priority: EvidencePriority;
+  priorityLabel: string;
+  holdingStatus: EvidenceHoldingStatus;
+  holdingStatusLabel: string;
+}
+
+/** 分角色询问要点中的一条结构化项目。 */
+export interface ReportInterviewPointItem {
+  itemId: string;
+  text: string;
+  /** 询问对象角色的稳定 ID；展示名称由 `roleLabel` 提供。 */
+  role: string;
+  roleLabel: string;
+  topic: string | null;
+}
+
 export interface ReportModule {
   id: ReportModuleId;
   label: string;
@@ -373,6 +433,10 @@ export interface ReportModule {
   items: string[];
   traceLinks: ReportTraceLink[];
   failureReason: string | null;
+  /** 仅“核心证据核查清单”使用的结构化项目；其余模块为空数组。 */
+  evidenceItems: ReportEvidenceChecklistItem[];
+  /** 仅“分角色询问要点”使用的结构化项目；其余模块为空数组。 */
+  interviewItems: ReportInterviewPointItem[];
 }
 
 export interface ReportParticipantBehaviorSummary {
@@ -381,6 +445,28 @@ export interface ReportParticipantBehaviorSummary {
   factIds: string[];
   note: string;
 }
+
+/**
+ * 报告中的文书任务。只携带程序类别、办理阶段、适用对象与案情标签等结构化条件，
+ * 用于筛选候选文书范例；不携带任何案情事实，不使用结论性表达。
+ */
+export interface ReportDocumentTask {
+  taskId: string;
+  title: string;
+  description: string;
+  procedureCategory: ProcedureCategory;
+  procedureCategoryLabel: string;
+  stageId: HandlingStageId;
+  stageLabel: string;
+  applicableRoles: string[];
+  caseTags: string[];
+  /** 固定非结论性边界说明。 */
+  boundaryStatement: string;
+}
+
+/** 文书任务候选跳转的常驻说明：不自动选择唯一范例，不代入案情事实。 */
+export const REPORT_DOCUMENT_TASK_BOUNDARY =
+  "以下为可能适用的候选范例，不代表必须制作；请核对差异和选择前需核验条件后自行判断。";
 
 export interface AnalysisReport {
   contractVersion: string;
@@ -397,6 +483,7 @@ export interface AnalysisReport {
   contentReleaseId: string;
   workflowVersion: string;
   modules: ReportModule[];
+  documentTasks: ReportDocumentTask[];
 }
 
 export interface GenerateReportRequest {
@@ -452,6 +539,8 @@ export interface AnalysisSessionState {
   expectedStatusNote: string | null;
   independentMatters: IndependentMatters;
   snapshot: FactSnapshot | null;
+  /** 当前是否有尚未应用的事实修改；有值时旧报告必须显示“修改尚未应用”。 */
+  modification: PendingFactModification | null;
 }
 
 export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {
@@ -459,6 +548,7 @@ export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {
   collecting_answers: "决定性追问",
   ready_to_analyze: "分析前确认",
   snapshot_confirmed: "事实快照已确认",
+  modifying_facts: "补充或修改事实",
 };
 
 /** 体验上限常量：最多三轮、每轮五问、总计十二问。 */
@@ -483,6 +573,18 @@ export interface FactStatusUpdateRequest {
 /** `POST …/facts` 请求：新增系统未提取出的遗漏事实。 */
 export interface AddFactRequest {
   statement: string;
+}
+
+/**
+ * `POST …/facts/:factId/revision` 请求：在“补充或修改事实”阶段创建替代事实项。
+ *
+ * - `replace`：新版本替代旧版本，旧版本退出本次分析；
+ * - `dispute`：两个版本都不能排除，两个版本都被记录为争议事实，
+ *   由系统保留分支而不是静默选择其中一个。
+ */
+export interface ReviseFactRequest {
+  statement: string;
+  resolution: "replace" | "dispute";
 }
 
 /** `POST …/rounds` 请求。开始追问时 `answers` 为空数组；提交本轮回答时必填。 */
@@ -656,6 +758,42 @@ export interface DocumentExampleDetailResponse {
   releaseId: string;
   notice: DocumentExampleNotice;
   example: DocumentExampleVariantDetail;
+}
+
+/** 文书任务候选筛选请求：只使用结构化办案条件。 */
+export interface DocumentTaskCandidateRequest {
+  contractVersion: string;
+  procedureCategory: ProcedureCategory;
+  stageId: HandlingStageId;
+  applicableRoles: string[];
+  caseTags: string[];
+}
+
+/** 文书任务候选范例。 */
+export interface DocumentTaskCandidate {
+  exampleId: string;
+  formalName: string;
+  documentTypeName: string;
+  procedureCategoryLabel: string;
+  stageLabel: string;
+  contentStatusLabel: string;
+  applicableRoles: string[];
+  caseTags: string[];
+  /** 与同批次其他候选的差异说明。 */
+  difference: string;
+  /** 选择前需核验的条件。 */
+  preflightChecks: string[];
+}
+
+/** `POST /api/v1/document-examples/task-candidates` 响应。 */
+export interface DocumentTaskCandidatesResponse {
+  contractVersion: string;
+  generatedAt: string;
+  releaseId: string;
+  notice: DocumentExampleNotice;
+  /** 固定非结论性说明。 */
+  selectionBoundary: string;
+  candidates: DocumentTaskCandidate[];
 }
 
 /** 测试控制：修改单个范例的内容状态。 */

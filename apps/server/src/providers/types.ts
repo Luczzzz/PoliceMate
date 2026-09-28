@@ -6,10 +6,13 @@ import type {
   DocumentExampleNotice,
   DocumentExampleVariantDetail,
   DocumentExampleVariantSummary,
+  DocumentTaskCandidateRequest,
+  DocumentTaskCandidate,
   FactCategory,
   HandlingStageCatalogEntry,
   IndependentMatters,
   QuestionTopic,
+  ReportDocumentTask,
   UrgentRiskCategory,
   FactSnapshot,
   LegalSourceReference,
@@ -99,6 +102,7 @@ export interface ReportGenerationResult {
   participantBehaviorSummary: AnalysisReport["participantBehaviorSummary"];
   factLimitations: string[];
   modules: ReportModule[];
+  documentTasks: ReportDocumentTask[];
   contentReleaseId: string;
   workflowVersion: string;
 }
@@ -149,6 +153,8 @@ export interface GovernedContentProvider {
   listExamples(): Promise<GovernedContentExampleIndex>;
   getExample(exampleId: string): Promise<GovernedContentExampleLookup>;
   listLegalSources?(): Promise<LegalSourceReference[]>;
+  /** 只依据结构化办案条件筛选候选范例；不接收案情事实。 */
+  listTaskCandidates?(request: DocumentTaskCandidateRequest): Promise<DocumentTaskCandidate[]>;
 }
 
 export interface Providers {

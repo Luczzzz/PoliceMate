@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AnalysisFlowProvider } from "./analysis/AnalysisSessionContext";
+import { WorkbenchProvider } from "./analysis/WorkbenchContext";
 import { ShellProvider } from "./app/ShellContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { OfflineBanner } from "./components/OfflineBanner";
@@ -8,6 +9,7 @@ import { CandidateFactsPage } from "./pages/analysis/CandidateFactsPage";
 import { DecisiveQuestionsPage } from "./pages/analysis/DecisiveQuestionsPage";
 import { PreAnalysisReviewPage } from "./pages/analysis/PreAnalysisReviewPage";
 import { AnalysisReportPage } from "./pages/analysis/AnalysisReportPage";
+import { ModifyFactsPage } from "./pages/analysis/ModifyFactsPage";
 import { DataUsePage } from "./pages/DataUsePage";
 import { DocumentExampleDetailPage } from "./pages/DocumentExampleDetailPage";
 import { DocumentsRoute } from "./pages/DocumentsPage";
@@ -27,7 +29,8 @@ export function App() {
           <main id="main" className="app-main">
             <ShellProvider>
               <AnalysisFlowProvider>
-                <Routes>
+                <WorkbenchProvider>
+                  <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/data-use" element={<DataUsePage />} />
                   <Route path="/analysis" element={<CaseInputPage />} />
@@ -35,6 +38,7 @@ export function App() {
                   <Route path="/analysis/questions" element={<DecisiveQuestionsPage />} />
                   <Route path="/analysis/review" element={<PreAnalysisReviewPage />} />
                   <Route path="/analysis/report" element={<AnalysisReportPage />} />
+                  <Route path="/analysis/modify" element={<ModifyFactsPage />} />
                   <Route
                     path="/documents"
                     element={<DocumentsRoute />}
@@ -44,7 +48,8 @@ export function App() {
                     <Route path="/__test__/throw" element={<TestThrowPage />} />
                   ) : null}
                   <Route path="*" element={<NotFoundPage />} />
-                </Routes>
+                  </Routes>
+                </WorkbenchProvider>
               </AnalysisFlowProvider>
             </ShellProvider>
           </main>

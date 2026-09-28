@@ -1906,3 +1906,226 @@ svg {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* ---------- 报告临时工作台 ---------- */
+
+.report-module--workbench {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.workbench-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.workbench-header__title {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.workbench-header__toggle {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.workbench-controls {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.workbench-boundary {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: var(--surface-soft);
+  border: 1px solid var(--hairline);
+  color: var(--body);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.workbench-count {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--charcoal);
+  font-variant-numeric: tabular-nums;
+}
+
+.workbench-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.workbench-item {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.workbench-item__text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.workbench-item__meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.75rem;
+  color: var(--mute);
+  font-size: 0.75rem;
+}
+
+.workbench-marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* ---------- 事实修改 ---------- */
+
+.modification-banner {
+  padding: 0.9rem 1rem;
+  border: 1px solid #b54708;
+  border-left: 4px solid #b54708;
+  border-radius: 12px;
+  background: #fffaeb;
+}
+
+.modification-banner h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1rem;
+  color: #b54708;
+}
+
+.modification-banner p {
+  margin: 0 0 0.6rem;
+  color: var(--body);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.revision-editor {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.revision-editor__panel {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+/* ---------- 文书任务与候选范例 ---------- */
+
+.document-tasks {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.document-task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.document-task {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.document-task__title {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+
+.document-task__description {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--body);
+  line-height: 1.55;
+}
+
+.document-task__meta {
+  margin: 0;
+  color: var(--mute);
+  font-size: 0.75rem;
+}
+
+.task-candidates {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.task-candidate {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.task-candidate__name {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--ink);
+}
+
+.task-candidate__meta {
+  margin: 0;
+  color: var(--mute);
+  font-size: 0.75rem;
+}
+
+.task-candidate__difference {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--body);
+  line-height: 1.55;
+}
+
+.task-candidate__preflight ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--body);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.task-candidate__preflight h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--charcoal);
+}
+
+.task-candidate__preflight p {
+  margin: 0.3rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--body);
+}

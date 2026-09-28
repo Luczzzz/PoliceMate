@@ -62,13 +62,14 @@ async function answerRound(
       await card.locator("textarea").fill(text);
     }
   }
+  await expect(page.getByTestId("submit-round")).toBeEnabled();
   await page.getByTestId("submit-round").click();
-  await expect
-    .poll(async () => {
-      if ((await page.getByTestId("pre-analysis-page").count()) > 0) return "review";
-      return page.getByTestId("round-progress").innerText().catch(() => "");
-    }, { timeout: 15_000 })
-    .not.toBe(before);
+  await Promise.race([
+    page.getByTestId("pre-analysis-page").waitFor({ state: "visible", timeout: 30_000 }),
+    page
+      .locator('[data-testid="round-progress"]', { hasNotText: before })
+      .waitFor({ state: "visible", timeout: 30_000 }),
+  ]);
 }
 
 /** 从事实确认开始，一直回答到进入分析前确认页。 */

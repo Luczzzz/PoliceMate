@@ -10,7 +10,9 @@ import type {
   CandidateFact,
   CreateAnalysisRequest,
   DecisiveQuestion,
+  FactSnapshot,
   FactStatus,
+  ReviseFactRequest,
   UrgentRiskCategory,
   UrgentRiskPrompt,
   GenerateReportRequest,
@@ -64,7 +66,21 @@ interface AnalysisSession {
   followUpEnded: boolean;
   endReason: "limits_reached" | "no_gaps" | null;
   independentMatters: AnalysisSessionState["independentMatters"];
-  snapshot: AnalysisSessionState["snapshot"];
+  snapshot: FactSnapshot | null;
+  /** 快照确认时的完整可变状态备份，用于放弃未确认的修改。 */
+  snapshotBackup: SnapshotBackup | null;
+  /** 未确认的事实修改；非 `null` 时旧报告仍可见但必须标记“修改尚未应用”。 */
+  modification: { baseSnapshotVersion: number; baseSnapshotHash: string; startedAt: number } | null;
+}
+
+interface SnapshotBackup {
+  facts: CandidateFact[];
+  answers: AnswerRecord[];
+  roundsCompleted: number;
+  questionsAskedTotal: number;
+  followUpEnded: boolean;
+  endReason: "limits_reached" | "no_gaps" | null;
+  snapshot: FactSnapshot;
 }
 
 /** 输入校验失败；message 为面向民警的说明。 */
@@ -210,6 +226,14 @@ function toSessionState(session: AnalysisSession, now: Date): AnalysisSessionSta
     expectedStatusNote: buildExpectedStatusNote(session),
     independentMatters: { ...session.independentMatters },
     snapshot: session.snapshot === null ? null : { ...session.snapshot },
+    modification:
+      session.modification === null
+        ? null
+        : {
+            baseSnapshotVersion: session.modification.baseSnapshotVersion,
+            baseSnapshotHash: session.modification.baseSnapshotHash,
+            startedAt: new Date(session.modification.startedAt).toISOString(),
+          },
   };
 }
 
@@ -316,7 +340,7 @@ export function snapshotHash(sessionId: string, facts: CandidateFact[], answers:
 function assertMutable(session: AnalysisSession): void {
   if (session.stage === "snapshot_confirmed") {
     throw new AnalysisInputError(
-      "本次分析的事实快照已确认并锁定，不能再修改事实或回答；如需调整，请清除本次分析后重新开始。",
+      "本次分析的事实快照已确认并锁定，不能再修改事实或回答；如需调整，请从报告进入“补充或修改事实”。",
       409,
     );
   }
@@ -394,6 +418,8 @@ export class AnalysisEngine {
       endReason: null,
       independentMatters: extraction.independentMatters,
       snapshot: null,
+      snapshotBackup: null,
+      modification: null,
     };
     this.sessions.set(session.sessionId, session);
     return toSessionState(session, now);
@@ -486,6 +512,8 @@ export class AnalysisEngine {
       confirmedAt: now.toISOString(),
       riskCategory: null,
       excluded: false,
+      replacesFactId: null,
+      supersededByFactId: null,
     };
     session.facts.push(fact);
     return toSessionState(session, now);
@@ -513,6 +541,9 @@ export class AnalysisEngine {
 
     if (session.stage === "ready_to_analyze" || session.stage === "snapshot_confirmed") {
       throw new AnalysisInputError("追问已经结束，当前处于分析前确认阶段。", 409);
+    }
+    if (session.stage === "modifying_facts") {
+      throw new AnalysisInputError("请先确认新的事实快照，系统会自动重新计算决定性追问。", 409);
     }
 
     // 开始第一轮。
@@ -663,25 +694,189 @@ export class AnalysisEngine {
           confirmedAt: now.toISOString(),
           riskCategory: null,
           excluded: false,
+          replacesFactId: null,
+          supersededByFactId: null,
         });
       }
     }
   }
 
-  /** 分析前确认：用户主动确认后形成不可变事实快照。 */
-  confirmSnapshot(sessionId: string, now = new Date()): AnalysisSessionState {
+  /**
+   * 确认事实快照。
+   *
+   * - 从分析前确认页确认：形成首个（或下一轮）不可变快照并锁定会话；
+   * - 从“补充或修改事实”确认：形成新版本快照，旧报告立即失效，
+   *   系统丢弃旧回答并重新计算决定性追问。
+   */
+  async confirmSnapshot(sessionId: string, now = new Date()): Promise<AnalysisSessionState> {
     const session = this.getLiveSession(sessionId, now.getTime());
+    if (session.stage === "modifying_facts") {
+      return this.applyModification(session, now);
+    }
     if (session.stage !== "ready_to_analyze") {
       throw new AnalysisInputError("只有完成决定性追问后才能确认事实快照。", 409);
     }
+    const version = (session.snapshot?.snapshotVersion ?? 0) + 1;
     const hash = snapshotHash(session.sessionId, session.facts, session.answers);
     session.snapshot = {
-      snapshotVersion: 1,
+      snapshotVersion: version,
       snapshotHash: hash,
       confirmedAt: now.toISOString(),
     };
+    session.snapshotBackup = this.captureSnapshotBackup(session);
     session.stage = "snapshot_confirmed";
     session.questions = [];
+    session.modification = null;
+    return toSessionState(session, now);
+  }
+
+  private captureSnapshotBackup(session: AnalysisSession): SnapshotBackup {
+    return {
+      facts: session.facts.map((fact) => ({ ...fact })),
+      answers: session.answers.map((answer) => ({ ...answer })),
+      roundsCompleted: session.roundsCompleted,
+      questionsAskedTotal: session.questionsAskedTotal,
+      followUpEnded: session.followUpEnded,
+      endReason: session.endReason,
+      snapshot: { ...(session.snapshot as FactSnapshot) },
+    };
+  }
+
+  /** 从报告进入“补充或修改事实”：创建待确认修改，旧报告仍保持可见。 */
+  beginModification(sessionId: string, now = new Date()): AnalysisSessionState {
+    const session = this.getLiveSession(sessionId, now.getTime());
+    if (session.stage !== "snapshot_confirmed" || session.snapshot === null) {
+      throw new AnalysisInputError("只有已生成报告的已确认事实快照才能进入补充或修改事实。", 409);
+    }
+    session.stage = "modifying_facts";
+    session.modification = {
+      baseSnapshotVersion: session.snapshot.snapshotVersion,
+      baseSnapshotHash: session.snapshot.snapshotHash,
+      startedAt: now.getTime(),
+    };
+    return toSessionState(session, now);
+  }
+
+  /** 放弃尚未确认的修改：恢复到进入修改前的事实、回答与快照。 */
+  discardModification(sessionId: string, now = new Date()): AnalysisSessionState {
+    const session = this.getLiveSession(sessionId, now.getTime());
+    if (session.stage !== "modifying_facts" || session.snapshotBackup === null) {
+      throw new AnalysisInputError("当前没有待确认的事实修改。", 409);
+    }
+    const backup = session.snapshotBackup;
+    session.facts = backup.facts.map((fact) => ({ ...fact }));
+    session.answers = backup.answers.map((answer) => ({ ...answer }));
+    session.roundsCompleted = backup.roundsCompleted;
+    session.questionsAskedTotal = backup.questionsAskedTotal;
+    session.followUpEnded = backup.followUpEnded;
+    session.endReason = backup.endReason;
+    session.snapshot = { ...backup.snapshot };
+    session.questions = [];
+    session.modification = null;
+    session.stage = "snapshot_confirmed";
+    return toSessionState(session, now);
+  }
+
+  /**
+   * 确认修改：形成新版本不可变快照，旧报告及其临时状态立即失效，
+   * 丢弃旧回答与追问，并基于新事实重新计算决定性追问。
+   */
+  private async applyModification(session: AnalysisSession, now: Date): Promise<AnalysisSessionState> {
+    const version = (session.snapshot?.snapshotVersion ?? 0) + 1;
+    // 不得复用旧结论：回答、追问与轮次全部重算。
+    session.answers = [];
+    session.questions = [];
+    session.roundsCompleted = 0;
+    session.questionsAskedTotal = 0;
+    session.followUpEnded = false;
+    session.endReason = null;
+    session.snapshot = {
+      snapshotVersion: version,
+      snapshotHash: snapshotHash(session.sessionId, session.facts, []),
+      confirmedAt: now.toISOString(),
+    };
+    session.modification = null;
+    session.snapshotBackup = this.captureSnapshotBackup(session);
+
+    const remainingTotal = ANALYSIS_TOTAL_QUESTION_LIMIT - session.questionsAskedTotal;
+    const perRoundBudget = Math.min(ANALYSIS_PER_ROUND_LIMIT, remainingTotal);
+    const pool = await this.deps.proposeDecisiveQuestions({
+      facts: session.facts.map((fact) => ({ ...fact })),
+      answers: [],
+      askedQuestionIds: [],
+      maxQuestions: perRoundBudget,
+    });
+    validateQuestionPoolResult(pool);
+
+    if (pool.questions.length === 0 || perRoundBudget <= 0) {
+      this.endFollowUp(session, "no_gaps");
+      return toSessionState(session, now);
+    }
+    session.questions = toDecisiveQuestions(pool.questions, 1);
+    session.questionsAskedTotal = session.questions.length;
+    session.stage = "collecting_answers";
+    return toSessionState(session, now);
+  }
+
+  /**
+   * 在“补充或修改事实”阶段创建替代事实项。
+   *
+   * - `replace`：新事实替代旧事实，旧事实退出本次分析；
+   * - `dispute`：两个版本都不能排除，两个版本都记录为争议事实，
+   *   由系统保留分支而不是静默选择其中一个。
+   */
+  reviseFact(
+    sessionId: string,
+    factId: string,
+    request: ReviseFactRequest,
+    now = new Date(),
+  ): AnalysisSessionState {
+    const session = this.getLiveSession(sessionId, now.getTime());
+    assertMutable(session);
+    if (session.stage !== "modifying_facts") {
+      throw new AnalysisInputError("只有进入“补充或修改事实”后才能创建替代事实项。", 409);
+    }
+    const target = this.findFact(session, factId);
+    const resolution = request?.resolution;
+    if (resolution !== "replace" && resolution !== "dispute") {
+      throw new AnalysisInputError("替代方式只能是“替代旧版本”或“记为争议事实”。", 400);
+    }
+    const statement = validateStatementText(request?.statement, "替代事实内容", ANSWER_MAX_CHARACTERS);
+    const factIdNew = `fact-revision-${String(session.facts.length + 1).padStart(3, "0")}-${randomUUID().slice(0, 8)}`;
+    const status: FactStatus = resolution === "replace" ? "confirmed" : "disputed";
+
+    if (resolution === "replace") {
+      target.excluded = true;
+      target.supersededByFactId = factIdNew;
+    } else {
+      // 两个版本都不能排除：旧版本保留在本次分析中并改为争议事实。
+      target.excluded = false;
+      target.status = "disputed";
+      target.statusLabel = FACT_STATUS_LABELS.disputed;
+      target.confirmedAt = now.toISOString();
+      target.confirmationMethod = target.confirmationMethod ?? "officer";
+    }
+
+    session.facts.push({
+      factId: factIdNew,
+      category: target.category,
+      categoryLabel: target.categoryLabel,
+      statement,
+      originalWording: statement,
+      value: null,
+      eventRefs: [...target.eventRefs],
+      participantRefs: [...target.participantRefs],
+      behaviorRefs: [...target.behaviorRefs],
+      status,
+      statusLabel: FACT_STATUS_LABELS[status],
+      sourceRound: null,
+      confirmationMethod: "officer_added",
+      confirmedAt: now.toISOString(),
+      riskCategory: resolution === "replace" ? target.riskCategory : null,
+      excluded: false,
+      replacesFactId: factId,
+      supersededByFactId: null,
+    });
     return toSessionState(session, now);
   }
 

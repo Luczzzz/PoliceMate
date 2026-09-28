@@ -1,0 +1,467 @@
+import { describe, expect, it } from "vitest";
+import type { AnalysisReport, CandidateFact, CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
+import { buildApp } from "../src/app";
+import type { AppConfig } from "../src/config";
+import { AnalysisEngine } from "../src/analysis/engine";
+import { createFixtureControls } from "../src/providers/fixture";
+
+const contractHeaders = { "x-pm-contract-version": "1.0" };
+const SAMPLE_TEXT = "3月2日晚上，张某在城南市场门口殴打李某。李某手部擦伤。";
+
+function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
+  return {
+    host: "127.0.0.1",
+    port: 0,
+    providerMode: "fixture",
+    enableTestControls: true,
+    masterSwitch: true,
+    analysisEnabled: true,
+    documentsEnabled: true,
+    staticDir: null,
+    service: { provider: null, contact: null, dataProcessingStatement: null, technicalLoggingBoundary: [] },
+    ...overrides,
+  };
+}
+
+async function makeApp(overrides: Partial<AppConfig> = {}) {
+  const fixtures = createFixtureControls();
+  const app = await buildApp({ config: testConfig(overrides), fixtures });
+  return { app, fixtures };
+}
+
+type App = Awaited<ReturnType<typeof buildApp>>;
+
+async function createSession(app: App, caseText = SAMPLE_TEXT) {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/v1/analysis/sessions",
+    headers: contractHeaders,
+    payload: { caseText } satisfies CreateAnalysisRequest,
+  });
+  expect(response.statusCode).toBe(201);
+  return response.json();
+}
+
+/** 一路回答到分析前确认，并确认事实快照。 */
+async function runToSnapshot(app: App): Promise<{ sessionId: string; snapshotVersion: number; snapshotHash: string; facts: CandidateFact[] }> {
+  const state = await createSession(app);
+  let current = state;
+  const started = await app.inject({
+    method: "POST",
+    url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
+    headers: contractHeaders,
+    payload: { answers: [] },
+  });
+  current = started.json();
+  let guard = 0;
+  while (current.stage === "collecting_answers" && guard < 5) {
+    guard += 1;
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
+      headers: contractHeaders,
+      payload: {
+        answers: current.questions.map((question: { questionId: string }) => ({
+          questionId: question.questionId,
+          kind: "value",
+          text: "已核实的情况说明。",
+        })),
+      },
+    });
+    current = response.json();
+  }
+  expect(current.stage).toBe("ready_to_analyze");
+
+  const confirm = await app.inject({
+    method: "POST",
+    url: `/api/v1/analysis/sessions/${current.sessionId}/snapshot`,
+    headers: contractHeaders,
+    payload: {},
+  });
+  const body = confirm.json();
+  expect(body.stage).toBe("snapshot_confirmed");
+  return {
+    sessionId: body.sessionId,
+    snapshotVersion: body.snapshot.snapshotVersion,
+    snapshotHash: body.snapshot.snapshotHash,
+    facts: body.facts,
+  };
+}
+
+async function generateReport(app: App, sessionId: string, snapshotVersion: number, snapshotHash: string) {
+  const requestId = "11111111-1111-4111-8111-111111111111";
+  const response = await app.inject({
+    method: "POST",
+    url: `/api/v1/analysis/sessions/${sessionId}/report`,
+    headers: contractHeaders,
+    payload: {
+      contractVersion: "1.0",
+      requestId,
+      snapshotVersion,
+      snapshotHash,
+    } satisfies GenerateReportRequest,
+  });
+  expect(response.statusCode).toBe(200);
+  return response.json() as AnalysisReport;
+}
+
+describe("六模块报告：临时工作台结构化内容", () => {
+  it("证据清单与询问要点返回结构化项目，其他模块不携带工作台项目", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    const report = await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+
+    const evidence = report.modules.find((module) => module.id === "evidence_checklist");
+    const interview = report.modules.find((module) => module.id === "interview_points");
+    expect(evidence?.evidenceItems.length).toBeGreaterThan(0);
+    expect(interview?.interviewItems.length).toBeGreaterThan(0);
+    for (const item of evidence?.evidenceItems ?? []) {
+      expect(item.itemId).not.toBe("");
+      expect(item.priorityLabel).not.toBe("");
+      expect(item.holdingStatusLabel).not.toBe("");
+    }
+    for (const item of interview?.interviewItems ?? []) {
+      expect(item.role).not.toBe("");
+      expect(item.roleLabel).not.toBe("");
+    }
+    const other = report.modules.filter(
+      (module) => module.id !== "evidence_checklist" && module.id !== "interview_points",
+    );
+    for (const module of other) {
+      expect(module.evidenceItems).toHaveLength(0);
+      expect(module.interviewItems).toHaveLength(0);
+    }
+    await app.close();
+  });
+
+  it("报告文书任务只携带结构化办案条件与非结论性说明", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    const report = await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+
+    expect(report.documentTasks.length).toBeGreaterThan(0);
+    for (const task of report.documentTasks) {
+      expect(task.procedureCategoryLabel).toMatch(/程序/);
+      expect(task.stageLabel).not.toBe("");
+      expect(task.boundaryStatement).toContain("不代表必须制作");
+      expect(task.boundaryStatement).toContain("自行判断");
+    }
+    await app.close();
+  });
+
+  it("不一致或有结论性表达的工作台结构被拒绝（失败关闭）", async () => {
+    const fixtures = createFixtureControls();
+    const base = fixtures.analysis;
+    const broken = {
+      extractCaseFacts: base.extractCaseFacts.bind(base),
+      proposeDecisiveQuestions: base.proposeDecisiveQuestions.bind(base),
+      async generateReport(request: Parameters<NonNullable<typeof base.generateReport>>[0]) {
+        const result = await (base.generateReport as NonNullable<typeof base.generateReport>)(request);
+        const [first, ...rest] = result.modules;
+        return {
+          ...result,
+          modules: [
+            {
+              ...first,
+              id: "evidence_checklist" as const,
+              label: "核心证据核查清单",
+              status: "present" as const,
+              evidenceItems: [
+                {
+                  itemId: "ev-bad",
+                  text: "示例证据",
+                  purpose: null,
+                  sourceHint: null,
+                  preservationRisk: null,
+                  priority: "urgent" as never,
+                  priorityLabel: "高优先级",
+                  holdingStatus: "held" as const,
+                  holdingStatusLabel: "已掌握",
+                },
+              ],
+              interviewItems: [],
+            },
+            ...rest,
+          ],
+        };
+      },
+    };
+    const app = await buildApp({
+      config: testConfig(),
+      fixtures,
+      analysisEngine: new AnalysisEngine(broken),
+    });
+    const session = await runToSnapshot(app);
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/report`,
+      headers: contractHeaders,
+      payload: {
+        contractVersion: "1.0",
+        requestId: "22222222-2222-4222-8222-222222222222",
+        snapshotVersion: session.snapshotVersion,
+        snapshotHash: session.snapshotHash,
+      },
+    });
+    expect(response.statusCode).toBe(500);
+    await app.close();
+  });
+});
+
+describe("补充或修改事实", () => {
+  it("从报告进入修改：旧快照保持不变，旧报告仍可查看", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.stage).toBe("modifying_facts");
+    expect(body.modification.baseSnapshotVersion).toBe(session.snapshotVersion);
+    expect(body.modification.baseSnapshotHash).toBe(session.snapshotHash);
+    expect(body.snapshot.snapshotHash).toBe(session.snapshotHash);
+    await app.close();
+  });
+
+  it("替代旧版本：旧事实退出本次分析并记录替代关系", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+
+    const target = session.facts.find((fact) => !fact.excluded) as CandidateFact;
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/facts/${target.factId}/revision`,
+      headers: contractHeaders,
+      payload: { statement: "修正后的表述。", resolution: "replace" },
+    });
+    expect(response.statusCode).toBe(200);
+    const facts: CandidateFact[] = response.json().facts;
+    const oldFact = facts.find((fact) => fact.factId === target.factId) as CandidateFact;
+    const newFact = facts.find((fact) => fact.replacesFactId === target.factId) as CandidateFact;
+    expect(oldFact.excluded).toBe(true);
+    expect(oldFact.supersededByFactId).toBe(newFact.factId);
+    expect(newFact.status).toBe("confirmed");
+    await app.close();
+  });
+
+  it("两个版本都不能排除时记录为争议事实，不静默选择", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+
+    const target = session.facts.find((fact) => !fact.excluded) as CandidateFact;
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/facts/${target.factId}/revision`,
+      headers: contractHeaders,
+      payload: { statement: "另一种说法。", resolution: "dispute" },
+    });
+    expect(response.statusCode).toBe(200);
+    const facts: CandidateFact[] = response.json().facts;
+    const oldFact = facts.find((fact) => fact.factId === target.factId) as CandidateFact;
+    const newFact = facts.find((fact) => fact.replacesFactId === target.factId) as CandidateFact;
+    expect(oldFact.status).toBe("disputed");
+    expect(oldFact.excluded).toBe(false);
+    expect(newFact.status).toBe("disputed");
+    expect(newFact.excluded).toBe(false);
+    await app.close();
+  });
+
+  it("放弃修改恢复进入修改前的事实与快照", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    const target = session.facts.find((fact) => !fact.excluded) as CandidateFact;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/facts/${target.factId}/revision`,
+      headers: contractHeaders,
+      payload: { statement: "修正后的表述。", resolution: "replace" },
+    });
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
+      headers: contractHeaders,
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.stage).toBe("snapshot_confirmed");
+    expect(body.snapshot.snapshotHash).toBe(session.snapshotHash);
+    expect(body.modification).toBeNull();
+    const restored = body.facts.find((fact: CandidateFact) => fact.factId === target.factId) as CandidateFact;
+    expect(restored.excluded).toBe(false);
+    expect(body.facts.some((fact: CandidateFact) => fact.replacesFactId === target.factId)).toBe(false);
+    await app.close();
+  });
+
+  it("确认新快照后旧报告失效，丢弃旧回答并重新计算追问", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    const target = session.facts.find((fact) => !fact.excluded) as CandidateFact;
+    await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/facts/${target.factId}/revision`,
+      headers: contractHeaders,
+      payload: { statement: "修正后的表述。", resolution: "replace" },
+    });
+
+    const confirm = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/snapshot`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(confirm.statusCode).toBe(200);
+    const body = confirm.json();
+    expect(body.modification).toBeNull();
+    expect(body.snapshot.snapshotVersion).toBe(session.snapshotVersion + 1);
+    expect(body.snapshot.snapshotHash).not.toBe(session.snapshotHash);
+    expect(body.answers).toHaveLength(0);
+    expect(["collecting_answers", "ready_to_analyze"]).toContain(body.stage);
+    if (body.stage === "collecting_answers") {
+      expect(body.questions.length).toBeGreaterThan(0);
+    }
+
+    // 旧快照/旧报告的生成请求被拒绝：迟到或错版本响应不得覆盖当前状态。
+    const stale = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/report`,
+      headers: contractHeaders,
+      payload: {
+        contractVersion: "1.0",
+        requestId: "33333333-3333-4333-8333-333333333333",
+        snapshotVersion: session.snapshotVersion,
+        snapshotHash: session.snapshotHash,
+      },
+    });
+    expect(stale.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("未进入修改阶段时不能创建替代事实项", async () => {
+    const { app } = await makeApp();
+    const session = await runToSnapshot(app);
+    const target = session.facts.find((fact) => !fact.excluded) as CandidateFact;
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${session.sessionId}/facts/${target.factId}/revision`,
+      headers: contractHeaders,
+      payload: { statement: "修正后的表述。", resolution: "replace" },
+    });
+    expect(response.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("分析能力停用时修改入口与替代事实接口失败关闭", async () => {
+    const { app } = await makeApp({ analysisEnabled: false });
+    const begin = await app.inject({
+      method: "POST",
+      url: "/api/v1/analysis/sessions/any-session/modifications",
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(begin.statusCode).toBe(503);
+
+    const revision = await app.inject({
+      method: "POST",
+      url: "/api/v1/analysis/sessions/any-session/facts/any-fact/revision",
+      headers: contractHeaders,
+      payload: { statement: "修正后的表述。", resolution: "replace" },
+    });
+    expect(revision.statusCode).toBe(503);
+    await app.close();
+  });
+});
+
+describe("POST /api/v1/document-examples/task-candidates", () => {
+  const base = {
+    contractVersion: "1.0",
+    procedureCategory: "administrative",
+    stageId: "reception_acceptance",
+    applicableRoles: ["办案民警"],
+    caseTags: ["接报受理"],
+  };
+
+  it("只使用程序类别、办理阶段、适用对象和案情标签筛选，并返回差异与选择前需核验条件", async () => {
+    const { app } = await makeApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/document-examples/task-candidates",
+      headers: contractHeaders,
+      payload: base,
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.selectionBoundary).toContain("不代表必须制作");
+    expect(body.candidates.length).toBeGreaterThan(1);
+    for (const candidate of body.candidates) {
+      expect(candidate.difference).not.toBe("");
+      expect(Array.isArray(candidate.preflightChecks)).toBe(true);
+      expect(candidate.procedureCategoryLabel).toBe("行政程序");
+      expect(candidate.stageLabel).toBe("接报与受理");
+    }
+
+    const single = await app.inject({
+      method: "POST",
+      url: "/api/v1/document-examples/task-candidates",
+      headers: contractHeaders,
+      payload: { ...base, stageId: "investigation_evidence", caseTags: ["调查取证"] },
+    });
+    expect(single.json().candidates).toHaveLength(1);
+    await app.close();
+  });
+
+  it("拒绝无效筛选参数", async () => {
+    const { app } = await makeApp();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/document-examples/task-candidates",
+      headers: contractHeaders,
+      payload: { ...base, procedureCategory: "unknown" },
+    });
+    expect(response.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("文书入口停用时失败关闭", async () => {
+    const { app } = await makeApp({ documentsEnabled: false });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/document-examples/task-candidates",
+      headers: contractHeaders,
+      payload: base,
+    });
+    expect(response.statusCode).toBe(410);
+    await app.close();
+  });
+});

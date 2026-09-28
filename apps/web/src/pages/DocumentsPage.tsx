@@ -1,10 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   DocumentExampleFacetOption,
   DocumentExampleListResponse,
   DocumentExampleVariantSummary,
+  DocumentTaskCandidate,
+  DocumentTaskCandidatesResponse,
+  ProcedureCategory,
+  HandlingStageId,
 } from "@policymate/contracts";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { ApiFailure, requestJson } from "../api/client";
 import { useJsonResource } from "../hooks/useJsonResource";
 import { CapabilityGate } from "../components/CapabilityGate";
 import { DocumentNotice } from "../components/DocumentNotice";
@@ -55,8 +60,44 @@ interface ActiveFilter {
   label: string;
 }
 
+interface ReportTaskState {
+  taskId: string;
+  title: string;
+  procedureCategory: ProcedureCategory;
+  stageId: HandlingStageId;
+  applicableRoles: string[];
+  caseTags: string[];
+}
+
+function readReportTaskState(value: unknown): ReportTaskState | null {
+  if (value === null || typeof value !== "object") return null;
+  const task = (value as { reportTask?: unknown }).reportTask;
+  if (task === null || task === undefined || typeof task !== "object") return null;
+  const candidate = task as Partial<ReportTaskState>;
+  if (typeof candidate.taskId !== "string" || typeof candidate.title !== "string") return null;
+  if (candidate.procedureCategory !== "administrative" && candidate.procedureCategory !== "criminal") {
+    return null;
+  }
+  if (typeof candidate.stageId !== "string") return null;
+  return {
+    taskId: candidate.taskId,
+    title: candidate.title,
+    procedureCategory: candidate.procedureCategory,
+    stageId: candidate.stageId as HandlingStageId,
+    applicableRoles: Array.isArray(candidate.applicableRoles) ? candidate.applicableRoles : [],
+    caseTags: Array.isArray(candidate.caseTags) ? candidate.caseTags : [],
+  };
+}
+
 function DocumentExamplesIndex() {
+  const location = useLocation();
+  // 路由状态对象在单次导航内保持稳定；用 useMemo 避免每次渲染产生新依赖。
+  const reportTask = useMemo(() => readReportTaskState(location.state), [location.state]);
   const { state, reload } = useJsonResource<DocumentExampleListResponse>("/api/v1/document-examples");
+
+  if (reportTask !== null) {
+    return <TaskCandidateView task={reportTask} />;
+  }
 
   if (state.status === "loading") {
     return (
@@ -73,6 +114,155 @@ function DocumentExamplesIndex() {
   }
 
   return <DocumentExamplesList data={state.data} />;
+}
+
+/**
+ * 报告文书任务候选跳转。
+ *
+ * 只使用程序类别、办理阶段、适用对象和案情标签筛选；不代入案情事实，
+ * 不自动选择唯一范例，也不使用“必须制作”等结论性表达。
+ */
+function TaskCandidateView({ task }: { task: ReportTaskState }) {
+  const navigate = useNavigate();
+  const [reloadToken, setReloadToken] = useState(0);
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "ready"; data: DocumentTaskCandidatesResponse }
+    | { status: "error"; failure: ApiFailure }
+  >({ status: "loading" });
+
+  useEffect(() => {
+    let active = true;
+    setState({ status: "loading" });
+    requestJson<DocumentTaskCandidatesResponse>("/api/v1/document-examples/task-candidates", {
+      method: "POST",
+      body: {
+        contractVersion: "1.0",
+        procedureCategory: task.procedureCategory,
+        stageId: task.stageId,
+        applicableRoles: task.applicableRoles,
+        caseTags: task.caseTags,
+      },
+    })
+      .then((data) => {
+        if (active) setState({ status: "ready", data });
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        const failure =
+          error instanceof ApiFailure
+            ? error
+            : new ApiFailure("server", "服务暂时不可用，请稍后重试。");
+        setState({ status: "error", failure });
+      });
+    return () => {
+      active = false;
+    };
+  }, [task, reloadToken]);
+
+  const back = (
+    <button
+      type="button"
+      className="button button--primary"
+      onClick={() => navigate("/documents", { replace: true, state: null })}
+      data-testid="task-back-to-browse"
+    >
+      返回按阶段浏览
+    </button>
+  );
+
+  if (state.status === "loading") {
+    return (
+      <div className="documents-index" data-testid="document-task-candidates">
+        <p className="loading-text" role="status" data-testid="task-candidates-loading">
+          正在按文书任务条件查找候选范例…
+        </p>
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <div className="documents-index" data-testid="document-task-candidates">
+        <FailurePanel failure={state.failure} onRetry={() => setReloadToken((token) => token + 1)} testId="task-candidates-failure" />
+        {back}
+      </div>
+    );
+  }
+
+  const { data } = state;
+  return (
+    <div className="documents-index" data-testid="document-task-candidates">
+      <DocumentNotice notice={data.notice} />
+      <section className="task-candidates" aria-labelledby="task-candidates-title">
+        <h2 id="task-candidates-title" className="section-heading__title">
+          文书任务：{task.title}
+        </h2>
+        <p className="field__note" data-testid="task-selection-boundary">
+          {data.selectionBoundary}
+        </p>
+        <p className="field__note">
+          筛选条件：程序类别、办理阶段、适用对象和案情标签；不包含任何案情事实。
+        </p>
+        {data.candidates.length === 0 ? (
+          <StatusPanel
+            variant="not_found"
+            title="当前没有匹配的已核验范例"
+            impact="当前激活批次中没有符合该文书任务结构化条件的候选范例。"
+            nextStep="请按办理阶段浏览，或核对文书任务的程序类别、办理阶段与适用对象。"
+            testId="task-candidates-none"
+            action={back}
+          />
+        ) : (
+          <>
+            <p data-testid="task-candidates-count">
+              {data.candidates.length > 1
+                ? `可能有 ${data.candidates.length} 个候选变体适用，请核对差异后自行判断。`
+                : "当前有 1 个候选变体，仍需核对适用条件后自行判断。"}
+            </p>
+            <ul className="example-list" data-testid="task-candidate-list">
+              {data.candidates.map((candidate) => (
+                <TaskCandidateCard key={candidate.exampleId} candidate={candidate} />
+              ))}
+            </ul>
+            <div className="analysis-actions">{back}</div>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function TaskCandidateCard({ candidate }: { candidate: DocumentTaskCandidate }) {
+  return (
+    <li className="task-candidate" data-testid={`task-candidate-${candidate.exampleId}`}>
+      <h3 className="task-candidate__name">{candidate.formalName}</h3>
+      <p className="task-candidate__meta">
+        {candidate.procedureCategoryLabel} · {candidate.stageLabel} · {candidate.documentTypeName} ·{" "}
+        {candidate.contentStatusLabel}
+      </p>
+      <p className="task-candidate__difference">差异说明：{candidate.difference}</p>
+      <div className="task-candidate__preflight">
+        <h4>选择前需核验</h4>
+        {candidate.preflightChecks.length === 0 ? (
+          <p>当前没有列出额外核验条件，仍需结合现行规范与正式案卷核对。</p>
+        ) : (
+          <ul>
+            {candidate.preflightChecks.map((check, index) => (
+              <li key={index}>{check}</li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <Link
+        className="button button--secondary"
+        to={`/documents/${encodeURIComponent(candidate.exampleId)}`}
+        data-testid={`task-candidate-open-${candidate.exampleId}`}
+      >
+        查看该候选制作指导
+      </Link>
+    </li>
+  );
 }
 
 function DocumentExamplesList({ data }: { data: DocumentExampleListResponse }) {

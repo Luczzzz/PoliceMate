@@ -572,6 +572,8 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
     confirmedAt: null,
     riskCategory: draft.riskCategory,
     excluded: false,
+    replacesFactId: null,
+    supersededByFactId: null,
   }));
 
   return {

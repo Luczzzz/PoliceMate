@@ -3,6 +3,8 @@ import type {
   DocumentExampleFacets,
   DocumentExampleVariantDetail,
   DocumentExampleVariantSummary,
+  DocumentTaskCandidate,
+  DocumentTaskCandidateRequest,
   LegalSourceReference,
 } from "@policymate/contracts";
 import {
@@ -108,6 +110,56 @@ export function buildFacets(
       a.label.localeCompare(b.label, "zh-Hans-CN"),
     ),
   };
+}
+
+/**
+ * 按报告文书任务的结构化办案条件筛查候选范例。
+ *
+ * 只使用程序类别、办理阶段、适用对象和案情标签，不接收任何案情事实；
+ * 传入的必须是已经通过当前状态门控的合格内容。多个候选保持并列，
+ * 不自动挑选唯一范例。
+ */
+export function selectTaskCandidates(
+  eligibleExamples: readonly DocumentExampleRecord[],
+  request: DocumentTaskCandidateRequest,
+): DocumentTaskCandidate[] {
+  const candidates = eligibleExamples.filter((item) => {
+    if (item.procedureCategory !== request.procedureCategory) return false;
+    if (item.stageId !== request.stageId) return false;
+    if (
+      request.applicableRoles.length > 0 &&
+      !item.applicableRoles.some((role) => request.applicableRoles.includes(role))
+    ) {
+      return false;
+    }
+    if (request.caseTags.length > 0 && !item.caseTags.some((tag) => request.caseTags.includes(tag))) {
+      return false;
+    }
+    return true;
+  });
+  const multiple = candidates.length > 1;
+  return candidates.map((item) => {
+    const neighborDifferences = item.neighbors
+      .filter((neighbor) => candidates.some((candidate) => candidate.exampleId === neighbor.exampleId))
+      .map((neighbor) => neighbor.difference);
+    return {
+      exampleId: item.exampleId,
+      formalName: item.formalName,
+      documentTypeName: item.documentTypeName,
+      procedureCategoryLabel: PROCEDURE_CATEGORY_LABELS[item.procedureCategory],
+      stageLabel: handlingStageLabel(item.stageId),
+      contentStatusLabel: CONTENT_STATUS_LABELS[item.contentStatus],
+      applicableRoles: [...item.applicableRoles],
+      caseTags: [...item.caseTags],
+      difference:
+        neighborDifferences.length > 0
+          ? neighborDifferences.join(" ")
+          : multiple
+            ? "与同阶段其他候选的差异：请核对适用场景、不适用情形与前置条件后自行判断。"
+            : "当前批次中仅此候选；仍需核对适用条件，系统不自动认定为唯一适用范例。",
+      preflightChecks: [...item.preflightChecks],
+    };
+  });
 }
 
 export function toSummary(

@@ -5,6 +5,7 @@ import type {
   ApiErrorBody,
   CreateAnalysisRequest,
   FactStatusUpdateRequest,
+  ReviseFactRequest,
 } from "@policymate/contracts";
 import { CONTRACT_VERSION } from "@policymate/contracts";
 import { AnalysisInputError, type AnalysisEngine } from "./engine";
@@ -178,13 +179,51 @@ export async function registerAnalysisRoutes(
     },
   );
 
-  // 分析前确认：形成不可变事实快照。
+  // 分析前确认：形成不可变事实快照；在“补充或修改事实”阶段确认修改并重算追问。
   app.post<{ Params: { sessionId: string } }>(
     "/api/v1/analysis/sessions/:sessionId/snapshot",
     async (request, reply) => {
       try {
         await assertCapability();
-        return engine.confirmSnapshot(request.params.sessionId);
+        return await engine.confirmSnapshot(request.params.sessionId);
+      } catch (error) {
+        return handleError(error, request.id, reply);
+      }
+    },
+  );
+
+  // 从报告进入补充或修改事实：创建待确认修改，旧报告仍可见。
+  app.post<{ Params: { sessionId: string } }>(
+    "/api/v1/analysis/sessions/:sessionId/modifications",
+    async (request, reply) => {
+      try {
+        await assertCapability();
+        return engine.beginModification(request.params.sessionId);
+      } catch (error) {
+        return handleError(error, request.id, reply);
+      }
+    },
+  );
+
+  // 放弃尚未确认的修改：恢复进入修改前的事实、回答与快照。
+  app.delete<{ Params: { sessionId: string } }>(
+    "/api/v1/analysis/sessions/:sessionId/modifications",
+    async (request, reply) => {
+      try {
+        return engine.discardModification(request.params.sessionId);
+      } catch (error) {
+        return handleError(error, request.id, reply);
+      }
+    },
+  );
+
+  // 创建替代事实项：替代旧版本，或把两个版本都记录为争议事实。
+  app.post<{ Params: { sessionId: string; factId: string }; Body: ReviseFactRequest }>(
+    "/api/v1/analysis/sessions/:sessionId/facts/:factId/revision",
+    async (request, reply) => {
+      try {
+        await assertCapability();
+        return engine.reviseFact(request.params.sessionId, request.params.factId, request.body);
       } catch (error) {
         return handleError(error, request.id, reply);
       }

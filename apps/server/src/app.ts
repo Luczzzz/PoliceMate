@@ -3,16 +3,20 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import {
   CONTRACT_VERSION,
+  REPORT_DOCUMENT_TASK_BOUNDARY,
   type ApiErrorBody,
   type ContentStatus,
   type DataUseResponse,
   type DocumentExampleDetailResponse,
   type DocumentExampleListResponse,
+  type DocumentTaskCandidateRequest,
+  type DocumentTaskCandidatesResponse,
   type FixtureControlRequest,
   type FixtureControlResponse,
   type HealthResponse,
   type ProductShellResponse,
 } from "@policymate/contracts";
+import { HANDLING_STAGE_CATALOG } from "./content/catalog";
 import { buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } from "./capabilities";
 import type { AppConfig } from "./config";
 import { buildDataUseResponse } from "./data-use";
@@ -43,6 +47,38 @@ function errorBody(
 
 const CONTENT_STATUSES = ["draft", "pending_verification", "trial", "withdrawn"] as const;
 const LEGAL_SOURCE_STATUSES = ["current", "future", "superseded", "repealed", "uncertain"] as const;
+const PROCEDURE_CATEGORIES = ["administrative", "criminal"] as const;
+const HANDLING_STAGE_IDS = HANDLING_STAGE_CATALOG.map((stage) => stage.id);
+
+function readTaskCandidateRequest(body: unknown): DocumentTaskCandidateRequest | null {
+  if (!isRecord(body)) return null;
+  const candidate = body as Partial<DocumentTaskCandidateRequest>;
+  if (candidate.contractVersion !== CONTRACT_VERSION) return null;
+  if (
+    typeof candidate.procedureCategory !== "string" ||
+    !(PROCEDURE_CATEGORIES as readonly string[]).includes(candidate.procedureCategory)
+  ) {
+    return null;
+  }
+  if (typeof candidate.stageId !== "string" || !HANDLING_STAGE_IDS.includes(candidate.stageId)) {
+    return null;
+  }
+  const roles = candidate.applicableRoles;
+  if (!Array.isArray(roles) || !roles.every((role) => typeof role === "string" && role !== "")) {
+    return null;
+  }
+  const tags = candidate.caseTags;
+  if (!Array.isArray(tags) || !tags.every((tag) => typeof tag === "string" && tag !== "")) {
+    return null;
+  }
+  return {
+    contractVersion: CONTRACT_VERSION,
+    procedureCategory: candidate.procedureCategory as DocumentTaskCandidateRequest["procedureCategory"],
+    stageId: candidate.stageId as DocumentTaskCandidateRequest["stageId"],
+    applicableRoles: [...roles],
+    caseTags: [...tags],
+  };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -186,6 +222,44 @@ export async function buildApp({ config, fixtures, analysisEngine }: BuildAppDep
       facets,
     };
   });
+
+  // 报告文书任务候选跳转：只使用程序类别、办理阶段、适用对象和案情标签筛选，
+  // 不接收案情事实，不自动选择唯一范例。能力停用时失败关闭。
+  app.post<{ Body: DocumentTaskCandidateRequest }>(
+    "/api/v1/document-examples/task-candidates",
+    async (request, reply) => {
+      const parsed = readTaskCandidateRequest(request.body);
+      if (parsed === null) {
+        return reply
+          .code(400)
+          .send(errorBody(request.id, "invalid_request", "文书任务候选筛选参数无效。"));
+      }
+      if (!documentsRetrievalEnabled) {
+        return reply
+          .code(410)
+          .send(
+            errorBody(
+              request.id,
+              "content_unavailable",
+              "当前文书范例内容不可用，无法展示候选范例。",
+            ),
+          );
+      }
+      const index = await fixtures.content.listExamples();
+      const candidates = fixtures.content.listTaskCandidates
+        ? await fixtures.content.listTaskCandidates(parsed)
+        : [];
+      const response: DocumentTaskCandidatesResponse = {
+        contractVersion: CONTRACT_VERSION,
+        generatedAt: new Date().toISOString(),
+        releaseId: index.releaseId,
+        notice: index.notice,
+        selectionBoundary: REPORT_DOCUMENT_TASK_BOUNDARY,
+        candidates,
+      };
+      return response;
+    },
+  );
 
   app.get<{ Params: { exampleId: string } }>(
     "/api/v1/document-examples/:exampleId",

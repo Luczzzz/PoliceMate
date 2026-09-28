@@ -2,13 +2,26 @@ import type {
   AnalysisReport,
   AnalysisSessionState,
   CandidateFact,
+  EvidenceHoldingStatus,
+  EvidencePriority,
   LegalSourceReference,
+  ReportDocumentTask,
+  ReportEvidenceChecklistItem,
+  ReportInterviewPointItem,
   ReportModule,
   ReportModuleId,
   ReportStatus,
   ReportTraceLink,
 } from "@policymate/contracts";
-import { CONTRACT_VERSION, REPORT_MODULE_LABELS, REPORT_STATUS_LABELS } from "@policymate/contracts";
+import {
+  CONTRACT_VERSION,
+  EVIDENCE_HOLDING_STATUS_LABELS,
+  EVIDENCE_PRIORITY_LABELS,
+  REPORT_DOCUMENT_TASK_BOUNDARY,
+  REPORT_MODULE_LABELS,
+  REPORT_STATUS_LABELS,
+} from "@policymate/contracts";
+import { HANDLING_STAGE_CATALOG, PROCEDURE_CATEGORY_LABELS } from "../content/catalog";
 import type { ReportGenerationResult } from "../providers/types";
 
 const MODULE_IDS: ReportModuleId[] = [
@@ -54,6 +67,80 @@ function validTrace(trace: ReportTraceLink, facts: ReadonlySet<string>, sources:
   return true;
 }
 
+const EVIDENCE_PRIORITIES = new Set<string>(Object.keys(EVIDENCE_PRIORITY_LABELS));
+const EVIDENCE_HOLDING_STATUSES = new Set<string>(Object.keys(EVIDENCE_HOLDING_STATUS_LABELS));
+const STAGE_LABELS = new Map(HANDLING_STAGE_CATALOG.map((stage) => [stage.id, stage.label]));
+
+function validateEvidenceItems(items: ReportEvidenceChecklistItem[]): void {
+  if (!Array.isArray(items)) throw new Error("证据核查清单项目结构无效。");
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (typeof item.itemId !== "string" || item.itemId === "" || seen.has(item.itemId)) {
+      throw new Error("证据核查清单项目缺少稳定 ID 或 ID 重复。");
+    }
+    seen.add(item.itemId);
+    if (typeof item.text !== "string" || item.text.trim() === "") {
+      throw new Error("证据核查清单项目缺少内容。");
+    }
+    if (!EVIDENCE_PRIORITIES.has(item.priority) || item.priorityLabel !== EVIDENCE_PRIORITY_LABELS[item.priority as EvidencePriority]) {
+      throw new Error("证据核查清单优先级无效。");
+    }
+    if (
+      !EVIDENCE_HOLDING_STATUSES.has(item.holdingStatus) ||
+      item.holdingStatusLabel !== EVIDENCE_HOLDING_STATUS_LABELS[item.holdingStatus as EvidenceHoldingStatus]
+    ) {
+      throw new Error("证据核查清单掌握状态无效。");
+    }
+  }
+}
+
+function validateInterviewItems(items: ReportInterviewPointItem[]): void {
+  if (!Array.isArray(items)) throw new Error("分角色询问要点项目结构无效。");
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (typeof item.itemId !== "string" || item.itemId === "" || seen.has(item.itemId)) {
+      throw new Error("分角色询问要点缺少稳定 ID 或 ID 重复。");
+    }
+    seen.add(item.itemId);
+    if (typeof item.text !== "string" || item.text.trim() === "") {
+      throw new Error("分角色询问要点缺少内容。");
+    }
+    if (typeof item.role !== "string" || item.role === "" || typeof item.roleLabel !== "string" || item.roleLabel === "") {
+      throw new Error("分角色询问要点缺少询问对象角色。");
+    }
+  }
+}
+
+/** 文书任务只允许结构化办案条件；不得携带事实或结论性表达。 */
+function validateDocumentTasks(tasks: ReportDocumentTask[]): void {
+  if (!Array.isArray(tasks)) throw new Error("报告文书任务结构无效。");
+  const seen = new Set<string>();
+  for (const task of tasks) {
+    if (typeof task.taskId !== "string" || task.taskId === "" || seen.has(task.taskId)) {
+      throw new Error("报告文书任务缺少稳定 ID 或 ID 重复。");
+    }
+    seen.add(task.taskId);
+    if (typeof task.title !== "string" || task.title.trim() === "" || typeof task.description !== "string") {
+      throw new Error("报告文书任务缺少标题或说明。");
+    }
+    if (task.procedureCategory !== "administrative" && task.procedureCategory !== "criminal") {
+      throw new Error("报告文书任务程序类别无效。");
+    }
+    if (task.procedureCategoryLabel !== PROCEDURE_CATEGORY_LABELS[task.procedureCategory]) {
+      throw new Error("报告文书任务程序类别名称不符合契约。");
+    }
+    if (STAGE_LABELS.get(task.stageId) !== task.stageLabel) {
+      throw new Error("报告文书任务办理阶段无效。");
+    }
+    if (!Array.isArray(task.applicableRoles) || !Array.isArray(task.caseTags)) {
+      throw new Error("报告文书任务筛选条件无效。");
+    }
+    if (task.boundaryStatement !== REPORT_DOCUMENT_TASK_BOUNDARY) {
+      throw new Error("报告文书任务必须使用固定的非结论性边界说明。");
+    }
+  }
+}
+
 export function validateReportResult(result: ReportGenerationResult, session: AnalysisSessionState, legalSources: LegalSourceReference[]): void {
   if (!result || typeof result.headline !== "string" || !Array.isArray(result.modules)) {
     throw new Error("报告结构无效。");
@@ -84,7 +171,12 @@ export function validateReportResult(result: ReportGenerationResult, session: An
     for (const trace of module.traceLinks) {
       if (!validTrace(trace, facts, sources)) throw new Error("报告解释链路无效。");
     }
+    if (module.id === "evidence_checklist") validateEvidenceItems(module.evidenceItems);
+    else if (module.evidenceItems.length > 0) throw new Error("非证据模块不得携带证据核查项目。");
+    if (module.id === "interview_points") validateInterviewItems(module.interviewItems);
+    else if (module.interviewItems.length > 0) throw new Error("非询问模块不得携带询问项目。");
   }
+  validateDocumentTasks(result.documentTasks);
   const hasBasis = legalSources.some(validSource);
   if (result.status === "complete" && !hasBasis) throw new Error("主判断缺少当前有效法源。");
   if (result.status === "complete" && session.gaps.length > 0) throw new Error("存在决定性事实缺口时不能形成完整主判断。");
@@ -120,6 +212,7 @@ export function buildReport(
     contentReleaseId: releaseId || result.contentReleaseId,
     workflowVersion: result.workflowVersion,
     modules: result.modules,
+    documentTasks: result.documentTasks,
   };
 }
 
