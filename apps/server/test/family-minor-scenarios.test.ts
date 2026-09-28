@@ -98,13 +98,28 @@ describe("家庭与未成年人高风险重点案情：相邻与不应命中反�
     expect(minorRun.resolution.matchedCaseFocusIds).not.toContain(DOMESTIC_VIOLENCE_FOCUS_ID);
   });
 
-  it("保留争议事实：结果事实存在争议时保留冲突表述并保守降级", async () => {
-    const scenario = scenarioOf(DOMESTIC_VIOLENCE_FOCUS_ID, "typical");
+  it("同一连续案情同时涉及家庭暴力与侵害未成年人时，保留多种可能，不相互吸收", async () => {
+    const { report, resolution } = await runScenario(
+      makeHarness(),
+      "4月1日晚上，王某在家中多次殴打其妻子李某。王某又殴打其13岁的女儿，致其轻微伤。",
+    );
+    expect(resolution.matchedCaseFocusIds).toEqual([
+      DOMESTIC_VIOLENCE_FOCUS_ID,
+      MINOR_HARM_FOCUS_ID,
+    ]);
+    expect(resolution.caseFocusId).toBe(DOMESTIC_VIOLENCE_FOCUS_ID);
+    expect(resolution.unresolvedAlternativeIds).toContain(MINOR_HARM_FOCUS_ID);
+    expect(report.status).toBe("conflicting");
+    expect(report.headline).toContain("多种可能");
+  });
+
+  it.each(ALL_FOCUS_IDS)("%s 保留争议事实：结果事实存在争议时保留冲突表述并保守降级", async (caseFocusId) => {
+    const scenario = scenarioOf(caseFocusId, "typical");
     const { report, resolution } = await runScenario(makeHarness(), scenario.caseText, {
       disputedCategories: ["result"],
     });
 
-    expect(resolution.caseFocusId).toBe(DOMESTIC_VIOLENCE_FOCUS_ID);
+    expect(resolution.caseFocusId).toBe(caseFocusId);
     expect(resolution.unresolvedGapIds).toContain("gap-harm-result");
     expect(report.status).toBe("conflicting");
     expect(report.headline).toContain("多种可能");

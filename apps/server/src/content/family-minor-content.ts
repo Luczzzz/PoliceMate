@@ -130,6 +130,10 @@ const MINORS_PROTECTION_LAW: LegalSourceRecord = {
       "具有下列情形之一的，民政部门应当依法对未成年人进行临时监护：（一）未成年人流浪乞讨或者身份不明，暂时查找不到父母或者其他监护人；（二）监护人下落不明且无其他人可以担任监护人；（三）监护人因自身客观原因或者因发生自然灾害、事故灾难、公共卫生事件等突发事件不能履行监护职责，导致未成年人监护缺失；（四）监护人拒绝或者怠于履行监护职责，导致未成年人处于无人照料的状态；（五）监护人教唆、利用未成年人实施违法犯罪行为，未成年人需要被带离安置；（六）未成年人遭受监护人严重伤害或者面临人身安全威胁，需要被紧急安置；（七）法律规定的其他情形。",
     ),
     article(
+      "第一百零八条",
+      "未成年人的父母或者其他监护人不依法履行监护职责或者严重侵犯被监护的未成年人合法权益的，人民法院可以根据有关人员或者单位的申请，依法作出人身安全保护令或者撤销监护人资格。被撤销监护人资格的父母或者其他监护人应当依法继续负担抚养费用。",
+    ),
+    article(
       "第一百零一条",
       "公安机关、人民检察院、人民法院和司法行政部门应当确定专门机构或者指定专门人员，负责办理涉及未成年人案件。办理涉及未成年人案件的人员应当经过专门培训，熟悉未成年人身心特点。专门机构或者专门人员中，应当有女性工作人员。公安机关、人民检察院、人民法院和司法行政部门应当对上述机构和人员实行与未成年人保护工作相适应的评价考核标准。",
     ),
@@ -388,23 +392,7 @@ const MINOR_HARM_FOCUS: CaseFocusSeed = {
   region: "国家",
   summary:
     "虐待、遗弃、性侵害、猥亵、拐卖、拐骗等侵害未成年人行为，以及强制报告、合适成年人到场、女性工作人员、同步录音录像、临时监护与撤销监护人资格等特殊程序与保护要求。",
-  match: {
-    behaviorLabels: ["侵害未成年人", "性侵害", "拐卖儿童"],
-    requireAnyHints: [
-      "未成年",
-      "儿童",
-      "幼女",
-      "幼童",
-      "幼儿",
-      "婴儿",
-      "学生",
-      "孩子",
-      "养子女",
-      "继子女",
-      "不满十四",
-      "不满十八",
-    ],
-  },
+  match: { behaviorLabels: ["侵害未成年人"] },
   elements: [
     "年龄与身份：核对涉事未成年人的实际年龄、是否不满十四周岁、是否在校学生或者处于监护、看护关系之下；年龄直接影响程序要求、从重情节和保护措施，不以“孩子”“幼女”“学生”等描述直接认定。",
     "行为类型：分别核对虐待、遗弃、性侵害、猥亵、拐卖、拐骗、收买、组织或者利用未成年人乞讨、盗窃等具体行为，分别评价，不合并为一个主结论。",
@@ -527,7 +515,7 @@ const MINOR_HARM_FOCUS: CaseFocusSeed = {
       scenarioId: "minor-harm-typical",
       kind: "typical",
       title: "典型场景：多次殴打未成年子女致轻微伤",
-      caseText: "5月2日，李某在某某小区家中多次殴打其13岁的未成年女儿，致其轻微伤。",
+      caseText: "5月2日，李某在某某小区家中多次殴打其13岁的女儿，致其轻微伤。",
       expectedCaseFocusIds: [MINOR_HARM_FOCUS_ID],
       expectedReportStatus: "complete",
       expectedUnresolvedGapIds: [],
@@ -555,7 +543,7 @@ const MINOR_HARM_FOCUS: CaseFocusSeed = {
       kind: "high_risk_boundary",
       title: "高风险边界：侵害未成年人并伴随医疗需要与证据灭失",
       caseText:
-        "5月2日，李某在某某小区家中多次殴打其13岁的未成年女儿，致其轻微伤。未成年女儿受伤后已送医治疗。李某威胁删除伤情照片。",
+        "5月2日，李某在某某小区家中多次殴打其13岁的女儿，致其轻微伤。女儿受伤后已送医治疗。李某威胁删除伤情照片。",
       expectedCaseFocusIds: [MINOR_HARM_FOCUS_ID],
       expectedReportStatus: "complete",
       expectedUnresolvedGapIds: [],
@@ -564,7 +552,7 @@ const MINOR_HARM_FOCUS: CaseFocusSeed = {
       scenarioId: "minor-harm-source-invalidation",
       kind: "source_invalidation",
       title: "法源失效：到期、撤回、状态不明或紧急禁用",
-      caseText: "5月2日，李某在某某小区家中多次殴打其13岁的未成年女儿，致其轻微伤。",
+      caseText: "5月2日，李某在某某小区家中多次殴打其13岁的女儿，致其轻微伤。",
       expectedCaseFocusIds: [MINOR_HARM_FOCUS_ID],
       expectedReportStatus: "basis_unavailable",
       expectedUnresolvedGapIds: [],

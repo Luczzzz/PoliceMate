@@ -38,7 +38,7 @@ function confirmedFactsOf(caseText: string): CandidateFact[] {
 }
 
 const DOMESTIC_TYPICAL = "4月1日晚上，王某在某某小区家中多次殴打其妻子李某，致李某轻微伤。";
-const MINOR_TYPICAL = "5月2日，李某在某某小区家中多次殴打其13岁的未成年女儿，致其轻微伤。";
+const MINOR_TYPICAL = "5月2日，李某在某某小区家中多次殴打其13岁的女儿，致其轻微伤。";
 
 describe("家庭与未成年人高风险重点案情内容包", () => {
   it("包含两组重点案情，覆盖既定范围", () => {

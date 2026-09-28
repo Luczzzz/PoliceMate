@@ -299,9 +299,10 @@ function matchPlace(sentence: string): string | null {
  * 只作为行为标签线索，不据此自动认定违法犯罪或者紧急状态。
  */
 const FAMILY_RELATION =
-  "妻子|丈夫|配偶|前妻|前夫|女友|男友|前女友|前男友|同居|家庭成员|恋人|伴侣";
+  "妻子|丈夫|配偶|前妻|前夫|女友|男友|前女友|前男友|同居|家庭成员|恋人|伴侣|父母|儿子|女儿|养父母|养子女|继父母|继子女";
 /** 未成年人表述：用于把侵害未成年人与成年人之间的同类行为区分开。 */
-const MINOR_SUBJECT = "未成年|儿童|幼女|幼童|幼儿|婴儿|学生|孩子|养子女|继子女";
+const MINOR_SUBJECT =
+  "未成年|儿童|幼女|幼童|幼儿|婴儿|学生|孩子|养子女|继子女|(?:[1-9]|1[0-7])岁的?(?:女儿|儿子|子女)";
 /** 家庭暴力的具体行为方式（反家庭暴力法第二条）。 */
 const DOMESTIC_ACT =
   "殴打|打伤|掌掴|推搡|威胁|恐吓|辱骂|跟踪|骚扰|纠缠|拘禁|捆绑|残害|家暴|家庭暴力";
@@ -312,13 +313,13 @@ const MINOR_ACT =
 /** 行为词库：匹配词 → 中性行为标签。 */
 const BEHAVIOR_LEXICON: Array<{ pattern: RegExp; label: string }> = [
   // 涉未成年人侵害与家庭暴力置于一般暴力之前，避免与相邻重点案情混淆。
-  { pattern: /猥亵|性侵|强奸|奸淫|性骚扰/, label: "性侵害" },
   {
     pattern: new RegExp(
       `(?:${MINOR_ACT})[^。！？；]{0,12}(?:${MINOR_SUBJECT})|(?:${MINOR_SUBJECT})[^。！？；]{0,12}(?:${MINOR_ACT})`,
     ),
     label: "侵害未成年人",
   },
+  { pattern: /猥亵|性侵|强奸|奸淫|性骚扰/, label: "性侵害" },
   { pattern: /拐卖|拐骗|收买被拐卖/, label: "拐卖儿童" },
   { pattern: /家暴|家庭暴力/, label: "家庭暴力" },
   {
@@ -482,7 +483,8 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
             : `相关人员实施了「${behavior}」行为`,
         originalWording: sentence.text,
         value: valueOf(behavior, "exact", behavior, behavior, null),
-        riskCategory: risk,
+        // 侵害未成年人行为即使未出现“未成年”等字面词，也属于未成年人保护优先核验事项。
+        riskCategory: risk ?? (behavior === "侵害未成年人" ? "minor_protection" : null),
       });
     }
 
