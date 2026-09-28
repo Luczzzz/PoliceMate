@@ -349,4 +349,58 @@ describe("家庭与未成年人高风险重点案情的风险提示边界", () =
       expect(prompt.boundaryStatement).toContain("不构成自动处置决定");
     }
   });
+
+  it("仅凭家庭关系表述识别出的家庭暴力，同样产生可解释的家庭暴力核验提示", () => {
+    // DOMESTIC_TYPICAL 不含“家暴/家庭暴力”字面词，只能由“殴打…妻子”的关系表述识别。
+    const facts = confirmedFactsOf(DOMESTIC_TYPICAL);
+    const behavior = facts.find((fact) => fact.category === "behavior");
+    expect(behavior?.value?.raw).toBe("家庭暴力");
+    expect(behavior?.riskCategory).toBe("domestic_violence");
+    const prompts = buildUrgentPrompts(facts, NOW);
+    expect(prompts.map((prompt) => prompt.category)).toContain("domestic_violence");
+    for (const prompt of prompts) {
+      expect(prompt.triggeringFactIds.length).toBeGreaterThan(0);
+      expect(prompt.boundaryStatement).toContain("不构成自动处置决定");
+    }
+  });
+
+  it("成年人拐卖使用中性行为标签，不写成拐卖儿童", () => {
+    const facts = confirmedFactsOf("5月6日，王某将一名妇女拐卖至外地。");
+    const behavior = facts.find((fact) => fact.category === "behavior");
+    expect(behavior?.value?.raw).toBe("拐卖人口");
+    expect(behavior?.statement).not.toContain("儿童");
+    expect(buildUrgentPrompts(facts, NOW)).toEqual([]);
+  });
+
+  it("涉未成年人拐卖归入侵害未成年人并触发未成年人保护提示", () => {
+    const facts = confirmedFactsOf("5月6日，王某将一名儿童拐卖至外地。");
+    const behavior = facts.find((fact) => fact.category === "behavior");
+    expect(behavior?.value?.raw).toBe("侵害未成年人");
+    expect(buildUrgentPrompts(facts, NOW).map((prompt) => prompt.category)).toContain(
+      "minor_protection",
+    );
+  });
+
+  it("组织、利用类中性表述不误判为侵害未成年人", () => {
+    const store = createGovernedContentStore(createFixtureContent());
+    const candidates = extractCaseFactsFixture("5月5日，学校组织学生参加活动。").facts;
+    expect(candidates.find((fact) => fact.category === "behavior")).toBeUndefined();
+    expect(matchedCaseFocuses(store.caseFocuses(), candidates)).toEqual([]);
+
+    const confirmed = candidates.map((fact) => ({
+      ...fact,
+      status: "confirmed" as const,
+      statusLabel: FACT_STATUS_LABELS.confirmed,
+    }));
+    expect(buildUrgentPrompts(confirmed, NOW)).toEqual([]);
+  });
+
+  it("组织未成年人乞讨等明确不法情形仍归入侵害未成年人", () => {
+    const facts = confirmedFactsOf("5月5日，某成年人组织两名儿童在街头乞讨。");
+    const behavior = facts.find((fact) => fact.category === "behavior");
+    expect(behavior?.value?.raw).toBe("侵害未成年人");
+    expect(buildUrgentPrompts(facts, NOW).map((prompt) => prompt.category)).toContain(
+      "minor_protection",
+    );
+  });
 });

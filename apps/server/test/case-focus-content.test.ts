@@ -28,7 +28,7 @@ import { extractCaseFactsFixture } from "../src/analysis/fixture-extract";
 /** 固定“当前时间”，使核验期限门控可重复。 */
 const NOW = new Date("2026-10-01T00:00:00.000Z");
 
-/** 当前批次应装载的全部已发布重点案情数量（财产与经济类 + 治安秩序与毒品类）。 */
+/** 当前批次应装载的全部已发布重点案情数量（财产与经济类 + 治安秩序与毒品类 + 家庭与未成年人高风险类）。 */
 const TOTAL_CASE_FOCUS_COUNT =
   REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS.length +
   REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS.length +

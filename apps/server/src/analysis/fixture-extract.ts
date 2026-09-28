@@ -306,21 +306,30 @@ const MINOR_SUBJECT =
 /** 家庭暴力的具体行为方式（反家庭暴力法第二条）。 */
 const DOMESTIC_ACT =
   "殴打|打伤|掌掴|推搡|威胁|恐吓|辱骂|跟踪|骚扰|纠缠|拘禁|捆绑|残害|家暴|家庭暴力";
-/** 侵害未成年人的具体行为方式。 */
-const MINOR_ACT =
-  "虐待|遗弃|殴打|打伤|掌掴|推搡|猥亵|性侵|强奸|奸淫|拐卖|拐骗|收买|强迫|教唆|利用|组织|家暴|家庭暴力|暴力伤害";
+/** 直接侵害未成年人人身的行为方式。 */
+const MINOR_HARM_ACT =
+  "虐待|遗弃|殴打|打伤|掌掴|推搡|猥亵|性侵|强奸|奸淫|拐卖|拐骗|收买|家暴|家庭暴力|暴力伤害";
+/**
+ * 组织、利用类行为只有在指向明确的不法目的时才构成侵害。单独的“组织/利用”
+ * 不足以认定，避免把“学校组织学生参加活动”这类中性表述误判为侵害未成年人。
+ */
+const MINOR_EXPLOIT_ACT =
+  `(?:组织|利用|教唆|强迫|胁迫|引诱|诱骗)[^。！？；]{0,4}(?:${MINOR_SUBJECT})[^。！？；]{0,6}(?:乞讨|盗窃|卖淫|违法犯罪|犯罪活动|黑社会性质组织)`;
 
 /** 行为词库：匹配词 → 中性行为标签。 */
 const BEHAVIOR_LEXICON: Array<{ pattern: RegExp; label: string }> = [
   // 涉未成年人侵害与家庭暴力置于一般暴力之前，避免与相邻重点案情混淆。
   {
     pattern: new RegExp(
-      `(?:${MINOR_ACT})[^。！？；]{0,12}(?:${MINOR_SUBJECT})|(?:${MINOR_SUBJECT})[^。！？；]{0,12}(?:${MINOR_ACT})`,
+      `(?:${MINOR_HARM_ACT})[^。！？；]{0,12}(?:${MINOR_SUBJECT})` +
+        `|(?:${MINOR_SUBJECT})[^。！？；]{0,12}(?:${MINOR_HARM_ACT})` +
+        `|(?:${MINOR_EXPLOIT_ACT})`,
     ),
     label: "侵害未成年人",
   },
   { pattern: /猥亵|性侵|强奸|奸淫|性骚扰/, label: "性侵害" },
-  { pattern: /拐卖|拐骗|收买被拐卖/, label: "拐卖儿童" },
+  // 成年人拐卖、拐骗、收买不限定被侵害人年龄，标签保持中性、不写成“儿童”。
+  { pattern: /拐卖|拐骗|收买被拐卖/, label: "拐卖人口" },
   { pattern: /家暴|家庭暴力/, label: "家庭暴力" },
   {
     pattern: new RegExp(
@@ -355,6 +364,15 @@ const RISK_KEYWORDS: Array<{ pattern: RegExp; category: UrgentRiskCategory }> = 
   { pattern: /家暴|家庭暴力/, category: "domestic_violence" },
   { pattern: /删除|销毁|清空|格式化/, category: "evidence_loss" },
 ];
+
+/**
+ * 行为标签本身即属于优先核验事项：即使原句没有出现字面风险词，仅凭关系表述
+ * 识别出的家庭暴力等行为也必须产生可解释提示。
+ */
+const BEHAVIOR_RISK_FALLBACK: Record<string, UrgentRiskCategory> = {
+  侵害未成年人: "minor_protection",
+  家庭暴力: "domestic_violence",
+};
 
 const RESULT_PATTERN = /轻微伤|轻伤|重伤|擦伤|挫伤|受伤|流血|昏迷|不省人事/;
 const OBJECT_PATTERN = /手机|电动车|摩托车|电瓶|自行车|现金|钱包|项链|手镯|笔记本电脑|平板电脑/;
@@ -483,8 +501,8 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
             : `相关人员实施了「${behavior}」行为`,
         originalWording: sentence.text,
         value: valueOf(behavior, "exact", behavior, behavior, null),
-        // 侵害未成年人行为即使未出现“未成年”等字面词，也属于未成年人保护优先核验事项。
-        riskCategory: risk ?? (behavior === "侵害未成年人" ? "minor_protection" : null),
+        // 侵害未成年人、家庭暴力行为即使未出现字面风险词，也属于优先核验事项。
+        riskCategory: risk ?? BEHAVIOR_RISK_FALLBACK[behavior] ?? null,
       });
     }
 

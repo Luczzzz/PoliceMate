@@ -181,6 +181,17 @@ describe("家庭与未成年人高风险重点案情：高风险边界保留人�
     );
   });
 
+  it("家庭暴力典型场景即使未出现“家暴”字面词，也产生家庭暴力核验提示", async () => {
+    const scenario = scenarioOf(DOMESTIC_VIOLENCE_FOCUS_ID, "typical");
+    const { urgentPrompts } = await runScenario(makeHarness(), scenario.caseText);
+    expect(urgentPrompts.map((prompt) => prompt.category)).toContain("domestic_violence");
+    for (const prompt of urgentPrompts) {
+      expect(prompt.triggeringFactIds.length).toBeGreaterThan(0);
+      expect(prompt.humanChecks.length).toBeGreaterThan(0);
+      expect(prompt.boundaryStatement).toContain("不构成自动处置决定");
+    }
+  });
+
   it("侵害未成年人高风险场景同时提示未成年人保护、医疗需要与证据灭失", async () => {
     const scenario = scenarioOf(MINOR_HARM_FOCUS_ID, "high_risk_boundary");
     const { urgentPrompts } = await runScenario(makeHarness(), scenario.caseText);
