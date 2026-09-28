@@ -47,6 +47,11 @@ export interface ReleaseCheckInput {
   runtime: ResolvedRuntimeConfig;
   /** 当前激活批次中通过治理门槛的文书范例变体数量。 */
   eligibleExampleCount: number;
+  /**
+   * 重点案情覆盖门槛：`required` 是必须达到门槛的重点案情 ID，
+   * `eligible` 是当前激活批次中实际合格的重点案情 ID。未提供时不检查。
+   */
+  caseFocusCoverage?: { required: readonly string[]; eligible: readonly string[] };
 }
 
 export interface ReleaseCheckResult {
@@ -64,6 +69,16 @@ export function checkReleaseReadiness(input: ReleaseCheckInput): ReleaseCheckRes
     failures.push(
       `当前仅 ${input.eligibleExampleCount} 个合格文书范例，低于受控试行要求的 ${MIN_ELIGIBLE_DOCUMENT_EXAMPLES} 个。`,
     );
+  }
+
+  if (input.caseFocusCoverage !== undefined) {
+    const eligible = new Set(input.caseFocusCoverage.eligible);
+    const missing = input.caseFocusCoverage.required.filter((caseFocusId) => !eligible.has(caseFocusId));
+    if (missing.length > 0) {
+      failures.push(
+        `以下派出所重点案情未达到发布门槛（内容禁用、法源失效、已到期或不在激活批次内）：${missing.join("、")}。`,
+      );
+    }
   }
 
   if (input.config.environment === "production" && input.config.enableTestControls) {

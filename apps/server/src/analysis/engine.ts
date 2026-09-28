@@ -34,11 +34,17 @@ import type {
 import type {
   CaseExtractionResult,
   CaseAnalysisProvider,
+  CaseFocusResolution,
   QuestionPoolResult,
   ReportGenerationRequest,
 } from "../providers/types";
 import type { TelemetrySink } from "../telemetry";
-import { buildReport, validateReportResult } from "./report";
+import {
+  applyConservativeDowngrade,
+  buildReport,
+  validateReportResult,
+  type ConservativeDowngradeStatus,
+} from "./report";
 
 /**
  * 案情分析状态机。
@@ -62,6 +68,12 @@ export type EngineDeps = Pick<
   CaseAnalysisProvider,
   "extractCaseFacts" | "proposeDecisiveQuestions" | "generateReport"
 >;
+
+/** 把已确认事实解析到受治理重点案情并返回本次可用法源。 */
+export type CaseFocusResolver = (
+  facts: CandidateFact[],
+  now: Date,
+) => Promise<CaseFocusResolution>;
 
 /** 外部边界超时；测试可注入更短的上限。 */
 export class AnalysisTimeoutError extends Error {
@@ -563,6 +575,7 @@ export class AnalysisEngine {
     legalSources: LegalSourceReference[],
     now = new Date(),
     releaseId = "",
+    resolveCaseFocus?: CaseFocusResolver,
   ): Promise<AnalysisReport> {
     const session = this.getLiveSession(sessionId, now.getTime());
     if (session.stage !== "snapshot_confirmed" || session.snapshot === null) {
@@ -575,10 +588,57 @@ export class AnalysisEngine {
     if (this.deps.generateReport === undefined) {
       throw new AnalysisContractError("报告生成边界不可用。");
     }
+
+    // 受治理内容解析：命中重点案情时只使用该重点案情的法源；
+    // 重点案情不可用、决定性事实缺口或相邻方向不能排除时保守降级。
+    let effectiveLegalSources = legalSources;
+    let forcedStatus: ConservativeDowngradeStatus | null = null;
+    let reportFocus: { caseFocusId: string | null; caseFocusVersion: string | null } = {
+      caseFocusId: null,
+      caseFocusVersion: null,
+    };
+    const downgradeNotes: string[] = [];
+    if (resolveCaseFocus !== undefined) {
+      const resolution = await resolveCaseFocus(
+        session.facts.map((fact) => ({ ...fact })),
+        now,
+      );
+      effectiveLegalSources = resolution.legalSources;
+      reportFocus = {
+        caseFocusId: resolution.caseFocusId,
+        caseFocusVersion: resolution.caseFocusVersion,
+      };
+      const basisUnavailable =
+        resolution.caseFocusId !== null && !resolution.caseFocusEligible;
+      // 保守顺序（规格 7.2、ADR-0005）：依据不可用 > 存在多种可能 > 条件不足。
+      // 同时命中多个条件时取最保守的一个，而不是第一个匹配的；
+      // 事实限制说明保留全部已解析限制。
+      if (basisUnavailable) {
+        const label =
+          resolution.caseFocusTitle === null
+            ? "命中的重点案情"
+            : `命中的重点案情「${resolution.caseFocusTitle}」`;
+        downgradeNotes.push(`${label}当前不可用，受影响内容立即停止支撑主结论。`);
+      }
+      downgradeNotes.push(
+        ...resolution.unresolvedGapNotes,
+        ...resolution.unresolvedAlternatives.map(
+          (title) => `不能排除的相邻方向：${title}。`,
+        ),
+      );
+      if (basisUnavailable) {
+        forcedStatus = "basis_unavailable";
+      } else if (resolution.unresolvedAlternatives.length > 0) {
+        forcedStatus = "conflicting";
+      } else if (resolution.unresolvedGapNotes.length > 0) {
+        forcedStatus = "insufficient_facts";
+      }
+    }
+
     const providerRequest: ReportGenerationRequest = {
       facts: session.facts.map((fact) => ({ ...fact })),
       snapshot: { ...session.snapshot },
-      legalSources: legalSources.map((source) => ({ ...source, articles: source.articles.map((article) => ({ ...article })) })),
+      legalSources: effectiveLegalSources.map((source) => ({ ...source, articles: source.articles.map((article) => ({ ...article })) })),
     };
     const state = toSessionState(session, now);
     const result = await this.callUpstream(
@@ -587,22 +647,26 @@ export class AnalysisEngine {
       this.reportTimeoutMs,
       async () => {
         const generated = await this.deps.generateReport!(providerRequest);
-        validateReportResult(generated, state, legalSources);
+        validateReportResult(generated, state, effectiveLegalSources);
         return generated;
       },
     );
+    const effectiveResult =
+      forcedStatus === null
+        ? result
+        : applyConservativeDowngrade(result, forcedStatus, downgradeNotes);
     this.telemetry?.record({
       requestId: request.requestId,
       timestamp: new Date().toISOString(),
       kind: "analysis.report",
       outcome: "ok",
-      outputItems: result.modules.length,
-      matchedSourceIds: legalSources
+      outputItems: effectiveResult.modules.length,
+      matchedSourceIds: effectiveLegalSources
         .filter((source) => source.status === "current")
         .map((source) => source.sourceId),
       attempts: 1,
     });
-    return buildReport(state, request.requestId, now.toISOString(), result, releaseId);
+    return buildReport(state, request.requestId, now.toISOString(), effectiveResult, releaseId, reportFocus);
   }
 
   clearSession(sessionId: string, now = new Date()): void {

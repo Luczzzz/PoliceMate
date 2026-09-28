@@ -28,11 +28,16 @@ function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   };
 }
 
-function run(config: AppConfig, eligibleExampleCount = MIN_ELIGIBLE_DOCUMENT_EXAMPLES) {
+function run(
+  config: AppConfig,
+  eligibleExampleCount = MIN_ELIGIBLE_DOCUMENT_EXAMPLES,
+  caseFocusCoverage?: { required: readonly string[]; eligible: readonly string[] },
+) {
   return checkReleaseReadiness({
     config,
     runtime: resolveRuntimeConfig(config),
     eligibleExampleCount,
+    ...(caseFocusCoverage === undefined ? {} : { caseFocusCoverage }),
   });
 }
 
@@ -77,6 +82,27 @@ describe("受控试行发布检查", () => {
 
   it("全部满足时通过", () => {
     const result = run(testConfig());
+    expect(result.ok).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
+
+  it("重点案情未达到发布门槛时失败", () => {
+    const result = run(testConfig(), MIN_ELIGIBLE_DOCUMENT_EXAMPLES, {
+      required: ["focus-a", "focus-b"],
+      eligible: ["focus-a"],
+    });
+    expect(result.ok).toBe(false);
+    const joined = result.failures.join("\n");
+    expect(joined).toContain("重点案情");
+    expect(joined).toContain("focus-b");
+    expect(joined).not.toContain("focus-a");
+  });
+
+  it("重点案情全部合格时通过", () => {
+    const result = run(testConfig(), MIN_ELIGIBLE_DOCUMENT_EXAMPLES, {
+      required: ["focus-a", "focus-b"],
+      eligible: ["focus-a", "focus-b", "focus-c"],
+    });
     expect(result.ok).toBe(true);
     expect(result.failures).toEqual([]);
   });

@@ -497,6 +497,9 @@ export interface AnalysisReport {
   snapshotVersion: number;
   snapshotHash: string;
   contentReleaseId: string;
+  /** 命中的受治理重点案情标识与版本；未命中时为 `null`（清单外案情）。 */
+  caseFocusId: string | null;
+  caseFocusVersion: string | null;
   workflowVersion: string;
   modules: ReportModule[];
   documentTasks: ReportDocumentTask[];
@@ -844,6 +847,12 @@ export interface FixtureExampleStatusPatch {
   status: ContentStatus;
 }
 
+/** 测试控制：修改单个重点案情的内容状态。 */
+export interface FixtureCaseFocusStatusPatch {
+  caseFocusId: string;
+  status: ContentStatus;
+}
+
 /**
  * 确定性替身控制请求。仅在启用测试控制（`PM_ENABLE_TEST_CONTROLS=1`）时挂载，
  * 用于浏览器黑盒测试替换外部 Dify 与受治理内容边界。
@@ -859,6 +868,14 @@ export interface FixtureControlRequest {
   legalSourceStatusAll?: LegalSourceStatus;
   /** 测试控制：使全部文书范例的复核期限变为已过期。 */
   examplesExpired?: boolean;
+  /** 测试控制：重置全部重点案情的内容状态。 */
+  caseFocusStatusAll?: ContentStatus;
+  /** 测试控制：修改指定重点案情的内容状态，用于验证重点案情禁用。 */
+  caseFocusStatus?: FixtureCaseFocusStatusPatch;
+  /** 测试控制：使全部重点案情的复核期限变为已过期。 */
+  caseFocusesExpired?: boolean;
+  /** 测试控制：使全部受治理法源的复核期限变为已过期。 */
+  legalSourcesExpired?: boolean;
   /** 测试控制：候选事实提取边界的失败模式。 */
   extractionMode?: UpstreamFailureMode;
   /** 测试控制：决定性追问选题边界的失败模式。 */
@@ -888,12 +905,21 @@ export interface FixtureLegalSourceState {
   status: LegalSourceStatus;
 }
 
+/** 替身中单个重点案情的可观测治理状态；`eligible` 由状态门控实时推导。 */
+export interface FixtureCaseFocusState {
+  caseFocusId: string;
+  contentStatus: ContentStatus;
+  eligible: boolean;
+}
+
 /** 替身当前可观测状态。`eligibleExampleCount` 由治理门控实时推导，不可直接设置。 */
 export interface FixtureControlResponse {
   difyAvailable: boolean;
   activeReleaseId: string;
   eligibleExampleCount: number;
+  eligibleCaseFocusCount: number;
   examples: FixtureExampleState[];
+  caseFocuses: FixtureCaseFocusState[];
   legalSources: FixtureLegalSourceState[];
   extractionMode: UpstreamFailureMode;
   questionMode: UpstreamFailureMode;

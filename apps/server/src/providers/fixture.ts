@@ -5,6 +5,7 @@ import {
 import type {
   ContentStatus,
   FixtureControlResponse,
+  FixtureCaseFocusState,
   LegalSourceStatus,
   FixtureExampleState,
   LegalSourceReference,
@@ -17,6 +18,7 @@ import type {
 import { createFixtureContent } from "../content/fixture-content";
 import { DOCUMENT_EXAMPLE_NOTICE } from "../content/catalog";
 import { buildDocumentExampleIndex, lookupDocumentExample } from "../content/responses";
+import { resolveCaseFocus as resolveCaseFocusFromContent } from "../content/case-focus";
 import { toLegalSourceReference, selectEligibleExamples, selectTaskCandidates } from "../content/gating";
 import { createGovernedContentStore } from "../content/store";
 import { extractCaseFactsFixture } from "../analysis/fixture-extract";
@@ -47,8 +49,12 @@ export interface FixturePatch extends ReportFailureControls {
   difyAvailable?: boolean;
   exampleStatusAll?: ContentStatus;
   exampleStatus?: { exampleId: string; status: ContentStatus };
+  caseFocusStatusAll?: ContentStatus;
+  caseFocusStatus?: { caseFocusId: string; status: ContentStatus };
   legalSourceStatusAll?: LegalSourceStatus;
   examplesExpired?: boolean;
+  caseFocusesExpired?: boolean;
+  legalSourcesExpired?: boolean;
   extractionMode?: UpstreamFailureMode;
   questionMode?: UpstreamFailureMode;
 }
@@ -82,20 +88,31 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     if (patch.exampleStatus !== undefined) {
       store.setExampleStatus(patch.exampleStatus.exampleId, patch.exampleStatus.status);
     }
+    if (patch.caseFocusStatusAll !== undefined) {
+      store.setAllCaseFocusStatus(patch.caseFocusStatusAll);
+    }
+    if (patch.caseFocusStatus !== undefined) {
+      store.setCaseFocusStatus(patch.caseFocusStatus.caseFocusId, patch.caseFocusStatus.status);
+    }
     if (patch.legalSourceStatusAll !== undefined) {
       store.setAllLegalSourceStatus(patch.legalSourceStatusAll);
     }
     if (patch.examplesExpired !== undefined) store.setExamplesExpired(patch.examplesExpired);
+    if (patch.caseFocusesExpired !== undefined) store.setCaseFocusesExpired(patch.caseFocusesExpired);
+    if (patch.legalSourcesExpired !== undefined) store.setLegalSourcesExpired(patch.legalSourcesExpired);
   };
 
   const describe = (): FixtureControlResponse => {
     const snapshot = store.snapshot();
     const examples: FixtureExampleState[] = snapshot.examples.map((item) => ({ ...item }));
+    const caseFocuses: FixtureCaseFocusState[] = snapshot.caseFocuses.map((item) => ({ ...item }));
     return {
       difyAvailable,
       activeReleaseId: snapshot.activeReleaseId,
       eligibleExampleCount: snapshot.eligibleExampleCount,
+      eligibleCaseFocusCount: snapshot.eligibleCaseFocusCount,
       examples,
+      caseFocuses,
       legalSources: snapshot.legalSources.map((source) => ({ ...source })),
       extractionMode,
       questionMode,
@@ -307,6 +324,25 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       const context = store.eligibilityContext();
       const eligible = selectEligibleExamples(store.examples(), context);
       return selectTaskCandidates(eligible, request);
+    },
+    async resolveCaseFocus(facts, now) {
+      const context = store.eligibilityContext(now ?? new Date());
+      const resolution = resolveCaseFocusFromContent(store.caseFocuses(), facts, context);
+      const genericSources = [...context.sources.values()]
+        .filter((source) => source.status === "current")
+        .map(toLegalSourceReference);
+      return {
+        matchedCaseFocusIds: resolution.matched.map((focus) => focus.caseFocusId),
+        caseFocusId: resolution.primary?.caseFocusId ?? null,
+        caseFocusVersion: resolution.primary?.version ?? null,
+        caseFocusTitle: resolution.primary?.title ?? null,
+        caseFocusEligible: resolution.primaryEligible,
+        unresolvedAlternatives: resolution.adjacent.map((focus) => focus.title),
+        unresolvedAlternativeIds: resolution.adjacent.map((focus) => focus.caseFocusId),
+        unresolvedGapNotes: resolution.unresolvedGaps.map((gap) => gap.description),
+        unresolvedGapIds: resolution.unresolvedGaps.map((gap) => gap.gapId),
+        legalSources: resolution.primary === null ? genericSources : resolution.legalSources,
+      };
     },
   };
 

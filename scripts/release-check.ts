@@ -6,6 +6,7 @@
  * 该脚本只输出门槛名称，不打印任何案情、事实或报告内容。
  */
 import { loadConfig, resolveRuntimeConfig } from "../apps/server/src/config";
+import { REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS } from "../apps/server/src/content/property-economic-content";
 import { createFixtureControls } from "../apps/server/src/providers/fixture";
 import { checkReleaseReadiness } from "../apps/server/src/release-check";
 
@@ -14,11 +15,16 @@ async function main(): Promise<void> {
   const runtime = resolveRuntimeConfig(config);
   const fixtures = createFixtureControls();
   const release = await fixtures.content.getActiveRelease();
+  const state = fixtures.describe();
 
   const result = checkReleaseReadiness({
     config,
     runtime,
     eligibleExampleCount: release.eligibleExampleCount,
+    caseFocusCoverage: {
+      required: REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS,
+      eligible: state.caseFocuses.filter((item) => item.eligible).map((item) => item.caseFocusId),
+    },
   });
 
   if (result.ok) {

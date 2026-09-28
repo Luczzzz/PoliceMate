@@ -196,6 +196,10 @@ export function buildReport(
   generatedAt: string,
   result: ReportGenerationResult,
   releaseId: string,
+  focus: { caseFocusId: string | null; caseFocusVersion: string | null } = {
+    caseFocusId: null,
+    caseFocusVersion: null,
+  },
 ): AnalysisReport {
   return {
     contractVersion: CONTRACT_VERSION,
@@ -210,6 +214,8 @@ export function buildReport(
     snapshotVersion: session.snapshot?.snapshotVersion ?? 0,
     snapshotHash: session.snapshot?.snapshotHash ?? "",
     contentReleaseId: releaseId || result.contentReleaseId,
+    caseFocusId: focus.caseFocusId,
+    caseFocusVersion: focus.caseFocusVersion,
     workflowVersion: result.workflowVersion,
     modules: result.modules,
     documentTasks: result.documentTasks,
@@ -217,3 +223,78 @@ export function buildReport(
 }
 
 export { MODULE_IDS };
+
+/* ---------- 受治理内容驱动的保守降级 ---------- */
+
+/** 支撑主判断的关键模块；依据不可用或存在多种可能时必须整体降级。 */
+export const CRITICAL_MODULE_IDS: ReportModuleId[] = [
+  "preliminary_qualification",
+  "filing_conditions",
+  "legal_basis_trace",
+];
+
+/** 总体状态的保守顺序：数值越大越保守（规格 7.2）。 */
+const STATUS_SEVERITY: Record<ReportStatus, number> = {
+  complete: 0,
+  partial_failure: 0,
+  insufficient_facts: 1,
+  conflicting: 2,
+  basis_unavailable: 3,
+  generation_failed: 4,
+};
+
+function moduleSeverity(status: ReportModule["status"]): number {
+  if (status === "present" || status === "not_applicable") return 0;
+  if (status === "generation_failed") return 4;
+  return STATUS_SEVERITY[status];
+}
+
+const DOWNGRADE_SUMMARY: Record<"basis_unavailable" | "conflicting" | "insufficient_facts", string> = {
+  basis_unavailable: "当前重点案情依赖的正式依据不可用或已失效，停止形成主判断。",
+  conflicting: "存在不能排除的相邻方向，保留多种可能，不形成单一判断。",
+  insufficient_facts: "决定性事实尚未确认，暂不能形成单一主结论。",
+};
+
+export type ConservativeDowngradeStatus = keyof typeof DOWNGRADE_SUMMARY;
+
+/**
+ * 按受治理内容解析结果保守降级报告。
+ *
+ * 只降级支撑主判断的关键模块，不补写任何法律结论；
+ * 依据不可用或存在多种可能时不展示确定性单一判断。
+ */
+export function applyConservativeDowngrade(
+  result: ReportGenerationResult,
+  forcedStatus: ConservativeDowngradeStatus,
+  notes: string[],
+): ReportGenerationResult {
+  if (STATUS_SEVERITY[forcedStatus] <= STATUS_SEVERITY[result.status]) return result;
+
+  const critical = new Set<string>(CRITICAL_MODULE_IDS);
+  const summary = DOWNGRADE_SUMMARY[forcedStatus];
+  const modules = result.modules.map((module) => {
+    if (!critical.has(module.id)) return module;
+    const status =
+      moduleSeverity(module.status) > STATUS_SEVERITY[forcedStatus]
+        ? module.status
+        : forcedStatus;
+    return {
+      ...module,
+      status,
+      summary,
+      items: [summary],
+      traceLinks: [],
+      failureReason: notes.length > 0 ? notes.join("；") : null,
+      evidenceItems: [],
+      interviewItems: [],
+    };
+  });
+
+  return {
+    ...result,
+    status: forcedStatus,
+    headline: summary,
+    factLimitations: [...result.factLimitations, ...notes],
+    modules,
+  };
+}

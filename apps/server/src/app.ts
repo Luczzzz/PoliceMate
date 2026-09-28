@@ -211,6 +211,22 @@ function readFixturePatch(body: unknown): FixturePatch | null {
     patch.exampleStatus = { exampleId: value.exampleId, status };
   }
 
+  if ("caseFocusStatusAll" in candidate) {
+    const status = readContentStatus(candidate.caseFocusStatusAll);
+    if (status === null) return null;
+    patch.caseFocusStatusAll = status;
+  }
+
+  if ("caseFocusStatus" in candidate) {
+    const value = candidate.caseFocusStatus;
+    if (!isRecord(value) || typeof value.caseFocusId !== "string" || value.caseFocusId === "") {
+      return null;
+    }
+    const status = readContentStatus(value.status);
+    if (status === null) return null;
+    patch.caseFocusStatus = { caseFocusId: value.caseFocusId, status };
+  }
+
   if ("legalSourceStatusAll" in candidate) {
     const value = candidate.legalSourceStatusAll;
     if (
@@ -225,6 +241,16 @@ function readFixturePatch(body: unknown): FixturePatch | null {
   if ("examplesExpired" in candidate) {
     if (typeof candidate.examplesExpired !== "boolean") return null;
     patch.examplesExpired = candidate.examplesExpired;
+  }
+
+  if ("caseFocusesExpired" in candidate) {
+    if (typeof candidate.caseFocusesExpired !== "boolean") return null;
+    patch.caseFocusesExpired = candidate.caseFocusesExpired;
+  }
+
+  if ("legalSourcesExpired" in candidate) {
+    if (typeof candidate.legalSourcesExpired !== "boolean") return null;
+    patch.legalSourcesExpired = candidate.legalSourcesExpired;
   }
 
   return patch;
@@ -594,6 +620,15 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     activeReleaseId: async () => (await fixtures.content.getActiveRelease()).releaseId,
     analysisCapabilityEnabled: () => config.masterSwitch && config.analysisEnabled,
     analysisBoundaryAvailable: async () => fixtures.dify.getAvailability(),
+    caseFocusResolver: fixtures.content.resolveCaseFocus
+      ? async (facts, now) => {
+          const resolution = await fixtures.content.resolveCaseFocus!(facts, now);
+          return {
+            ...resolution,
+            legalSources: resolution.legalSources.map(sanitizeLegalSource),
+          };
+        }
+      : undefined,
     concurrencyGate,
   });
 

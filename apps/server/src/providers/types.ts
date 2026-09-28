@@ -147,6 +147,32 @@ export type GovernedContentExampleLookup =
   | { outcome: "unavailable" }
   | { outcome: "not_found" };
 
+/**
+ * 重点案情解析结果。
+ *
+ * 未命中任何重点案情时 `caseFocusId` 为 `null`，由调用方回退到通用法源；
+ * 命中但不可用时空法源，迫使报告保守降级为“依据不可用”。
+ */
+export interface CaseFocusResolution {
+  /** 当前已确认事实命中的全部重点案情 ID（含不可用的重点案情）。 */
+  matchedCaseFocusIds: string[];
+  caseFocusId: string | null;
+  caseFocusVersion: string | null;
+  caseFocusTitle: string | null;
+  /** 主命中重点案情当前是否可用；不可用时其内容立即停止支撑主结论。 */
+  caseFocusEligible: boolean;
+  /** 不能排除的相邻重点案情标题。 */
+  unresolvedAlternatives: string[];
+  /** 不能排除的相邻重点案情 ID，用于可解释链路。 */
+  unresolvedAlternativeIds: string[];
+  /** 未解决、且会影响分流的决定性事实缺口说明。 */
+  unresolvedGapNotes: string[];
+  /** 未解决的决定性事实缺口 ID。 */
+  unresolvedGapIds: string[];
+  /** 本次可用的受治理法源；命中但不可用或未命中时为空数组。 */
+  legalSources: LegalSourceReference[];
+}
+
 /** 受治理内容读取边界。所有读取都必须经过当前状态门控。 */
 export interface GovernedContentProvider {
   getActiveRelease(): Promise<GovernedContentRelease>;
@@ -155,6 +181,11 @@ export interface GovernedContentProvider {
   listLegalSources?(): Promise<LegalSourceReference[]>;
   /** 只依据结构化办案条件筛选候选范例；不接收案情事实。 */
   listTaskCandidates?(request: DocumentTaskCandidateRequest): Promise<DocumentTaskCandidate[]>;
+  /**
+   * 把已确认事实解析到受治理重点案情，并返回本次可用的法源。
+   * 只依据行为标签与原始表述线索匹配，不解析模型生成的自然语言结论。
+   */
+  resolveCaseFocus?(facts: CandidateFact[], now?: Date): Promise<CaseFocusResolution>;
 }
 
 export interface Providers {

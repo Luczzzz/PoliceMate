@@ -257,10 +257,17 @@ test.describe("决定性追问", () => {
       const before = await page.getByTestId("round-progress").innerText();
       await page.getByTestId("submit-round").click();
       await expect
-        .poll(async () => {
-          if ((await page.getByTestId("pre-analysis-page").count()) > 0) return "review";
-          return page.getByTestId("round-progress").innerText().catch(() => "");
-        }, { timeout: 15_000 })
+        .poll(
+          async () => {
+            if ((await page.getByTestId("pre-analysis-page").count()) > 0) return "review";
+            // 页面切换期间 round-progress 可能短暂消失；不能在 poll 回调里用无上限的
+            // innerText 等待，否则回调会挂住直到 poll 超时。
+            const progress = page.getByTestId("round-progress");
+            if ((await progress.count()) === 0) return before;
+            return progress.innerText({ timeout: 2_000 }).catch(() => before);
+          },
+          { timeout: 15_000 },
+        )
         .not.toBe(before);
     }
 

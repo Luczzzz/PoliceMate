@@ -92,6 +92,7 @@ function release(items: { exampleId: string; version: string }[]): ContentReleas
     maintainer: "测试内容维护者",
     changeNote: "首次激活。",
     items,
+    caseFocuses: [],
     legalSources: [{ sourceId: "src-1", version: "1.0.0" }],
     testSummary: "全部测试通过。",
   };

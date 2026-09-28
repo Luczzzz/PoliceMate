@@ -1,5 +1,9 @@
 import type { ContentReleaseManifest, DocumentExampleRecord, GovernedContentSeed, LegalSourceRecord } from "./model";
 import { cloneExample } from "./store";
+import {
+  createPropertyEconomicCaseFocuses,
+  createPropertyEconomicSources,
+} from "./property-economic-content";
 
 /**
  * 仅用于受控试行功能演示与自动化测试的确定性内容源。
@@ -459,6 +463,7 @@ const RELEASE: ContentReleaseManifest = {
   maintainer: MAINTAINER,
   changeNote: "受控试行测试内容首批激活。",
   items: EXAMPLES.map((item) => ({ exampleId: item.exampleId, version: item.version })),
+  caseFocuses: [],
   legalSources: [ADMIN_SOURCE, CRIMINAL_SOURCE].map((source) => ({
     sourceId: source.sourceId,
     version: source.version,
@@ -466,18 +471,36 @@ const RELEASE: ContentReleaseManifest = {
   testSummary: "全部测试内容通过典型检索、相邻不匹配、虚构化与旧链接阻断检查。",
 };
 
-/** 每次调用返回全新的可重置种子，避免测试之间共享可变状态。 */
+/**
+ * 每次调用返回全新的可重置种子，避免测试之间共享可变状态。
+ *
+ * 除占位文书范例与测试法源外，种子同时装载财产与经济类派出所重点案情
+ * 内容包（真实国家公开法源）；该内容包是第 33 号切片的交付物，
+ * 文书范例的正式内容由第 36 号切片另行发布。
+ */
 export function createFixtureContent(): GovernedContentSeed {
+  const propertySources = createPropertyEconomicSources();
+  const caseFocuses = createPropertyEconomicCaseFocuses();
+  const sources = [ADMIN_SOURCE, CRIMINAL_SOURCE, ...propertySources];
+
   return {
-    sources: [ADMIN_SOURCE, CRIMINAL_SOURCE].map((source) => ({
+    sources: sources.map((source) => ({
       ...source,
       articles: source.articles.map((item) => ({ ...item })),
     })),
     examples: EXAMPLES.map(cloneExample),
+    caseFocuses,
     release: {
       ...RELEASE,
       items: RELEASE.items.map((entry) => ({ ...entry })),
-      legalSources: RELEASE.legalSources.map((entry) => ({ ...entry })),
+      caseFocuses: caseFocuses.map((focus) => ({
+        caseFocusId: focus.caseFocusId,
+        version: focus.version,
+      })),
+      legalSources: sources.map((source) => ({
+        sourceId: source.sourceId,
+        version: source.version,
+      })),
     },
   };
 }

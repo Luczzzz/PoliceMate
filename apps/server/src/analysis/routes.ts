@@ -8,7 +8,7 @@ import type {
   ReviseFactRequest,
 } from "@policymate/contracts";
 import { CONTRACT_VERSION } from "@policymate/contracts";
-import { AnalysisInputError, AnalysisUpstreamError, type AnalysisEngine } from "./engine";
+import { AnalysisInputError, AnalysisUpstreamError, type AnalysisEngine, type CaseFocusResolver } from "./engine";
 import type { ConcurrencyGate } from "../security";
 
 /**
@@ -24,6 +24,8 @@ export interface AnalysisRoutesOptions {
   activeReleaseId: () => Promise<string>;
   analysisCapabilityEnabled: () => boolean;
   analysisBoundaryAvailable: () => Promise<{ available: boolean; reason: string | null }>;
+  /** 把已确认事实解析到受治理重点案情；未提供时不做重点案情法源限定。 */
+  caseFocusResolver?: CaseFocusResolver;
   /** 并发闸门：同一令牌在途分析请求不得超过上限。 */
   concurrencyGate: ConcurrencyGate;
 }
@@ -214,7 +216,14 @@ export async function registerAnalysisRoutes(
           options.activeReleaseId(),
         ]);
         return await withConcurrency(request, () =>
-          engine.generateReport(request.params.sessionId, request.body, legalSources, undefined, activeReleaseId),
+          engine.generateReport(
+            request.params.sessionId,
+            request.body,
+            legalSources,
+            undefined,
+            activeReleaseId,
+            options.caseFocusResolver,
+          ),
         );
       } catch (error) {
         return handleError(error, request.id, reply);

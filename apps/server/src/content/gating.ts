@@ -1,4 +1,5 @@
 import type {
+  ContentStatus,
   DocumentExampleFacetOption,
   DocumentExampleFacets,
   DocumentExampleVariantDetail,
@@ -27,16 +28,22 @@ import type {
  *
  * 每次列表、检索、打开详情或跟随旧链接时都重新计算，不依赖任何缓存结果。
  * 判定顺序为：内容状态 → 激活批次白名单 → 依赖法源效力 → 核验期限。
+ * 文书范例与重点案情共用同一判定，只是批次白名单字段不同。
  */
-export function evaluateEligibility(
-  item: DocumentExampleRecord,
+export interface GatedContentItem {
+  contentStatus: ContentStatus;
+  version: string;
+  sourceIds: string[];
+  nextReviewDueAt: string;
+}
+
+export function evaluateGatedItem(
+  item: GatedContentItem,
+  releaseEntry: { version: string } | undefined,
   context: EligibilityContext,
 ): IneligibilityReason | null {
   if (item.contentStatus !== "trial") return "content_status";
-
-  const release = context.release;
-  const whitelisted = release?.items.find((entry) => entry.exampleId === item.exampleId);
-  if (!whitelisted || whitelisted.version !== item.version) return "not_in_release";
+  if (!releaseEntry || releaseEntry.version !== item.version) return "not_in_release";
 
   for (const sourceId of item.sourceIds) {
     const source = context.sources.get(sourceId);
@@ -44,7 +51,7 @@ export function evaluateEligibility(
   }
 
   // 复核日期无法解析时失败关闭：无法确认有效即视为失效。
-  const reviewDueAt = Date.parse(effectiveReviewDueAt(item, context.sources));
+  const reviewDueAt = Date.parse(effectiveReviewDueAtFor(item, context.sources));
   if (!Number.isFinite(reviewDueAt) || reviewDueAt <= context.now.getTime()) {
     return "expired";
   }
@@ -56,8 +63,8 @@ export function evaluateEligibility(
  * 内容的实际复核到期时间：内容自身期限与全部依赖法源期限中最早的一个。
  * 任一依赖法源更早到期时，内容随法源到期。
  */
-export function effectiveReviewDueAt(
-  item: DocumentExampleRecord,
+export function effectiveReviewDueAtFor(
+  item: Pick<GatedContentItem, "sourceIds" | "nextReviewDueAt">,
   sources: ReadonlyMap<string, LegalSourceRecord>,
 ): string {
   const candidates = [Date.parse(item.nextReviewDueAt)];
@@ -69,6 +76,25 @@ export function effectiveReviewDueAt(
   // 任一时间不可解析时返回空字符串，由调用方失败关闭。
   if (candidates.some((value) => !Number.isFinite(value))) return "";
   return new Date(Math.min(...candidates)).toISOString();
+}
+
+export function evaluateEligibility(
+  item: DocumentExampleRecord,
+  context: EligibilityContext,
+): IneligibilityReason | null {
+  return evaluateGatedItem(
+    item,
+    context.release?.items.find((entry) => entry.exampleId === item.exampleId),
+    context,
+  );
+}
+
+/** 文书范例的实际复核到期时间；共用 `effectiveReviewDueAtFor` 的判定。 */
+export function effectiveReviewDueAt(
+  item: DocumentExampleRecord,
+  sources: ReadonlyMap<string, LegalSourceRecord>,
+): string {
+  return effectiveReviewDueAtFor(item, sources);
 }
 
 export function selectEligibleExamples(
