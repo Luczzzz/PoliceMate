@@ -7,6 +7,7 @@
  */
 import { loadConfig, resolveRuntimeConfig } from "../apps/server/src/config";
 import { REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS } from "../apps/server/src/content/property-economic-content";
+import { REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS } from "../apps/server/src/content/public-order-drug-content";
 import { createFixtureControls } from "../apps/server/src/providers/fixture";
 import { checkReleaseReadiness } from "../apps/server/src/release-check";
 
@@ -22,7 +23,10 @@ async function main(): Promise<void> {
     runtime,
     eligibleExampleCount: release.eligibleExampleCount,
     caseFocusCoverage: {
-      required: REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS,
+      required: [
+        ...REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS,
+        ...REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS,
+      ],
       eligible: state.caseFocuses.filter((item) => item.eligible).map((item) => item.caseFocusId),
     },
   });

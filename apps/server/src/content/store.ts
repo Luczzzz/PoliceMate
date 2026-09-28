@@ -258,3 +258,11 @@ export function cloneCaseFocus(item: CaseFocusRecord): CaseFocusRecord {
     testResults: item.testResults.map((result) => ({ ...result })),
   };
 }
+
+/** 深拷贝一组法源记录，避免内容包与存储共享可变引用。 */
+export function cloneLegalSources(sources: readonly LegalSourceRecord[]): LegalSourceRecord[] {
+  return sources.map((source) => ({
+    ...source,
+    articles: source.articles.map((article) => ({ ...article })),
+  }));
+}

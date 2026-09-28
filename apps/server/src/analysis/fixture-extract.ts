@@ -276,6 +276,15 @@ function matchCount(sentence: string): RawMatch | null {
   return null;
 }
 
+/** 质量数量表述（千克/公斤/毫克/克）→ 数值与单位；用于以重量计量的涉案物品。 */
+function matchQuantity(sentence: string): { raw: string; value: number; unit: string } | null {
+  const match = sentence.match(/([零一二三四五六七八九十百千两\d.]+)\s*(千克|公斤|毫克|克)/);
+  if (match === null) return null;
+  const value = parseNumber(match[1]);
+  if (value === null) return null;
+  return { raw: match[0], value, unit: match[2] };
+}
+
 const PLACE_SUFFIX =
   "(?:门口|门前|店内|店里|家中|家里|屋内|路上|市场|小区|车内|网吧|超市|出租屋|宾馆|酒店|学校|宿舍|车站|火车站|广场|楼道)";
 const PLACE_PATTERN = new RegExp(`在([^，。；！？、\\s]{2,12})${PLACE_SUFFIX}`);
@@ -289,7 +298,7 @@ function matchPlace(sentence: string): string | null {
 const BEHAVIOR_LEXICON: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /持刀|拿刀|持械|匕首/, label: "持械" },
   { pattern: /扬言伤人|扬言报复|威胁|恐吓/, label: "威胁恐吓" },
-  { pattern: /殴打|打伤|打了|动手打|推搡|推倒|掌掴/, label: "殴打推搡" },
+  { pattern: /殴打|打伤|打了|动手打|推搡|推倒|掌掴|打架|斗殴|互殴/, label: "殴打推搡" },
   { pattern: /闯入|破门|非法侵入/, label: "非法侵入" },
   { pattern: /盗窃|窃取|偷走|偷了|被盗|偷/, label: "盗窃" },
   { pattern: /抢劫|抢走|抢夺|抢/, label: "抢劫抢夺" },
@@ -297,6 +306,13 @@ const BEHAVIOR_LEXICON: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /侵占|拒不归还/, label: "侵占" },
   { pattern: /损坏|砸坏|毁坏|砸/, label: "故意损毁财物" },
   { pattern: /辱骂/, label: "辱骂" },
+  { pattern: /赌博|赌场|赌资|赌局|聚赌|参赌|开赌|下注|投注|六合彩|赌球/, label: "赌博" },
+  { pattern: /卖淫|嫖娼|招嫖|嫖资/, label: "卖淫嫖娼" },
+  {
+    pattern:
+      /贩毒|贩卖毒品|运输毒品|制造毒品|非法持有毒品|吸毒|吸食毒品|注射毒品|容留他人吸毒|介绍买卖毒品|海洛因|甲基苯丙胺|冰毒|摇头丸|氯胺酮|可卡因|大麻/,
+    label: "涉毒",
+  },
 ];
 
 /** 紧急风险关键词。只用于给事实打标；是否触发提示由确认状态决定。 */
@@ -511,6 +527,23 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
             : `同类行为发生次数表述为「${count.raw}」`,
         originalWording: sentence.text,
         value: valueOf(count.raw, count.precision, min === null ? null : String(min), max === null ? null : String(max), "次"),
+        riskCategory: null,
+      });
+    }
+
+    const quantity = matchQuantity(sentence.text);
+    if (quantity !== null) {
+      push({
+        category: "count",
+        statement: `涉案数量表述为「${quantity.raw}」`,
+        originalWording: sentence.text,
+        value: valueOf(
+          quantity.raw,
+          "exact",
+          String(quantity.value),
+          String(quantity.value),
+          quantity.unit,
+        ),
         riskCategory: null,
       });
     }

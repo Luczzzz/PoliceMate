@@ -4,7 +4,11 @@ import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
 import { anonymousTokens } from "../src/security";
-import { THEFT_FOCUS_ID } from "../src/content/property-economic-content";
+import {
+  REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS,
+  THEFT_FOCUS_ID,
+} from "../src/content/property-economic-content";
+import { REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS } from "../src/content/public-order-drug-content";
 
 /**
  * 重点案情在统一 HTTP 流程中的接线验证。
@@ -18,6 +22,11 @@ const headers = {
   "x-pm-contract-version": "1.0",
   "x-pm-anonymous-token": anonymousTokens.issue().token,
 };
+
+/** 当前批次应装载的全部已发布重点案情数量。 */
+const TOTAL_CASE_FOCUS_COUNT =
+  REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS.length +
+  REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS.length;
 
 const THEFT_CASE = "3月2日，张某先后两次盗窃李某停放在楼下的电动车，价值3000元。";
 
@@ -141,7 +150,7 @@ describe("重点案情在统一分析流程中的接线", () => {
     });
     expect(patched.statusCode).toBe(200);
     const state = patched.json();
-    expect(state.eligibleCaseFocusCount).toBe(3);
+    expect(state.eligibleCaseFocusCount).toBe(TOTAL_CASE_FOCUS_COUNT - 1);
     expect(
       (state.caseFocuses as Array<{ caseFocusId: string; eligible: boolean }>).find(
         (item) => item.caseFocusId === THEFT_FOCUS_ID,

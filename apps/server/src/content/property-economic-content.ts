@@ -1,5 +1,10 @@
 import type { CaseFocusRecord, LegalSourceRecord } from "./model";
-import { cloneCaseFocus } from "./store";
+import { cloneCaseFocus, cloneLegalSources } from "./store";
+import {
+  CIVIL_CODE,
+  CRIMINAL_LAW,
+  PUBLIC_SECURITY_PUNISHMENTS_LAW,
+} from "./national-legal-sources";
 
 /**
  * 财产与经济类派出所重点案情内容包。
@@ -28,80 +33,6 @@ const NEXT_REVIEW_DUE_AT = "2026-10-28T00:00:00.000Z";
 function article(location: string, minimalText: string): { location: string; minimalText: string } {
   return { location, minimalText };
 }
-
-const CRIMINAL_LAW: LegalSourceRecord = {
-  sourceId: "src-cn-criminal-law",
-  version: "2026.09",
-  title: "中华人民共和国刑法",
-  issuingAuthority: "全国人民代表大会（及其常务委员会修正）",
-  documentNumber: "无（法律，历次修正案分别公布）",
-  authorityLevel: "法律",
-  region: "国家",
-  status: "current",
-  publishedAt: "1997-03-14T00:00:00.000Z",
-  effectiveAt: "1997-10-01T00:00:00.000Z",
-  officialUrl: "https://flk.npc.gov.cn/",
-  retrievedAt: RETRIEVED_AT,
-  contentHash: "cn-criminal-law-2026-09",
-  articles: [
-    article(
-      "第二百六十四条",
-      "盗窃公私财物，数额较大的，或者多次盗窃、入户盗窃、携带凶器盗窃、扒窃的，处三年以下有期徒刑、拘役或者管制，并处或者单处罚金；数额巨大或者有其他严重情节的，处三年以上十年以下有期徒刑，并处罚金；数额特别巨大或者有其他特别严重情节的，处十年以上有期徒刑或者无期徒刑，并处罚金或者没收财产。",
-    ),
-    article(
-      "第二百六十六条",
-      "诈骗公私财物，数额较大的，处三年以下有期徒刑、拘役或者管制，并处或者单处罚金；数额巨大或者有其他严重情节的，处三年以上十年以下有期徒刑，并处罚金；数额特别巨大或者有其他特别严重情节的，处十年以上有期徒刑或者无期徒刑，并处罚金或者没收财产。本法另有规定的，依照规定。",
-    ),
-    article(
-      "第二百七十五条",
-      "故意毁坏公私财物，数额较大或者有其他严重情节的，处三年以下有期徒刑、拘役或者罚金；数额巨大或者有其他特别严重情节的，处三年以上七年以下有期徒刑。",
-    ),
-    article(
-      "第二百八十七条之二",
-      "明知他人利用信息网络实施犯罪，为其犯罪提供互联网接入、服务器托管、网络存储、通讯传输等技术支持，或者提供广告推广、支付结算等帮助，情节严重的，处三年以下有期徒刑或者拘役，并处或者单处罚金。",
-    ),
-    article(
-      "第三百一十二条",
-      "明知是犯罪所得及其产生的收益而予以窝藏、转移、收购、代为销售或者以其他方法掩饰、隐瞒的，处三年以下有期徒刑、拘役或者管制，并处或者单处罚金；情节严重的，处三年以上七年以下有期徒刑，并处罚金。",
-    ),
-  ],
-  lastVerifiedAt: VERIFIED_AT,
-  nextReviewDueAt: NEXT_REVIEW_DUE_AT,
-  maintainer: MAINTAINER,
-};
-
-const PUBLIC_SECURITY_PUNISHMENTS_LAW: LegalSourceRecord = {
-  sourceId: "src-cn-public-security-punishments",
-  version: "2026.01",
-  title: "中华人民共和国治安管理处罚法（2025年修订）",
-  issuingAuthority: "全国人民代表大会常务委员会",
-  documentNumber: "中华人民共和国主席令第五十一号",
-  authorityLevel: "法律",
-  region: "国家",
-  status: "current",
-  publishedAt: "2025-06-27T00:00:00.000Z",
-  effectiveAt: "2026-01-01T00:00:00.000Z",
-  officialUrl: "https://flk.npc.gov.cn/",
-  retrievedAt: RETRIEVED_AT,
-  contentHash: "cn-public-security-punishments-law-2026-01",
-  articles: [
-    article(
-      "第九条",
-      "对于因民间纠纷引起的打架斗殴或者损毁他人财物等违反治安管理行为，情节较轻的，公安机关可以调解处理。经公安机关调解，当事人达成协议的，不予处罚。",
-    ),
-    article(
-      "第五十八条",
-      "盗窃、诈骗、哄抢、抢夺或者敲诈勒索的，处五日以上十日以下拘留或者二千元以下罚款；情节较重的，处十日以上十五日以下拘留，可以并处三千元以下罚款。",
-    ),
-    article(
-      "第五十九条",
-      "故意损毁公私财物的，处五日以下拘留或者一千元以下罚款；情节较重的，处五日以上十日以下拘留，可以并处三千元以下罚款。",
-    ),
-  ],
-  lastVerifiedAt: VERIFIED_AT,
-  nextReviewDueAt: NEXT_REVIEW_DUE_AT,
-  maintainer: MAINTAINER,
-};
 
 const ANTI_TELECOM_FRAUD_LAW: LegalSourceRecord = {
   sourceId: "src-cn-anti-telecom-fraud-law",
@@ -229,39 +160,6 @@ const HELPING_INFO_NETWORK_INTERPRETATION: LegalSourceRecord = {
     article(
       "第十二条",
       "明知他人利用信息网络实施犯罪，为其犯罪提供帮助，具有下列情形之一的，应当认定为刑法第二百八十七条之二第一款规定的“情节严重”：（一）为三个以上对象提供帮助的；（二）支付结算金额二十万元以上的；（三）以投放广告等方式提供资金五万元以上的；（四）违法所得一万元以上的。",
-    ),
-  ],
-  lastVerifiedAt: VERIFIED_AT,
-  nextReviewDueAt: NEXT_REVIEW_DUE_AT,
-  maintainer: MAINTAINER,
-};
-
-const CIVIL_CODE: LegalSourceRecord = {
-  sourceId: "src-cn-civil-code",
-  version: "2021.01",
-  title: "中华人民共和国民法典",
-  issuingAuthority: "全国人民代表大会",
-  documentNumber: "中华人民共和国主席令第四十五号",
-  authorityLevel: "法律",
-  region: "国家",
-  status: "current",
-  publishedAt: "2020-05-28T00:00:00.000Z",
-  effectiveAt: "2021-01-01T00:00:00.000Z",
-  officialUrl: "https://flk.npc.gov.cn/",
-  retrievedAt: RETRIEVED_AT,
-  contentHash: "cn-civil-code-2021-01",
-  articles: [
-    article(
-      "第一百四十八条",
-      "一方以欺诈手段，使对方在违背真实意思的情况下实施的民事法律行为，受欺诈方有权请求人民法院或者仲裁机构予以撤销。",
-    ),
-    article(
-      "第一千一百六十五条",
-      "行为人因过错侵害他人民事权益造成损害的，应当承担侵权责任。",
-    ),
-    article(
-      "第一千一百八十四条",
-      "侵害他人财产的，财产损失按照损失发生时的市场价格或者其他合理方式计算。",
     ),
   ],
   lastVerifiedAt: VERIFIED_AT,
@@ -930,8 +828,5 @@ export function createPropertyEconomicCaseFocuses(): CaseFocusRecord[] {
 }
 
 export function createPropertyEconomicSources(): LegalSourceRecord[] {
-  return PROPERTY_ECONOMIC_SOURCES.map((source) => ({
-    ...source,
-    articles: source.articles.map((item) => ({ ...item })),
-  }));
+  return cloneLegalSources(PROPERTY_ECONOMIC_SOURCES);
 }

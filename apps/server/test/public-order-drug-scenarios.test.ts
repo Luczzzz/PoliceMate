@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { REPORT_MODULE_LABELS } from "@policymate/contracts";
 import { CRITICAL_MODULE_IDS } from "../src/analysis/report";
 import {
-  DESTRUCTION_FOCUS_ID,
-  GENERAL_FRAUD_FOCUS_ID,
-  PROPERTY_ECONOMIC_CASE_FOCUSES,
-  TELECOM_FRAUD_FOCUS_ID,
-  THEFT_FOCUS_ID,
-} from "../src/content/property-economic-content";
+  ASSAULT_FOCUS_ID,
+  DRUG_FOCUS_ID,
+  GAMBLING_FOCUS_ID,
+  PROSTITUTION_FOCUS_ID,
+  PUBLIC_ORDER_DRUG_CASE_FOCUSES,
+} from "../src/content/public-order-drug-content";
 import type { FixtureControls } from "../src/providers/fixture";
 import {
   createScenarioHelpers,
@@ -16,22 +16,23 @@ import {
 } from "./helpers/case-focus-scenario-harness";
 
 /**
- * 四组财产与经济类重点案情场景化验收。
+ * 四组治安秩序与毒品类重点案情场景化验收。
  *
- * 通过统一的分析引擎驱动“自由案情 → 已确认事实 → 事实快照 → 六模块报告”，
- * 只使用确定性替身，不连接真实 Dify 或真实模型。场景断言外部可观察结果：
- * 命中的重点案情、报告总体状态、决定性缺口与法源链路。
+ * 复用共享装置驱动“自由案情 → 已确认事实 → 事实快照 → 六模块报告”，
+ * 只使用确定性替身；断言外部可观察结果：命中的重点案情、报告总体状态、
+ * 决定性缺口、高风险核验提示与法源链路。
  */
 
-const { scenarioOf, expectedFocusSourceIds } = createScenarioHelpers(PROPERTY_ECONOMIC_CASE_FOCUSES);
+const { scenarioOf, expectedFocusSourceIds } = createScenarioHelpers(PUBLIC_ORDER_DRUG_CASE_FOCUSES);
+
 const ALL_FOCUS_IDS = [
-  TELECOM_FRAUD_FOCUS_ID,
-  THEFT_FOCUS_ID,
-  GENERAL_FRAUD_FOCUS_ID,
-  DESTRUCTION_FOCUS_ID,
+  ASSAULT_FOCUS_ID,
+  GAMBLING_FOCUS_ID,
+  PROSTITUTION_FOCUS_ID,
+  DRUG_FOCUS_ID,
 ];
 
-describe("财产与经济类重点案情：典型场景生成六模块报告", () => {
+describe("治安秩序与毒品类重点案情：典型场景生成六模块报告", () => {
   it.each(ALL_FOCUS_IDS)("%s 生成完整且可追溯的六模块报告", async (caseFocusId) => {
     const scenario = scenarioOf(caseFocusId, "typical");
     const { report, resolution } = await runScenario(makeHarness(), scenario.caseText);
@@ -63,60 +64,77 @@ describe("财产与经济类重点案情：典型场景生成六模块报告", (
       }
     }
   });
+
+  it.each(ALL_FOCUS_IDS)("%s 只使用本重点案情的受治理法源", async (caseFocusId) => {
+    const scenario = scenarioOf(caseFocusId, "typical");
+    const { resolution } = await runScenario(makeHarness(), scenario.caseText);
+    expect(resolution.legalSources.map((source) => source.sourceId)).toEqual(
+      expectedFocusSourceIds(caseFocusId),
+    );
+    for (const source of resolution.legalSources) {
+      expect(source.status).toBe("current");
+    }
+  });
 });
 
-describe("财产与经济类重点案情：相邻与不应命中反例", () => {
-  it.each(ALL_FOCUS_IDS)("%s 的相邻场景不产生被排除的单一方向", async (caseFocusId) => {
+describe("治安秩序与毒品类重点案情：相邻与不应命中反例", () => {
+  it.each(ALL_FOCUS_IDS)("%s 的相邻反例不命中任何重点案情", async (caseFocusId) => {
     const scenario = scenarioOf(caseFocusId, "adjacent_boundary");
     const { report, resolution } = await runScenario(makeHarness(), scenario.caseText);
 
     expect([...resolution.matchedCaseFocusIds].sort()).toEqual([...scenario.expectedCaseFocusIds].sort());
-    if (scenario.expectedReportStatus === "conflicting") {
-      expect(resolution.unresolvedAlternatives.length).toBeGreaterThan(0);
-      expect(report.status).toBe("conflicting");
-      expect(report.headline).toContain("多种可能");
-      for (const moduleId of CRITICAL_MODULE_IDS) {
-        expect(report.modules.find((item) => item.id === moduleId)?.status).toBe("conflicting");
-      }
-    } else {
-      expect(report.status).toBe(scenario.expectedReportStatus);
-    }
-  });
-
-  it("一般诈骗反例不命中需要电信网络线索的重点案情", async () => {
-    const scenario = scenarioOf(GENERAL_FRAUD_FOCUS_ID, "adjacent_boundary");
-    const { resolution } = await runScenario(makeHarness(), scenario.caseText);
-    expect(resolution.matchedCaseFocusIds).not.toContain(TELECOM_FRAUD_FOCUS_ID);
-  });
-
-  it("民事经济纠纷不命中任何财产类重点案情", async () => {
-    const scenario = scenarioOf(GENERAL_FRAUD_FOCUS_ID, "adjacent_boundary");
-    const { report, resolution } = await runScenario(makeHarness(), scenario.caseText);
-    expect(resolution.matchedCaseFocusIds).toEqual([]);
     expect(resolution.caseFocusId).toBeNull();
-    expect(report.status).toBe("complete");
     expect(report.caseFocusId).toBeNull();
+    expect(report.status).toBe("complete");
     // 未命中重点案情时只使用通用法源，不引用任何重点案情的法源。
-    for (const sourceId of expectedFocusSourceIds(TELECOM_FRAUD_FOCUS_ID)) {
-      expect(report.modules.flatMap((module) => module.traceLinks).map((trace) => trace.basis?.sourceId)).not.toContain(sourceId);
+    const traceSourceIds = report.modules
+      .flatMap((module) => module.traceLinks)
+      .map((trace) => trace.basis?.sourceId);
+    for (const sourceId of expectedFocusSourceIds(caseFocusId)) {
+      expect(traceSourceIds).not.toContain(sourceId);
     }
   });
 
-  it("相邻方向不能排除时优先于条件不足（保守顺序）", async () => {
-    // 盗窃未果后砸坏电动车：同时命中盗窃与故意损毁，且数额与次数均未确认。
-    const { report, resolution } = await runScenario(
-      makeHarness(),
-      "3月2日，张某盗窃李某电动车未果。随后张某砸坏该电动车。",
+  it("赌博、卖淫嫖娼与毒品反例不互相命中", async () => {
+    const pairs: Array<[string, string]> = [
+      [GAMBLING_FOCUS_ID, PROSTITUTION_FOCUS_ID],
+      [GAMBLING_FOCUS_ID, DRUG_FOCUS_ID],
+      [PROSTITUTION_FOCUS_ID, DRUG_FOCUS_ID],
+    ];
+    for (const [adjacentId, otherId] of pairs) {
+      const scenario = scenarioOf(adjacentId, "adjacent_boundary");
+      const { resolution } = await runScenario(makeHarness(), scenario.caseText);
+      expect(resolution.matchedCaseFocusIds).not.toContain(otherId);
+    }
+  });
+
+  it("殴打相邻反例不命中打架斗殴和伤害类案情", async () => {
+    const scenario = scenarioOf(ASSAULT_FOCUS_ID, "adjacent_boundary");
+    const { resolution } = await runScenario(makeHarness(), scenario.caseText);
+    expect(resolution.matchedCaseFocusIds).not.toContain(ASSAULT_FOCUS_ID);
+  });
+
+  it("同一连续案情同时命中赌博与毒品时保留多种可能", async () => {
+    const focus = PUBLIC_ORDER_DRUG_CASE_FOCUSES.find((item) => item.caseFocusId === DRUG_FOCUS_ID);
+    const scenario = focus?.scenarios.find(
+      (item) => item.scenarioId === "drug-gambling-multi-behavior",
     );
-    expect(resolution.unresolvedGapIds.length).toBeGreaterThan(0);
-    expect(resolution.unresolvedAlternatives.length).toBeGreaterThan(0);
-    expect(resolution.unresolvedAlternativeIds).toEqual([DESTRUCTION_FOCUS_ID]);
+    if (scenario === undefined) throw new Error("缺少 drug-gambling-multi-behavior 场景");
+
+    const { report, resolution } = await runScenario(makeHarness(), scenario.caseText);
+    expect([...resolution.matchedCaseFocusIds].sort()).toEqual([...scenario.expectedCaseFocusIds].sort());
+    expect(resolution.caseFocusId).toBe(GAMBLING_FOCUS_ID);
+    expect(resolution.unresolvedAlternativeIds).toContain(DRUG_FOCUS_ID);
+    expect(resolution.unresolvedAlternatives).toContain("毒品类违法犯罪");
     expect(report.status).toBe("conflicting");
-    expect(report.statusLabel).toContain("多种可能");
+    expect(report.headline).toContain("多种可能");
+    for (const moduleId of CRITICAL_MODULE_IDS) {
+      expect(report.modules.find((item) => item.id === moduleId)?.status).toBe("conflicting");
+    }
   });
 });
 
-describe("财产与经济类重点案情：决定性事实缺失保守降级", () => {
+describe("治安秩序与毒品类重点案情：决定性事实缺失保守降级", () => {
   it.each(ALL_FOCUS_IDS)("%s 缺失决定性事实时降级为条件不足", async (caseFocusId) => {
     const scenario = scenarioOf(caseFocusId, "decisive_gap");
     const { report, resolution } = await runScenario(makeHarness(), scenario.caseText);
@@ -138,7 +156,7 @@ describe("财产与经济类重点案情：决定性事实缺失保守降级", (
   });
 });
 
-describe("财产与经济类重点案情：高风险边界保留人工核验", () => {
+describe("治安秩序与毒品类重点案情：高风险边界保留人工核验", () => {
   it.each(ALL_FOCUS_IDS)("%s 的高风险边界产生可解释核验提示，不自动作出处置", async (caseFocusId) => {
     const scenario = scenarioOf(caseFocusId, "high_risk_boundary");
     const { report, resolution, urgentPrompts } = await runScenario(makeHarness(), scenario.caseText);
@@ -154,7 +172,7 @@ describe("财产与经济类重点案情：高风险边界保留人工核验", (
   });
 });
 
-describe("财产与经济类重点案情：法源失效与紧急禁用立即停止支撑主结论", () => {
+describe("治安秩序与毒品类重点案情：法源失效与紧急禁用立即停止支撑主结论", () => {
   const invalidations: Array<[string, Parameters<FixtureControls["updateState"]>[0]]> = [
     ["重点案情已撤回", { caseFocusStatusAll: "withdrawn" }],
     ["重点案情已到期", { caseFocusesExpired: true }],

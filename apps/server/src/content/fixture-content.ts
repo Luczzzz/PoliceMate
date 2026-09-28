@@ -1,9 +1,13 @@
 import type { ContentReleaseManifest, DocumentExampleRecord, GovernedContentSeed, LegalSourceRecord } from "./model";
-import { cloneExample } from "./store";
+import { cloneExample, cloneLegalSources } from "./store";
 import {
   createPropertyEconomicCaseFocuses,
   createPropertyEconomicSources,
 } from "./property-economic-content";
+import {
+  createPublicOrderDrugCaseFocuses,
+  createPublicOrderDrugSources,
+} from "./public-order-drug-content";
 
 /**
  * 仅用于受控试行功能演示与自动化测试的确定性内容源。
@@ -461,7 +465,7 @@ const RELEASE: ContentReleaseManifest = {
   version: "1.0.0",
   activatedAt: "2026-08-22T00:00:00.000Z",
   maintainer: MAINTAINER,
-  changeNote: "受控试行测试内容首批激活。",
+  changeNote: "受控试行测试内容首批激活；同时装载财产与经济类、治安秩序与毒品类重点案情内容包。",
   items: EXAMPLES.map((item) => ({ exampleId: item.exampleId, version: item.version })),
   caseFocuses: [],
   legalSources: [ADMIN_SOURCE, CRIMINAL_SOURCE].map((source) => ({
@@ -471,23 +475,35 @@ const RELEASE: ContentReleaseManifest = {
   testSummary: "全部测试内容通过典型检索、相邻不匹配、虚构化与旧链接阻断检查。",
 };
 
+/** 按 sourceId 合并多个内容包的法源，后出现的记录覆盖先出现的同名记录。 */
+function mergeSources(...groups: LegalSourceRecord[][]): LegalSourceRecord[] {
+  const byId = new Map<string, LegalSourceRecord>();
+  for (const group of groups) {
+    for (const source of group) byId.set(source.sourceId, source);
+  }
+  return [...byId.values()];
+}
+
 /**
  * 每次调用返回全新的可重置种子，避免测试之间共享可变状态。
  *
- * 除占位文书范例与测试法源外，种子同时装载财产与经济类派出所重点案情
- * 内容包（真实国家公开法源）；该内容包是第 33 号切片的交付物，
- * 文书范例的正式内容由第 36 号切片另行发布。
+ * 除占位文书范例与测试法源外，种子同时装载财产与经济类、治安秩序与毒品类
+ * 派出所重点案情内容包（真实国家公开法源）；这些内容包是第 33、34 号切片的
+ * 交付物，文书范例的正式内容由第 36 号切片另行发布。
  */
 export function createFixtureContent(): GovernedContentSeed {
-  const propertySources = createPropertyEconomicSources();
-  const caseFocuses = createPropertyEconomicCaseFocuses();
-  const sources = [ADMIN_SOURCE, CRIMINAL_SOURCE, ...propertySources];
+  const caseFocuses = [
+    ...createPropertyEconomicCaseFocuses(),
+    ...createPublicOrderDrugCaseFocuses(),
+  ];
+  const sources = mergeSources(
+    [ADMIN_SOURCE, CRIMINAL_SOURCE],
+    createPropertyEconomicSources(),
+    createPublicOrderDrugSources(),
+  );
 
   return {
-    sources: sources.map((source) => ({
-      ...source,
-      articles: source.articles.map((item) => ({ ...item })),
-    })),
+    sources: cloneLegalSources(sources),
     examples: EXAMPLES.map(cloneExample),
     caseFocuses,
     release: {

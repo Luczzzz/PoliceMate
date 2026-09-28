@@ -19,12 +19,18 @@ import {
   TELECOM_FRAUD_FOCUS_ID,
   THEFT_FOCUS_ID,
 } from "../src/content/property-economic-content";
+import { REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS } from "../src/content/public-order-drug-content";
 import { validateRelease } from "../src/content/release";
 import { createGovernedContentStore } from "../src/content/store";
 import { extractCaseFactsFixture } from "../src/analysis/fixture-extract";
 
 /** 固定“当前时间”，使核验期限门控可重复。 */
 const NOW = new Date("2026-10-01T00:00:00.000Z");
+
+/** 当前批次应装载的全部已发布重点案情数量（财产与经济类 + 治安秩序与毒品类）。 */
+const TOTAL_CASE_FOCUS_COUNT =
+  REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS.length +
+  REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS.length;
 
 function contextOf(store: ReturnType<typeof createGovernedContentStore>): EligibilityContext {
   return store.eligibilityContext(NOW);
@@ -213,13 +219,15 @@ describe("重点案情当前状态门控", () => {
 
   it("到期后退出生产，恢复后重新可用", () => {
     const store = createGovernedContentStore(createFixtureContent());
-    expect(selectEligibleCaseFocuses(store.caseFocuses(), contextOf(store))).toHaveLength(4);
+    expect(selectEligibleCaseFocuses(store.caseFocuses(), contextOf(store))).toHaveLength(
+      TOTAL_CASE_FOCUS_COUNT,
+    );
 
     store.setCaseFocusesExpired(true);
     expect(store.snapshot(NOW).eligibleCaseFocusCount).toBe(0);
 
     store.setCaseFocusesExpired(false);
-    expect(store.snapshot(NOW).eligibleCaseFocusCount).toBe(4);
+    expect(store.snapshot(NOW).eligibleCaseFocusCount).toBe(TOTAL_CASE_FOCUS_COUNT);
   });
 
   it("单项紧急禁用只影响指定重点案情，重置后恢复", () => {
@@ -234,7 +242,7 @@ describe("重点案情当前状态门控", () => {
     expect(destruction?.eligible).toBe(true);
 
     store.reset();
-    expect(store.snapshot(NOW).eligibleCaseFocusCount).toBe(4);
+    expect(store.snapshot(NOW).eligibleCaseFocusCount).toBe(TOTAL_CASE_FOCUS_COUNT);
   });
 });
 
@@ -336,7 +344,7 @@ describe("重点案情批次与发布门槛", () => {
     const seed = createFixtureContent();
     const store = createGovernedContentStore(seed);
     const release = store.activeRelease();
-    expect(release.caseFocuses).toHaveLength(4);
+    expect(release.caseFocuses).toHaveLength(TOTAL_CASE_FOCUS_COUNT);
     for (const entry of release.caseFocuses) {
       expect(store.findCaseFocus(entry.caseFocusId)?.version).toBe(entry.version);
     }
