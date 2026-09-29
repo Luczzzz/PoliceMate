@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig, resolveRuntimeConfig, type AppConfig } from "../src/config";
-import {
-  HIGH_RISK_CASE_TAG,
-  REQUIRED_DOCUMENT_EXAMPLE_STAGES,
-} from "../src/content/document-example-content";
-import { REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS } from "../src/content/property-economic-content";
-import { REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS } from "../src/content/public-order-drug-content";
-import { REQUIRED_FAMILY_MINOR_CASE_FOCUS_IDS } from "../src/content/family-minor-content";
+import { loadConfig, type AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
+import { buildReleaseCheckInput } from "../src/release-check-input";
 import { runAcceptanceDrills } from "../src/acceptance/drills";
 import { MANUAL_ACCEPTANCE_RECORDS } from "../src/acceptance/evidence";
 import {
@@ -49,30 +43,7 @@ function trialConfig(overrides: Partial<AppConfig> = {}): AppConfig {
 }
 
 async function releaseCheckInput(): Promise<ReleaseCheckInput> {
-  const fixtures = createFixtureControls();
-  const index = await fixtures.content.listExamples();
-  const state = fixtures.describe();
-  const config = trialConfig();
-  return {
-    config,
-    runtime: resolveRuntimeConfig(config),
-    eligibleExampleCount: index.items.length,
-    documentExampleCoverage: {
-      requiredStages: REQUIRED_DOCUMENT_EXAMPLE_STAGES,
-      eligibleStages: index.items.map((item) => item.stageId),
-      requiredHighRiskCount: 1,
-      eligibleHighRiskCount: index.items.filter((item) => item.caseTags.includes(HIGH_RISK_CASE_TAG))
-        .length,
-    },
-    caseFocusCoverage: {
-      required: [
-        ...REQUIRED_PROPERTY_ECONOMIC_CASE_FOCUS_IDS,
-        ...REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS,
-        ...REQUIRED_FAMILY_MINOR_CASE_FOCUS_IDS,
-      ],
-      eligible: state.caseFocuses.filter((item) => item.eligible).map((item) => item.caseFocusId),
-    },
-  };
+  return buildReleaseCheckInput(trialConfig(), createFixtureControls());
 }
 
 async function acceptanceInput(
@@ -170,7 +141,7 @@ describe("受控试行发布检查", () => {
   it("缺少服务信息时发布检查阻断（默认加载的配置）", async () => {
     const config = loadConfig({});
     const report = runReleaseAcceptance({
-      releaseCheck: { config, runtime: resolveRuntimeConfig(config), eligibleExampleCount: 6 },
+      releaseCheck: await buildReleaseCheckInput(config, createFixtureControls()),
       releaseId: RELEASE_ID,
       index: buildAcceptanceIndex(),
       drills: await runAcceptanceDrills(),
@@ -185,6 +156,19 @@ describe("受控试行发布检查", () => {
     const second = runReleaseAcceptance(input);
     const normalize = (report: typeof first) => JSON.stringify({ ...report, generatedAt: "" });
     expect(normalize(first)).toBe(normalize(second));
+  });
+
+  it("阻断型人工记录缺少设备证据时不能仅靠声明通过", async () => {
+    const tampered = MANUAL_ACCEPTANCE_RECORDS.map((record) =>
+      record.id === "browser-ios-safari"
+        ? { ...record, result: "pass" as const, performedAt: "", environment: "" }
+        : record,
+    );
+    const report = runReleaseAcceptance(await acceptanceInput({ manualRecords: tampered }));
+    const gate = report.checks.find((check) => check.id === "gate-manual-evidence");
+    expect(gate?.passed).toBe(false);
+    expect(gate?.detail).toContain("browser-ios-safari");
+    expect(report.blocked).toBe(true);
   });
 
   it("人工验收记录覆盖真实设备、屏幕阅读器与真实网络", () => {

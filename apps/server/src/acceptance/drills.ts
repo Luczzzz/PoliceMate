@@ -38,24 +38,41 @@ import type { DrillResult } from "./types";
 
 const DRILL_NOW = new Date("2026-10-01T00:00:00.000Z");
 
-/** 全部演练 ID；发布检查要求每个 ID 都有结果，且都被验收矩阵引用。 */
-export const ACCEPTANCE_DRILL_IDS: string[] = [
-  "drill-master-switch",
-  "drill-analysis-entry-disabled",
-  "drill-documents-entry-disabled",
-  "drill-legal-source-repealed",
-  "drill-legal-source-uncertain",
-  "drill-single-example-withdrawn",
-  "drill-single-case-focus-disabled",
-  "drill-content-expiry",
-  "drill-source-expiry",
-  "drill-no-eligible-examples",
-  "drill-fail-closed-status",
-  "drill-release-activation-atomic",
-  "drill-release-rollback",
-  "drill-release-rebuild-from-assets",
-  "drill-privacy-canary",
+const DRILL_RUNNERS: { id: string; run: () => DrillResult | Promise<DrillResult> }[] = [
+  { id: "drill-master-switch", run: drillMasterSwitch },
+  { id: "drill-analysis-entry-disabled", run: drillAnalysisEntryDisabled },
+  { id: "drill-documents-entry-disabled", run: drillDocumentsEntryDisabled },
+  { id: "drill-legal-source-repealed", run: () => drillLegalSourceStatus("repealed") },
+  { id: "drill-legal-source-uncertain", run: () => drillLegalSourceStatus("uncertain") },
+  { id: "drill-single-example-withdrawn", run: drillSingleExampleWithdrawn },
+  { id: "drill-single-case-focus-disabled", run: drillSingleCaseFocusDisabled },
+  { id: "drill-content-expiry", run: drillContentExpiry },
+  { id: "drill-source-expiry", run: drillSourceExpiry },
+  { id: "drill-no-eligible-examples", run: drillNoEligibleExamples },
+  { id: "drill-fail-closed-status", run: drillFailClosedStatus },
+  { id: "drill-release-activation-atomic", run: releaseActivationAtomic },
+  { id: "drill-release-rollback", run: releaseRollback },
+  { id: "drill-release-rebuild-from-assets", run: releaseRebuildFromAssets },
+  { id: "drill-privacy-canary", run: drillPrivacyCanary },
 ];
+
+/** 全部演练 ID；发布检查要求每个 ID 都有结果，且都被验收矩阵引用。 */
+export const ACCEPTANCE_DRILL_IDS: string[] = DRILL_RUNNERS.map((runner) => runner.id);
+
+/**
+ * 运行全部紧急停止与内容批次演练。返回结果按登记顺序排列。
+ */
+export async function runAcceptanceDrills(): Promise<DrillResult[]> {
+  const results: DrillResult[] = [];
+  for (const runner of DRILL_RUNNERS) {
+    const result = await runner.run();
+    if (result.id !== runner.id) {
+      throw new Error(`演练 ${runner.id} 返回了不匹配的结果 ID：${result.id}`);
+    }
+    results.push(result);
+  }
+  return results;
+}
 
 function result(
   id: string,
@@ -413,27 +430,4 @@ async function drillPrivacyCanary(): Promise<DrillResult> {
     ["canary 不以 URL 编码形式进入遥测", !telemetryJson.includes(encodeURIComponent(PRIVACY_CANARY))],
     ["遥测记录已产生", telemetry.events.length > 0],
   ]);
-}
-
-/**
- * 运行全部紧急停止与内容批次演练。返回结果按 `ACCEPTANCE_DRILL_IDS` 顺序排列。
- */
-export async function runAcceptanceDrills(): Promise<DrillResult[]> {
-  return [
-    await drillMasterSwitch(),
-    await drillAnalysisEntryDisabled(),
-    await drillDocumentsEntryDisabled(),
-    await drillLegalSourceStatus("repealed"),
-    await drillLegalSourceStatus("uncertain"),
-    await drillSingleExampleWithdrawn(),
-    await drillSingleCaseFocusDisabled(),
-    await drillContentExpiry(),
-    await drillSourceExpiry(),
-    await drillNoEligibleExamples(),
-    await drillFailClosedStatus(),
-    releaseActivationAtomic(),
-    releaseRollback(),
-    releaseRebuildFromAssets(),
-    await drillPrivacyCanary(),
-  ];
 }

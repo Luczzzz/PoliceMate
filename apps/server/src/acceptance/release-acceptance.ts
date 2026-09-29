@@ -1,8 +1,8 @@
 import { CONTRACT_VERSION } from "@policymate/contracts";
 import { checkReleaseReadiness, type ReleaseCheckInput } from "../release-check";
-import { checkAcceptanceCoverage, type AcceptanceIndex } from "./coverage";
+import { checkAcceptanceCoverage, checkManualEvidenceRecords, type AcceptanceIndex } from "./coverage";
 import { ACCEPTANCE_SCENARIOS, REQUIRED_ACCEPTANCE_IDS } from "./scenarios";
-import { MANUAL_ACCEPTANCE_RECORDS } from "./evidence";
+import { blockingManualRecords, MANUAL_ACCEPTANCE_RECORDS } from "./evidence";
 import { ACCEPTANCE_DRILL_IDS } from "./drills";
 import {
   checkTrialDecisions,
@@ -78,13 +78,11 @@ export function runReleaseAcceptance(input: ReleaseAcceptanceInput): ReleaseAcce
     .map((drill) => drill.id)
     .filter((id) => !ACCEPTANCE_DRILL_IDS.includes(id));
 
-  const blockingRecords = manualRecords.filter((record) => record.blocksRelease);
+  const blockingRecords = blockingManualRecords(manualRecords);
   const unfinishedRecords = blockingRecords
     .filter((record) => record.result !== "pass")
     .map((record) => `${record.id}（${record.result}）`);
-  const invalidEvidence = blockingRecords
-    .filter((record) => record.evidence.length === 0)
-    .map((record) => record.id);
+  const invalidEvidence = checkManualEvidenceRecords(manualRecords, input.index);
 
   const decisionFailures = checkTrialDecisions(input.releaseId, decisions);
 
@@ -121,7 +119,7 @@ export function runReleaseAcceptance(input: ReleaseAcceptanceInput): ReleaseAcce
       detail: requireManualEvidence
         ? failureDetail([
             ...unfinishedRecords.map((id) => `未完成或未通过：${id}`),
-            ...invalidEvidence.map((id) => `缺少证据引用：${id}`),
+            ...invalidEvidence,
           ])
         : "已按调用方设置跳过人工证据门槛（仅用于自动化编排自检）。",
       hard: requireManualEvidence,

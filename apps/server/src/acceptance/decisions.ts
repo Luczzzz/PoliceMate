@@ -71,7 +71,7 @@ export const CONTENT_BATCH_CONFIRMATION: TrialDecisionRecord = {
   statement:
     "确认本次激活批次中的法源均为现行有效、可核验的公开正式规范；十组派出所重点案情与首批文书范例均已具备独立版本、适用条件、依据、失效与禁用测试结果，并满足发布门槛。",
   boundary: TRIAL_DECISION_BOUNDARY,
-  references: ["release-trial-0001", "acceptance-matrix-2026-09-29"],
+  references: ["release-trial-0001", "docs/acceptance/trial-release-result.json"],
 };
 
 export const TRIAL_RELEASE_DECISION: TrialDecisionRecord = {
@@ -80,9 +80,9 @@ export const TRIAL_RELEASE_DECISION: TrialDecisionRecord = {
   scope: "受控试行启动",
   recordedAt: "2026-09-29T00:00:00.000Z",
   statement:
-    "在内容批次确认、自动化验收矩阵、紧急停止演练与发布检查均满足硬门槛后，决定以定向不公开网址开始受控试行；任何硬门槛失败或触发立即停止条件时，必须停用受影响功能。",
+    "仅在硬门槛全部满足、发布检查通过且未触发停止条件时，决定以定向不公开网址开始受控试行。本记录不预先断言硬门槛已经满足；任何硬门槛失败或触发立即停止条件时，必须停用受影响功能。",
   boundary: TRIAL_DECISION_BOUNDARY,
-  references: ["release-trial-0001", "acceptance-matrix-2026-09-29"],
+  references: ["release-trial-0001", "docs/acceptance/trial-release-result.json"],
 };
 
 export const TRIAL_DECISION_RECORDS: TrialDecisionRecord[] = [

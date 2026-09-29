@@ -82,12 +82,12 @@
       {
         "id": "AC-08",
         "title": "报告生成超过 90 秒时显示超时失败状态和请求编号，迟到响应不得回写",
-        "evidenceCount": 3
+        "evidenceCount": 2
       },
       {
         "id": "AC-09",
         "title": "取消生成或清除分析时在途请求取消且迟到响应被拒绝",
-        "evidenceCount": 3
+        "evidenceCount": 4
       },
       {
         "id": "AC-10",

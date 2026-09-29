@@ -104,7 +104,6 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
     automated: [
       { file: "apps/server/test/failure-modes.test.ts", title: "报告空结果、结构错误、来源不匹配、跨模块矛盾或超时：失败关闭" },
       { file: "apps/server/test/analysis-lifecycle.test.ts", title: "报告超时后的迟到响应不得回写会话状态" },
-      { file: "e2e/analysis-resilience.spec.ts", title: "提交后显示真实阶段与已等待时间，不显示百分比，并可取消" },
     ],
     manual: [],
     drills: [],
@@ -116,6 +115,7 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
     automated: [
       { file: "apps/server/test/analysis-api.test.ts", title: "清除本次分析后服务端会话被删除" },
       { file: "apps/server/test/analysis-lifecycle.test.ts", title: "清除分析后的迟到响应被拒绝" },
+      { file: "e2e/analysis-resilience.spec.ts", title: "提交后显示真实阶段与已等待时间，不显示百分比，并可取消" },
       { file: "e2e/privacy.spec.ts", title: "清除本次分析需要二次确认；取消确认时保留当前状态" },
     ],
     manual: [],

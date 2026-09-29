@@ -67,7 +67,9 @@ PM_ACCEPTANCE_GENERATED_AT=2026-09-29T00:00:00.000Z npm run release:acceptance
 
 对应测试：[`acceptance-drills.test.ts`](../../apps/server/test/acceptance-drills.test.ts)。
 “从版本化资产重建”能力由
-[`apps/server/src/content/assets.ts`](../../apps/server/src/content/assets.ts) 提供。
+[`apps/server/src/content/assets.ts`](../../apps/server/src/content/assets.ts) 提供，
+可通过 `npm run content:assets` 导出与重建（见
+[`scripts/content-assets.ts`](../../scripts/content-assets.ts)）。
 
 ## 4. 设备、浏览器、可访问性与性能记录
 
@@ -125,7 +127,9 @@ PM_ENABLE_WEBKIT_E2E=1 npm run test:e2e -- --project=mobile-safari
 
 ## 7. 立即停止试行的条件
 
-产品规格 18.2 的停止条件对应以下演练与检查，均已在 CI 中执行：
+产品规格 18.2 的停止条件对应以下演练与检查，均由 `npm run verify` 中的
+自动化测试与发布检查覆盖（CI 执行同一命令，见
+[`.github/workflows/verify.yml`](../../.github/workflows/verify.yml)）：
 严重误导结论（报告跨模块矛盾失败关闭）、法源门控失效（法源状态/到期/禁用演练）、
 禁止内容持久化或泄露（隐私 canary）、无法禁用（总开关与单项禁用演练）、
 关键语义矛盾（报告校验失败关闭）、安全绕过（来源限制、令牌、限流测试）、

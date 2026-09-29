@@ -33,6 +33,54 @@ export interface AcceptanceCoverageResult {
   evidenceCounts: { id: string; title: string; evidenceCount: number }[];
 }
 
+/**
+ * 校验阻断型人工/设备记录是否具备可追溯证据。
+ *
+ * 声明为 `pass` 的阻断型记录必须带可解析执行日期、环境说明、执行角色与
+ * 真实存在的测试引用，避免在没有设备证据的情况下被翻转成通过。
+ * 未完成的记录由发布检查的 `gate-manual-evidence` 门槛单独报告。
+ */
+export function checkManualEvidenceRecords(
+  records: readonly ManualAcceptanceRecord[],
+  index: AcceptanceIndex,
+): string[] {
+  const failures: string[] = [];
+  for (const record of records) {
+    if (!record.blocksRelease || record.result !== "pass") continue;
+    if (!Number.isFinite(Date.parse(record.performedAt))) {
+      failures.push(`${record.id} 的通过记录缺少可解析的执行日期。`);
+    }
+    if (record.environment.trim() === "") {
+      failures.push(`${record.id} 的通过记录缺少环境说明。`);
+    }
+    if (record.operator.trim() === "") {
+      failures.push(`${record.id} 的通过记录缺少执行角色。`);
+    }
+    if (record.evidence.length === 0) {
+      failures.push(`${record.id} 的通过记录缺少证据引用。`);
+    }
+    for (const ref of record.evidence) {
+      if (!hasTitle(index, ref.file, ref.title)) {
+        failures.push(`${record.id} 的证据引用不存在：${ref.file} → ${ref.title}`);
+      }
+    }
+  }
+  return failures;
+}
+
+/** 矩阵与人工记录引用到的全部测试文件（去重排序）。 */
+export function acceptanceTestFiles(
+  scenarios: readonly AcceptanceScenario[] = ACCEPTANCE_SCENARIOS,
+  records: readonly ManualAcceptanceRecord[] = MANUAL_ACCEPTANCE_RECORDS,
+): string[] {
+  return [
+    ...new Set([
+      ...scenarios.flatMap((scenario) => scenario.automated.map((ref) => ref.file)),
+      ...records.flatMap((record) => record.evidence.map((ref) => ref.file)),
+    ]),
+  ].sort();
+}
+
 /** 从磁盘读取测试文件源码，构造覆盖率校验所需的索引。 */
 export function loadAcceptanceIndex(
   testFiles: readonly string[],

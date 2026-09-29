@@ -1,0 +1,21 @@
+name: verify
+
+# 受控试行验收的自动化部分：类型检查、单元测试（含验收矩阵、演练与发布检查
+# 自检）、H5 构建与移动浏览器黑盒验收。真实设备、真实屏幕阅读器与真实 4G
+# 记录由人工完成后回填，发布检查未提供时明确阻断。
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run verify
