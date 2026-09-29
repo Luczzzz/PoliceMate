@@ -1,0 +1,368 @@
+{
+  "mode": "full",
+  "result": {
+    "contractVersion": "1.0",
+    "releaseId": "release-trial-0001",
+    "generatedAt": "2026-09-29T00:00:00.000Z",
+    "ok": false,
+    "blocked": true,
+    "checks": [
+      {
+        "id": "gate-release-readiness",
+        "title": "内容、文书范例阶段与高风险覆盖、服务信息与传输安全门槛",
+        "passed": false,
+        "detail": "使用与数据说明缺少实际服务提供者（或仍为占位值）。；使用与数据说明缺少实际试行反馈联系人（或仍为占位值）。；使用与数据说明缺少实际数据处理说明（或仍为占位值）。；使用与数据说明缺少技术日志边界说明。",
+        "hard": true
+      },
+      {
+        "id": "gate-acceptance-coverage",
+        "title": "AC-01 至 AC-34 全部存在且每条证据引用可追踪",
+        "passed": true,
+        "detail": "通过",
+        "hard": true
+      },
+      {
+        "id": "gate-drills",
+        "title": "紧急停止、内容批次与隐私 canary 演练全部通过",
+        "passed": true,
+        "detail": "通过",
+        "hard": true
+      },
+      {
+        "id": "gate-manual-evidence",
+        "title": "设备、浏览器、可访问性与性能验收记录满足阻断门槛",
+        "passed": false,
+        "detail": "未完成或未通过：browser-ios-safari（not_run）；未完成或未通过：a11y-device-assistive-tech（not_run）；未完成或未通过：performance-real-device-4g（not_run）",
+        "hard": true
+      },
+      {
+        "id": "gate-trial-decisions",
+        "title": "内容批次确认与试行发布决定分别记录且不作正式审定表述",
+        "passed": true,
+        "detail": "通过",
+        "hard": true
+      }
+    ],
+    "scenarios": [
+      {
+        "id": "AC-01",
+        "title": "输入脱敏的典型重点案情并确认完整事实后生成结构完整、可追溯的初步意见报告",
+        "evidenceCount": 7
+      },
+      {
+        "id": "AC-02",
+        "title": "缺少决定性事实时在上限内追问并生成条件不足报告",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-03",
+        "title": "两个相邻定性无法合理排除时展示多种可能及转换条件",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-04",
+        "title": "候选、未知或争议事实不支撑主结论，只形成缺口、分支或风险提示",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-05",
+        "title": "修改决定性事实并确认新快照后旧报告立即失效且旧临时标记不迁移",
+        "evidenceCount": 2
+      },
+      {
+        "id": "AC-06",
+        "title": "法源废止、过期或无法确认时相关内容退出生产并降级为依据不可用",
+        "evidenceCount": 8
+      },
+      {
+        "id": "AC-07",
+        "title": "Dify 空结果、无效结构或无法匹配的条款时最多重试一次后失败关闭",
+        "evidenceCount": 2
+      },
+      {
+        "id": "AC-08",
+        "title": "报告生成超过 90 秒时显示超时失败状态和请求编号，迟到响应不得回写",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-09",
+        "title": "取消生成或清除分析时在途请求取消且迟到响应被拒绝",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-10",
+        "title": "空闲 30 分钟、刷新或关闭标签页后案情、报告和临时状态不可恢复",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-11",
+        "title": "标记本次已核对只改变本地展示状态，不改变事实、报告、Dify 输入或完成率",
+        "evidenceCount": 2
+      },
+      {
+        "id": "AC-12",
+        "title": "筛选临时工作台时显示 X/Y 和清除筛选，原始顺序、内容和结论不变",
+        "evidenceCount": 1
+      },
+      {
+        "id": "AC-13",
+        "title": "文书任务关联多个可能变体时展示差异和待核验条件，不自动选择唯一范例",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-14",
+        "title": "文书检索无结果时显示当前没有匹配的已核验范例并允许返回分类浏览",
+        "evidenceCount": 1
+      },
+      {
+        "id": "AC-15",
+        "title": "文书范例在打开后被紧急下架时旧链接不能继续访问正文",
+        "evidenceCount": 4
+      },
+      {
+        "id": "AC-16",
+        "title": "Dify 故障但文书内容有效时案情分析暂不可用而文书范例仍可浏览",
+        "evidenceCount": 4
+      },
+      {
+        "id": "AC-17",
+        "title": "文书范例全部失效时首页保留入口但显示暂不可用，不进入空列表",
+        "evidenceCount": 4
+      },
+      {
+        "id": "AC-18",
+        "title": "页面包含真实身份信息时产品不宣称自动识别，警示常驻且不持久化或进入内容日志",
+        "evidenceCount": 5
+      },
+      {
+        "id": "AC-19",
+        "title": "输入超长文本或不支持格式时明确拒绝，不静默截断或解析",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-20",
+        "title": "契约版本不兼容时停止分析并提示刷新或更新，不猜测字段",
+        "evidenceCount": 2
+      },
+      {
+        "id": "AC-21",
+        "title": "主判断与受立案条件或依据链路矛盾时阻止主判断展示并降级",
+        "evidenceCount": 1
+      },
+      {
+        "id": "AC-22",
+        "title": "次要证据项生成失败但关键模块有效时展示通过校验的部分并标记局部失败",
+        "evidenceCount": 1
+      },
+      {
+        "id": "AC-23",
+        "title": "系统字体放大并使用屏幕阅读器时核心流程、状态和操作顺序完整可用",
+        "evidenceCount": 7
+      },
+      {
+        "id": "AC-24",
+        "title": "普通 4G 和中端手机首次打开首页 3 秒内可操作，后续本地交互即时响应",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-25",
+        "title": "从不公开网址进入时页面不宣称认证或保密访问，noindex 已设置且接口仍执行限流与安全规则",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-26",
+        "title": "提交结构化反馈时只提交预定义反馈类型和非内容元数据，不上传页面文本",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-27",
+        "title": "内容项到达下次核验日期时自动退出生产并阻断依赖结论，直到新版本重新发布",
+        "evidenceCount": 4
+      },
+      {
+        "id": "AC-28",
+        "title": "内容维护者发布新批次时部分操作失败则继续使用上一完整批次",
+        "evidenceCount": 4
+      },
+      {
+        "id": "AC-29",
+        "title": "查看报告或范例时页面不存在产品内复制、打印、分享、下载或导出入口",
+        "evidenceCount": 2
+      },
+      {
+        "id": "AC-30",
+        "title": "无网络、限流或功能禁用时就地显示具体影响和可执行下一步",
+        "evidenceCount": 4
+      },
+      {
+        "id": "AC-31",
+        "title": "已确认事实触发人身危险、医疗、未成年人保护或证据灭失风险时报告前显示核验提示",
+        "evidenceCount": 2
+      },
+      {
+        "id": "AC-32",
+        "title": "仅有未经确认的危险关键词时只提出不中断流程的安全核实问题",
+        "evidenceCount": 2
+      },
+      {
+        "id": "AC-33",
+        "title": "输入模糊日期或金额时保留原始值、范围和精确程度，仅在法律边界需要时追问",
+        "evidenceCount": 3
+      },
+      {
+        "id": "AC-34",
+        "title": "页面显示时间、金额和法源地域时使用简体中文、北京时间、人民币元及明确的国家、浙江地域标签",
+        "evidenceCount": 2
+      }
+    ],
+    "drills": [
+      {
+        "id": "drill-master-switch",
+        "title": "后端总开关关闭时两个入口同时不可用且正文检索失败关闭",
+        "passed": true,
+        "evidence": [
+          "通过：案情分析入口不可用",
+          "通过：文书范例入口不可用",
+          "通过：文书正文检索失败关闭"
+        ]
+      },
+      {
+        "id": "drill-analysis-entry-disabled",
+        "title": "案情分析入口停用时文书范例仍可用",
+        "passed": true,
+        "evidence": [
+          "通过：案情分析入口不可用",
+          "通过：文书范例入口仍可用"
+        ]
+      },
+      {
+        "id": "drill-documents-entry-disabled",
+        "title": "文书范例入口停用时正文检索失败关闭而案情分析不受影响",
+        "passed": true,
+        "evidence": [
+          "通过：文书范例入口不可用",
+          "通过：文书正文检索失败关闭",
+          "通过：案情分析入口仍可用"
+        ]
+      },
+      {
+        "id": "drill-legal-source-repealed",
+        "title": "法源状态变为 repealed 时依赖内容立即退出生产",
+        "passed": true,
+        "evidence": [
+          "通过：没有合格文书范例",
+          "通过：列表为空",
+          "通过：文书范例入口不可用"
+        ]
+      },
+      {
+        "id": "drill-legal-source-uncertain",
+        "title": "法源状态变为 uncertain 时依赖内容立即退出生产",
+        "passed": true,
+        "evidence": [
+          "通过：没有合格文书范例",
+          "通过：列表为空",
+          "通过：文书范例入口不可用"
+        ]
+      },
+      {
+        "id": "drill-single-example-withdrawn",
+        "title": "单项下架只影响指定范例且旧链接不可访问",
+        "passed": true,
+        "evidence": [
+          "通过：目标范例退出列表",
+          "通过：其余范例仍在列表",
+          "通过：旧标识返回不可用"
+        ]
+      },
+      {
+        "id": "drill-single-case-focus-disabled",
+        "title": "单项禁用重点案情后命中仍成立但停止限定法源",
+        "passed": true,
+        "evidence": [
+          "通过：仍命中重点案情",
+          "通过：命中内容已不合格",
+          "通过：不再提供该重点案情法源"
+        ]
+      },
+      {
+        "id": "drill-content-expiry",
+        "title": "内容到期后全部退出生产，恢复核验期限后重新可用",
+        "passed": true,
+        "evidence": [
+          "通过：到期后合格文书范例为 0",
+          "通过：到期后合格重点案情为 0",
+          "通过：恢复后合格文书范例大于 0",
+          "通过：恢复后合格重点案情大于 0"
+        ]
+      },
+      {
+        "id": "drill-source-expiry",
+        "title": "法源核验到期时依赖内容退出生产，恢复后重新可用",
+        "passed": true,
+        "evidence": [
+          "通过：到期后合格文书范例为 0",
+          "通过：恢复后合格文书范例大于 0"
+        ]
+      },
+      {
+        "id": "drill-no-eligible-examples",
+        "title": "没有合格范例时入口提前显示暂不可用",
+        "passed": true,
+        "evidence": [
+          "通过：文书范例入口不可用",
+          "通过：原因指向没有已核验范例"
+        ]
+      },
+      {
+        "id": "drill-fail-closed-status",
+        "title": "无法确认可用状态时失败关闭，未知与失效标识严格区分",
+        "passed": true,
+        "evidence": [
+          "通过：未知标识返回 not_found",
+          "通过：失效标识返回 unavailable"
+        ]
+      },
+      {
+        "id": "drill-release-activation-atomic",
+        "title": "批次部分校验失败时整批拒绝并保持上一完整批次",
+        "passed": true,
+        "evidence": [
+          "通过：激活抛出批次校验错误",
+          "通过：上一批次保持激活"
+        ]
+      },
+      {
+        "id": "drill-release-rollback",
+        "title": "整体回滚切回上一完整批次，未知批次返回空",
+        "passed": true,
+        "evidence": [
+          "通过：回滚命中上一批次",
+          "通过：未知批次返回 null"
+        ]
+      },
+      {
+        "id": "drill-release-rebuild-from-assets",
+        "title": "可从版本化结构化资产重建当前批次，损坏资产被拒绝",
+        "passed": true,
+        "evidence": [
+          "通过：批次 ID 一致",
+          "通过：内容项、重点案情与法源版本一致",
+          "通过：格式版本不受支持时拒绝",
+          "通过：发布校验失败时拒绝"
+        ]
+      },
+      {
+        "id": "drill-privacy-canary",
+        "title": "合成 canary 不进入遥测、元数据接口或缓存",
+        "passed": true,
+        "evidence": [
+          "通过：canary 不进入遥测",
+          "通过：canary 不进入元数据接口",
+          "通过：canary 不以 URL 编码形式进入遥测",
+          "通过：遥测记录已产生"
+        ]
+      }
+    ]
+  }
+}

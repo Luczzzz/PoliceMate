@@ -13,6 +13,7 @@
     "test": "npm run test -w @policymate/server",
     "test:e2e": "playwright test",
     "release:check": "tsx scripts/release-check.ts",
+    "release:acceptance": "tsx scripts/release-acceptance.ts",
     "verify": "npm run typecheck && npm run test && npm run build && npm run test:e2e"
   },
   "devDependencies": {

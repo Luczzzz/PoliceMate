@@ -1907,6 +1907,53 @@ svg {
   }
 }
 
+/* ---------- 报告六模块索引 ---------- */
+
+.report-index {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-muted, #f8fafc);
+}
+
+.report-index h2 {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.report-index ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-index a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--primary);
+  font-size: 0.875rem;
+  text-decoration: none;
+}
+
+.report-index a:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.report-module {
+  scroll-margin-top: 1rem;
+}
+
 /* ---------- 报告临时工作台 ---------- */
 
 .report-module--workbench {

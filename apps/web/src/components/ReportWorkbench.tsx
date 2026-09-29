@@ -256,6 +256,7 @@ export function EvidenceChecklistWorkbench({ module }: { module: ReportModule })
 
   return (
     <section
+      id="report-module-evidence_checklist"
       className="report-module report-module--workbench"
       data-testid="report-module-evidence_checklist"
       data-workbench="evidence"
@@ -357,6 +358,7 @@ export function InterviewPointsWorkbench({ module }: { module: ReportModule }) {
 
   return (
     <section
+      id="report-module-interview_points"
       className="report-module report-module--workbench"
       data-testid="report-module-interview_points"
       data-workbench="interview"

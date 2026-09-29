@@ -17,6 +17,13 @@ if (existsSync(browserDepsLib)) {
 const webPort = Number(process.env.PM_WEB_PORT ?? "5173");
 const baseURL = `http://127.0.0.1:${webPort}`;
 
+/** 微信内置浏览器 User-Agent（Android 版），用于核心流程代理验收。 */
+const WECHAT_USER_AGENT =
+  "Mozilla/5.0 (Linux; Android 14; Pixel 7 Build/UP1A.231105.001) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/120.0.0.0 Mobile Safari/537.36 MicroMessenger/8.0.49.2600(0x2800313D) WeChat/arm64 Weixin NetType/WIFI Language/zh_CN ABI/arm64";
+
+/** 核心流程代理验收的用例；只在跨浏览器 project 下运行。 */
+const CROSS_BROWSER_MATCH = /cross-browser\.spec\.ts/;
+
 /**
  * 移动浏览器黑盒验收测试。
  *
@@ -42,6 +49,23 @@ export default defineConfig({
       name: "mobile-chrome",
       use: { ...devices["Pixel 7"] },
     },
+    // 微信内置浏览器：核心流程黑盒验收（Chromium 引擎 + 微信 UA 代理）。
+    {
+      name: "wechat",
+      testMatch: CROSS_BROWSER_MATCH,
+      use: { ...devices["Pixel 7"], userAgent: WECHAT_USER_AGENT },
+    },
+    // iOS Safari：需要可运行 WebKit 的环境（PM_ENABLE_WEBKIT_E2E=1）。
+    // 无法运行 WebKit 时由 manual-evidence 的人工记录把关，默认不阻断本地测试。
+    ...(process.env.PM_ENABLE_WEBKIT_E2E === "1"
+      ? [
+          {
+            name: "mobile-safari",
+            testMatch: CROSS_BROWSER_MATCH,
+            use: { ...devices["iPhone 14"] },
+          },
+        ]
+      : []),
   ],
   webServer: {
     command: "PM_ENABLE_TEST_CONTROLS=1 npm run dev",

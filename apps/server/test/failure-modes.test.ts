@@ -183,6 +183,31 @@ describe("外部边界失败关闭与单次重试", () => {
     }
   });
 
+  it("次要模块局部失败时保留其他模块并明确标记局部失败", async () => {
+    const { app, fixtures } = await makeApp({ reportTimeoutMs: 500 });
+    const session = await runToSnapshot(app);
+    fixtures.updateState({ reportMode: "partial_failure" });
+
+    const response = await generateReport(app, session);
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.status).toBe("partial_failure");
+
+    const failed = body.modules.filter(
+      (module: { status: string }) => module.status === "generation_failed",
+    );
+    expect(failed.length).toBeGreaterThan(0);
+    for (const module of failed) {
+      expect(module.failureReason).toBeTruthy();
+    }
+    // 关键模块仍通过校验，报告不因次要模块失败而整体失败。
+    for (const moduleId of ["preliminary_qualification", "filing_conditions", "legal_basis_trace"]) {
+      const module = body.modules.find((item: { id: string }) => item.id === moduleId);
+      expect(module?.status).not.toBe("generation_failed");
+    }
+    await app.close();
+  });
+
   it("正常路径不受重试策略影响", async () => {
     const { app } = await makeApp({ analysisTimeoutMs: 500, reportTimeoutMs: 500 });
     const session = await runToSnapshot(app);

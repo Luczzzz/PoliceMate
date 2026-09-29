@@ -6,6 +6,7 @@ import { useAnalysisFlow } from "../../analysis/AnalysisSessionContext";
 import { ClearAnalysisButton } from "../../components/ClearAnalysisButton";
 import { FailurePanel } from "../../components/FailurePanel";
 import { EvidenceChecklistWorkbench, InterviewPointsWorkbench } from "../../components/ReportWorkbench";
+import { formatBeijingDateTime } from "../../util/datetime";
 
 const REPORT_BOUNDARY_STATEMENT =
   "本报告是程序辅助工具输出，不构成案件定性、受立案决定、处罚建议或法律结论；请结合现行规范、正式案卷和官方系统核验。";
@@ -26,6 +27,7 @@ function documentTaskState(task: ReportDocumentTask) {
 function GenericModule({ module }: { module: ReportModule }) {
   return (
     <section
+      id={`report-module-${module.id}`}
       className="report-module"
       data-testid={`report-module-${module.id}`}
       data-workbench="none"
@@ -95,6 +97,23 @@ function DocumentTaskCard({ task }: { task: ReportDocumentTask }) {
   );
 }
 
+function ReportModuleIndex({ modules }: { modules: ReportModule[] }) {
+  return (
+    <nav className="report-index" aria-label="六模块索引" data-testid="report-module-index">
+      <h2>报告模块</h2>
+      <ul>
+        {modules.map((module) => (
+          <li key={module.id}>
+            <a href={`#report-module-${module.id}`} data-testid={`report-index-${module.id}`}>
+              {module.label}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 function ReportBody({
   report,
   pendingModification,
@@ -114,11 +133,11 @@ function ReportBody({
         <p className="status-badge" data-testid="report-status">
           {report.statusLabel}
         </p>
-        <h1 className="page-title">{report.headline}</h1>
+        <h1 className="page-title" data-testid="report-headline">{report.headline}</h1>
         <dl className="detail-list">
           <div>
             <dt>生成时间</dt>
-            <dd>{report.generatedAt}</dd>
+            <dd>{formatBeijingDateTime(report.generatedAt)}</dd>
           </div>
           <div>
             <dt>事实快照</dt>
@@ -199,6 +218,8 @@ function ReportBody({
           </ul>
         )}
       </section>
+
+      <ReportModuleIndex modules={report.modules} />
 
       {report.modules.map((module) => (
         <ReportModuleSection key={module.id} module={module} />
