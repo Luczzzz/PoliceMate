@@ -1,4 +1,5 @@
 import type {
+  CaseFocusDiversion,
   ContentStatus,
   DocumentExampleAnnotatedPart,
   DocumentExampleNeighbor,
@@ -102,13 +103,13 @@ export interface ContentReleaseManifest {
 /* ---------- 派出所重点案情内容模型 ---------- */
 
 /** 重点案情的分流方向。 */
-export type CaseFocusDiversion = "criminal" | "administrative" | "civil";
+export type { CaseFocusDiversion };
 
 /**
  * 重点案情的匹配规则。
  *
- * 只允许依据候选事实中已完成状态确认的行为标签与原始表述线索，
- * 不得解析模型生成的自然语言结论。
+ * 只允许依据未排除的候选或已确认行为标签与原始表述线索，
+ * 不得依据未知、否认或争议事实，也不得解析模型生成的自然语言结论。
  */
 export interface CaseFocusMatchRuleRecord {
   /** 必须命中的行为标签（候选事实中 `category=behavior` 的规范值）。 */
@@ -138,6 +139,21 @@ export interface CaseFocusNeighborRecord {
 }
 
 /**
+ * 决定性事实缺口的一个条件分支。
+ *
+ * 只声明“若…”的条件文本与对应分流方向；程序路径与依据在报告生成时从
+ * 该重点案情的 `diversionRules` 读取，避免分支与分流规则两处漂移。
+ */
+export interface CaseFocusGapBranchRecord {
+  /** 批次内稳定分支 ID。 */
+  branchId: string;
+  /** 分支条件（“若…”）。 */
+  condition: string;
+  /** 该条件对应的分流方向，必须属于所属缺口的 `affectsDiversions`。 */
+  diversion: CaseFocusDiversion;
+}
+
+/**
  * 决定性事实缺口。
  *
  * `factCategory` 是唯一可机械判定的挂钩：本次分析中不存在任何“已确认且未排除”
@@ -149,6 +165,8 @@ export interface CaseFocusGapRecord {
   factCategory: FactCategory;
   /** 该缺口未解决时不能单一判断的分流方向。 */
   affectsDiversions: CaseFocusDiversion[];
+  /** 该缺口未解决时的“若…则…”条件分支；至少一条。 */
+  branches: CaseFocusGapBranchRecord[];
 }
 
 export type CaseFocusScenarioKind =

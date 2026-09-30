@@ -6,13 +6,16 @@ import type {
   AnalysisStage,
   CandidateFact,
   CreateAnalysisRequest,
+  FactCategory,
   FactSnapshot,
   FactStatus,
+  GapAnswer,
   ReviseFactRequest,
   UrgentRiskCategory,
   UrgentRiskPrompt,
   GenerateReportRequest,
   LegalSourceReference,
+  ReportGapBranch,
 } from "@policymate/contracts";
 import {
   ANALYSIS_STAGE_LABELS,
@@ -21,6 +24,7 @@ import {
   countCharacters,
   FACT_CATEGORY_LABELS,
   FACT_STATUS_LABELS,
+  GAP_ANSWER_LABELS,
   URGENT_RISK_LABELS,
 } from "@policymate/contracts";
 import type {
@@ -123,6 +127,8 @@ interface AnalysisSession {
   snapshotBackup: SnapshotBackup;
   /** 未确认的事实修改；非 `null` 时旧报告仍可见但必须标记“修改尚未应用”。 */
   modification: { baseSnapshotVersion: number; baseSnapshotHash: string; startedAt: number } | null;
+  /** 民警对各决定性缺口的回答；不改变事实，只表明缺口仍未解决。 */
+  gapAnswers: Map<string, GapAnswer>;
 }
 
 interface SnapshotBackup {
@@ -162,6 +168,8 @@ const FACT_STATUSES: ReadonlySet<FactStatus> = new Set([
   "unknown",
   "disputed",
 ]);
+
+const FACT_CATEGORIES: ReadonlySet<string> = new Set(Object.keys(FACT_CATEGORY_LABELS));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -229,6 +237,10 @@ export function validateExtractionResult(result: CaseExtractionResult): void {
     }
     if (fact.riskCategory !== null && typeof fact.riskCategory !== "string") {
       throw new AnalysisContractError("候选事实紧急风险标记无效。");
+    }
+    // 缺口绑定只能由民警在补充流程中显式建立，外部提取边界不得自行声明。
+    if (!Array.isArray(fact.resolvesGapIds) || fact.resolvesGapIds.length > 0) {
+      throw new AnalysisContractError("提取结果不得预置决定性缺口绑定。");
     }
   }
   const matters = result.independentMatters;
@@ -471,6 +483,7 @@ export class AnalysisEngine {
       snapshot,
       snapshotBackup: this.captureSnapshotBackup({ facts, snapshot }),
       modification: null,
+      gapAnswers: new Map(),
     };
     this.sessions.set(session.sessionId, session);
     return toSessionState(session, now);
@@ -509,6 +522,7 @@ export class AnalysisEngine {
       caseFocusVersion: null,
     };
     const downgradeNotes: string[] = [];
+    let gapBranches: ReportGapBranch[] = [];
     if (resolveCaseFocus !== undefined) {
       const resolution = await resolveCaseFocus(
         session.facts.map((fact) => ({ ...fact })),
@@ -543,6 +557,23 @@ export class AnalysisEngine {
         forcedStatus = "conflicting";
       } else if (resolution.unresolvedGapNotes.length > 0) {
         forcedStatus = "insufficient_facts";
+      }
+      // 依据不可用时不展示任何分支或程序路径；否则把未解决缺口展开为
+      // “若…则…”分支，并叠加民警已回答的“未知/待核实”状态。
+      if (forcedStatus !== "basis_unavailable") {
+        gapBranches = resolution.unresolvedGapBranches.map((branch) => {
+          const answer = session.gapAnswers.get(branch.gapId) ?? null;
+          return {
+            ...branch,
+            branches: branch.branches.map((path) => ({
+              ...path,
+              proceduralPath: [...path.proceduralPath],
+              basis: path.basis === null ? null : { ...path.basis },
+            })),
+            officerAnswer: answer,
+            officerAnswerLabel: answer === null ? null : GAP_ANSWER_LABELS[answer],
+          };
+        });
       }
     }
 
@@ -579,12 +610,33 @@ export class AnalysisEngine {
         .map((source) => source.sourceId),
       attempts: 1,
     });
-    return buildReport(state, request.requestId, now.toISOString(), effectiveResult, releaseId, reportFocus);
+    return buildReport(state, request.requestId, now.toISOString(), effectiveResult, releaseId, reportFocus, gapBranches);
   }
 
   clearSession(sessionId: string, now = new Date()): void {
     this.pruneExpired(now.getTime());
     this.sessions.delete(sessionId);
+  }
+
+  /**
+   * 记录民警对某个决定性缺口的回答：“未知”或“待核实”。
+   *
+   * 该回答不改变事实快照，缺口仍处于未解决状态，因此报告必须继续保持
+   * 分支呈现；只影响报告的 `officerAnswer` 字段。
+   */
+  answerGap(sessionId: string, gapId: string, answer: unknown, now = new Date()): AnalysisSessionState {
+    const session = this.getLiveSession(sessionId, now.getTime());
+    if (session.stage !== "snapshot_confirmed") {
+      throw new AnalysisInputError("存在尚未确认的事实修改，不能对当前报告的缺口作答。", 409);
+    }
+    if (typeof gapId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(gapId)) {
+      throw new AnalysisInputError("决定性缺口标识无效。", 400);
+    }
+    if (answer !== "unknown" && answer !== "pending_verification") {
+      throw new AnalysisInputError("对决定性缺口的回答只能是“未知”或“待核实”。", 400);
+    }
+    session.gapAnswers.set(gapId, answer);
+    return toSessionState(session, now);
   }
 
   private findFact(session: AnalysisSession, factId: string): CandidateFact {
@@ -613,11 +665,23 @@ export class AnalysisEngine {
     const session = this.getLiveSession(sessionId, now.getTime());
     assertMutable(session);
     const statement = validateStatementText(request?.statement, "补充事实内容", ANSWER_MAX_CHARACTERS);
+    const rawCategory = request?.category;
+    const category: FactCategory =
+      typeof rawCategory === "string" && FACT_CATEGORIES.has(rawCategory)
+        ? (rawCategory as FactCategory)
+        : "other";
+    const rawGapId = request?.resolvesGapId;
+    if (
+      rawGapId !== undefined &&
+      (typeof rawGapId !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(rawGapId))
+    ) {
+      throw new AnalysisInputError("决定性缺口标识无效。", 400);
+    }
     const factId = `fact-user-${String(session.facts.length + 1).padStart(3, "0")}-${randomUUID().slice(0, 8)}`;
     const fact: CandidateFact = {
       factId,
-      category: "other",
-      categoryLabel: FACT_CATEGORY_LABELS.other,
+      category,
+      categoryLabel: FACT_CATEGORY_LABELS[category],
       statement,
       originalWording: statement,
       value: null,
@@ -633,6 +697,7 @@ export class AnalysisEngine {
       excluded: false,
       replacesFactId: null,
       supersededByFactId: null,
+      resolvesGapIds: rawGapId === undefined ? [] : [rawGapId],
     };
     session.facts.push(fact);
     return toSessionState(session, now);
@@ -702,6 +767,9 @@ export class AnalysisEngine {
     const version = session.snapshot.snapshotVersion + 1;
     session.snapshot = formSnapshot(session, version, now);
     session.modification = null;
+    // 缺口回答只属于旧报告；新快照必须重新计算，不能把“未知/待核实”
+    // 按可复用 gapId 迁移到新报告或另一个重点案情。
+    session.gapAnswers.clear();
     session.snapshotBackup = this.captureSnapshotBackup(session);
     session.stage = "snapshot_confirmed";
     return toSessionState(session, now);
@@ -762,6 +830,7 @@ export class AnalysisEngine {
       excluded: false,
       replacesFactId: factId,
       supersededByFactId: null,
+      resolvesGapIds: [...target.resolvesGapIds],
     });
     return toSessionState(session, now);
   }

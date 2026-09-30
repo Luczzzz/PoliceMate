@@ -327,6 +327,14 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
         unresolvedAlternativeIds: resolution.adjacent.map((focus) => focus.caseFocusId),
         unresolvedGapNotes: resolution.unresolvedGaps.map((gap) => gap.description),
         unresolvedGapIds: resolution.unresolvedGaps.map((gap) => gap.gapId),
+        unresolvedGapBranches: resolution.unresolvedGapBranches.map((branch) => ({
+          ...branch,
+          branches: branch.branches.map((path) => ({
+            ...path,
+            proceduralPath: [...path.proceduralPath],
+            basis: path.basis === null ? null : { ...path.basis },
+          })),
+        })),
         legalSources: resolution.primary === null ? genericSources : resolution.legalSources,
       };
     },

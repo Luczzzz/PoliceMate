@@ -1,6 +1,7 @@
 import { useState } from "react";
-import type { CandidateFact } from "@policymate/contracts";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import type { CandidateFact, FactCategory } from "@policymate/contracts";
+import { FACT_CATEGORY_LABELS, FACT_STATUS_LABELS } from "@policymate/contracts";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiFailure } from "../../api/client";
 import { useAnalysisFlow } from "../../analysis/AnalysisSessionContext";
 import { FailurePanel } from "../../components/FailurePanel";
@@ -90,12 +91,22 @@ export function ModifyFactsPage() {
     report,
     refresh,
     addFact,
+    setFactStatus,
     reviseFact,
     confirmSnapshot,
     discardModification,
   } = useAnalysisFlow();
   const navigate = useNavigate();
+  const location = useLocation();
+  const gapSupplement =
+    (location.state as
+      | { gapSupplement?: { gapId: string; factCategory: FactCategory; description: string } }
+      | null
+      | undefined)?.gapSupplement ?? null;
   const [newFact, setNewFact] = useState("");
+  const [newFactCategory, setNewFactCategory] = useState<FactCategory>(
+    gapSupplement?.factCategory ?? "other",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -205,6 +216,26 @@ export function ModifyFactsPage() {
               <span className="fact-card__original-label">原始表述：</span>
               {fact.originalWording}
             </p>
+            <div
+              className="workbench-marks"
+              role="group"
+              aria-label={`${fact.categoryLabel}事实状态`}
+              data-testid={`fact-status-${fact.factId}`}
+            >
+              {(["confirmed", "denied", "unknown", "disputed"] as const).map((nextStatus) => (
+                <button
+                  key={nextStatus}
+                  type="button"
+                  className={`mark-chip${fact.status === nextStatus ? " is-selected" : ""}`}
+                  aria-pressed={fact.status === nextStatus}
+                  disabled={busy}
+                  onClick={() => void run(() => setFactStatus(fact.factId, nextStatus))}
+                  data-testid={`fact-status-${nextStatus}-${fact.factId}`}
+                >
+                  {FACT_STATUS_LABELS[nextStatus]}
+                </button>
+              ))}
+            </div>
             <RevisionEditor
               fact={fact}
               disabled={busy}
@@ -231,6 +262,22 @@ export function ModifyFactsPage() {
         <h2 id="modify-add-fact-title" className="section-heading__title">
           新增事实
         </h2>
+        <label className="field" htmlFor="modify-add-fact-category">
+          <span className="field__label">补充到哪个事实类别（用于补齐决定性缺口）</span>
+          <select
+            id="modify-add-fact-category"
+            className="field__input"
+            value={newFactCategory}
+            onChange={(event) => setNewFactCategory(event.target.value as FactCategory)}
+            data-testid="modify-add-fact-category"
+          >
+            {(Object.keys(FACT_CATEGORY_LABELS) as FactCategory[]).map((category) => (
+              <option key={category} value={category}>
+                {FACT_CATEGORY_LABELS[category]}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="field" htmlFor="modify-add-fact-input">
           <span className="field__label">用一句话补充（提交后即作为你确认的事实纳入分析）</span>
           <textarea
@@ -247,7 +294,7 @@ export function ModifyFactsPage() {
           className="button button--secondary"
           onClick={() =>
             void run(async () => {
-              await addFact(newFact);
+              await addFact(newFact, newFactCategory, gapSupplement?.gapId);
               setNewFact("");
             })
           }

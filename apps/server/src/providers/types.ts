@@ -7,6 +7,7 @@ import type {
   DocumentExampleVariantSummary,
   DocumentTaskCandidateRequest,
   DocumentTaskCandidate,
+  GapBranch,
   HandlingStageCatalogEntry,
   IndependentMatters,
   ReportDocumentTask,
@@ -134,6 +135,8 @@ export interface CaseFocusResolution {
   unresolvedGapNotes: string[];
   /** 未解决的决定性事实缺口 ID。 */
   unresolvedGapIds: string[];
+  /** 未解决缺口的“若…则…”条件分支与程序路径。 */
+  unresolvedGapBranches: GapBranch[];
   /** 本次可用的受治理法源；命中但不可用或未命中时为空数组。 */
   legalSources: LegalSourceReference[];
 }

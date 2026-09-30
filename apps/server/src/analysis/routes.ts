@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type {
   AddFactRequest,
   AnalysisSubmissionResponse,
+  AnswerGapRequest,
   ApiErrorBody,
   CreateAnalysisRequest,
   FactStatusUpdateRequest,
@@ -219,6 +220,32 @@ export async function registerAnalysisRoutes(
             .send(errorBody(request.id, "excluded 必须为布尔值。", 400));
         }
         return engine.setFactExclusion(request.params.sessionId, request.params.factId, excluded);
+      } catch (error) {
+        return handleError(error, request.id, reply);
+      }
+    },
+  );
+
+  // 对决定性缺口回答“未知”或“待核实”：不改变事实快照，缺口仍未解决，
+  // 报告据此保持分支呈现。
+  app.post<{ Params: { sessionId: string; gapId: string }; Body: AnswerGapRequest }>(
+    "/api/v1/analysis/sessions/:sessionId/gaps/:gapId/answer",
+    async (request, reply) => {
+      try {
+        await assertCapability();
+        const response = await withConcurrency(
+          request,
+          async (): Promise<AnalysisSubmissionResponse> => {
+            const state = engine.answerGap(
+              request.params.sessionId,
+              request.params.gapId,
+              request.body?.answer,
+            );
+            const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot);
+            return { contractVersion: CONTRACT_VERSION, state, report };
+          },
+        );
+        return reply.code(200).send(response);
       } catch (error) {
         return handleError(error, request.id, reply);
       }

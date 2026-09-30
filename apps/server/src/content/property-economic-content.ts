@@ -26,6 +26,7 @@ type CaseFocusSeed = Omit<CaseFocusRecord, "testResults">;
 
 const MAINTAINER = "受控试行内容维护者（财产与经济类）";
 const VERIFIED_AT = "2026-09-28T00:00:00.000Z";
+const CASE_FOCUS_VERIFIED_AT = "2026-09-30T00:00:00.000Z";
 const RETRIEVED_AT = "2026-09-28T00:00:00.000Z";
 /** 初步定性、受立案条件与刑事/行政分流内容最长每 30 天重新核验（规格 13.7）。 */
 const NEXT_REVIEW_DUE_AT = "2026-10-28T00:00:00.000Z";
@@ -211,7 +212,7 @@ const TELECOM_HINTS = [
 
 const TELECOM_FRAUD_FOCUS: CaseFocusSeed = {
   caseFocusId: TELECOM_FRAUD_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "电信网络诈骗及相关帮助行为",
   region: "国家",
@@ -286,12 +287,36 @@ const TELECOM_FRAUD_FOCUS: CaseFocusSeed = {
       description: "诈骗数额或损失数额尚未确认，无法判断是否达到数额较大及对应的刑事或行政分流。",
       factCategory: "amount",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-amount-criminal",
+          condition: "诈骗数额或损失数额达到刑事追诉的数额较大标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-amount-administrative",
+          condition: "诈骗数额或损失数额未达到刑事追诉标准",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-object",
       description: "涉案终端、账户或资金载体的归属与实际控制情况尚未确认，无法判断资金流转与帮助行为。",
       factCategory: "object",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-object-criminal",
+          condition: "涉案终端、账户或资金载体的归属与实际控制能够查证，足以支撑资金流转与帮助行为的刑事审查",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-object-administrative",
+          condition: "归属或实际控制暂不能查证，只能就现有行为按治安违法方向审查",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -357,12 +382,12 @@ const TELECOM_FRAUD_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布财产与经济类重点案情：电信网络诈骗及相关帮助行为。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：电信网络诈骗及相关帮助行为。",
   sourceVerificationNote:
     "全部引用为国家公开正式规范；数额标准以两高一部意见为准，具体地区执行标准仍须按当地现行规定核对。",
   withdrawalNote: null,
@@ -370,7 +395,7 @@ const TELECOM_FRAUD_FOCUS: CaseFocusSeed = {
 
 const THEFT_FOCUS: CaseFocusSeed = {
   caseFocusId: THEFT_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "盗窃",
   region: "国家",
@@ -430,12 +455,36 @@ const THEFT_FOCUS: CaseFocusSeed = {
       description: "被盗财物价值尚未确认，无法判断是否达到数额较大标准及刑事或行政分流。",
       factCategory: "amount",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-amount-criminal",
+          condition: "被盗财物价值达到数额较大标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-amount-administrative",
+          condition: "被盗财物价值未达到数额较大标准",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-count",
       description: "是否属于多次盗窃尚未确认，无法判断是否适用加重情形。",
       factCategory: "count",
-      affectsDiversions: ["criminal"],
+      affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-count-criminal",
+          condition: "属于多次盗窃，按盗窃罪加重情形方向审查",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-count-administrative",
+          condition: "不属于多次盗窃且价值未达到数额较大标准",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -498,12 +547,12 @@ const THEFT_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布财产与经济类重点案情：盗窃。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：盗窃。",
   sourceVerificationNote:
     "刑法条款与两高司法解释已核对；数额标准为全国幅度，具体地区执行标准须按浙江省现行规定另行核对。",
   withdrawalNote: null,
@@ -511,7 +560,7 @@ const THEFT_FOCUS: CaseFocusSeed = {
 
 const GENERAL_FRAUD_FOCUS: CaseFocusSeed = {
   caseFocusId: GENERAL_FRAUD_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "一般诈骗与民事经济纠纷的区分",
   region: "国家",
@@ -578,12 +627,36 @@ const GENERAL_FRAUD_FOCUS: CaseFocusSeed = {
       description: "骗取数额或损失数额尚未确认，无法判断是否达到数额标准及刑事或行政分流。",
       factCategory: "amount",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-amount-criminal",
+          condition: "骗取数额或损失数额达到刑事追诉的数额标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-amount-administrative",
+          condition: "骗取数额或损失数额未达到刑事追诉标准",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-object",
       description: "交付财物的形式与去向尚未确认，无法判断是否实际取得财物及民事返还可能。",
       factCategory: "object",
       affectsDiversions: ["criminal", "civil"],
+      branches: [
+        {
+          branchId: "gap-object-criminal",
+          condition: "交付财物的形式与去向能够查证，符合诈骗犯罪构成",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-object-civil",
+          condition: "交付与去向属于民事返还争议，缺乏犯罪或治安违法构成",
+          diversion: "civil",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -644,12 +717,12 @@ const GENERAL_FRAUD_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布财产与经济类重点案情：一般诈骗与民事经济纠纷的区分。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：一般诈骗与民事经济纠纷的区分。",
   sourceVerificationNote:
     "刑法、司法解释与民法典条款已核对；刑事与民事的区分仍须由办案人员结合完整事实与证据判断。",
   withdrawalNote: null,
@@ -657,7 +730,7 @@ const GENERAL_FRAUD_FOCUS: CaseFocusSeed = {
 
 const DESTRUCTION_FOCUS: CaseFocusSeed = {
   caseFocusId: DESTRUCTION_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "故意损毁财物及财物纠纷",
   region: "国家",
@@ -725,12 +798,36 @@ const DESTRUCTION_FOCUS: CaseFocusSeed = {
       description: "财物损失价值尚未确认，无法判断是否达到数额较大标准及刑事或行政分流。",
       factCategory: "amount",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-amount-criminal",
+          condition: "财物损失价值达到数额较大标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-amount-administrative",
+          condition: "财物损失价值未达到数额较大标准",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-object",
       description: "被损毁财物的属性、权属与损失认定依据尚未确认，无法区分刑事、行政与民事方向。",
       factCategory: "object",
       affectsDiversions: ["criminal", "civil"],
+      branches: [
+        {
+          branchId: "gap-object-criminal",
+          condition: "财物属性、权属与损失认定支持刑事追诉",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-object-civil",
+          condition: "权属或损失认定属于民事赔偿争议，缺乏犯罪或治安违法构成",
+          diversion: "civil",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -790,12 +887,12 @@ const DESTRUCTION_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布财产与经济类重点案情：故意损毁财物及财物纠纷。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：故意损毁财物及财物纠纷。",
   sourceVerificationNote:
     "刑法、治安管理处罚法与民法典条款已核对；治安调解与民事分流的适用条件仍须由办案人员判断。",
   withdrawalNote: null,

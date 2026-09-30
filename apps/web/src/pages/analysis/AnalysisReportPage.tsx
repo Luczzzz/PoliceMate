@@ -1,6 +1,13 @@
 import { useState } from "react";
-import type { AnalysisReport, ReportModule, ReportDocumentTask } from "@policymate/contracts";
+import type {
+  AnalysisReport,
+  GapAnswer,
+  ReportGapBranch,
+  ReportModule,
+  ReportDocumentTask,
+} from "@policymate/contracts";
 import {
+  GAP_ANSWER_LABELS,
   REPORT_BASIS_CONFIRMATION_LABELS,
   reportHasUnconfirmedBasis,
 } from "@policymate/contracts";
@@ -103,18 +110,132 @@ function ReportModuleIndex({ modules }: { modules: ReportModule[] }) {
   );
 }
 
+/**
+ * 决定性事实缺口与条件分支。
+ *
+ * 缺口未解决不阻断报告生成：列出“若…则…”分支与各分支下的程序路径，
+ * 并给出补充入口。民警可以回答“未知”或“待核实”，回答后分支仍保持呈现。
+ */
+function GapBranchSection({
+  gapBranches,
+  answeringGapId,
+  disabled,
+  onAnswer,
+  onSupplement,
+  error,
+}: {
+  gapBranches: ReportGapBranch[];
+  answeringGapId: string | null;
+  disabled: boolean;
+  onAnswer: (gapId: string, answer: GapAnswer) => void;
+  onSupplement: (gap: ReportGapBranch) => void;
+  error: string | null;
+}) {
+  const actionsDisabled = disabled || answeringGapId !== null;
+  return (
+    <section className="gap-branches" aria-labelledby="gap-branches-title" data-testid="gap-branches">
+      <h2 id="gap-branches-title">决定性事实缺口与条件分支</h2>
+      <p className="field__note">
+        以下缺口尚未确认，报告仍会生成。每条分支给出条件与可能的程序路径；补齐信息后重新分析可以缩小结论范围，也可以先回答“未知”或“待核实”。
+      </p>
+      {gapBranches.map((gap) => (
+        <article
+          className="gap-branch"
+          key={gap.gapId}
+          data-testid={`gap-branch-${gap.gapId}`}
+          data-officer-answer={gap.officerAnswer ?? "none"}
+        >
+          <header className="gap-branch__head">
+            <h3 className="gap-branch__title">{gap.factCategoryLabel}缺口</h3>
+            {gap.officerAnswerLabel !== null ? (
+              <span className="gap-branch__answer" data-testid={`gap-answer-label-${gap.gapId}`}>
+                已记录：{gap.officerAnswerLabel}
+              </span>
+            ) : null}
+          </header>
+          <p className="gap-branch__description">{gap.description}</p>
+          <ul className="gap-branch__paths">
+            {gap.branches.map((branch) => (
+              <li key={branch.branchId} data-testid={`gap-branch-path-${branch.branchId}`}>
+                <p className="gap-branch__condition">
+                  若{branch.condition}（{branch.diversionLabel}）
+                </p>
+                <ul>
+                  {branch.proceduralPath.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+                {branch.basis !== null ? (
+                  <p className="field__note">
+                    依据：{branch.basis.title} {branch.basis.article}（{branch.basis.issuingAuthority}）
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <p className="gap-branch__suggestion">{gap.supplementSuggestion}</p>
+          <div className="analysis-actions">
+            <button
+              type="button"
+              className={gap.officerAnswer === "unknown" ? "button button--primary" : "button button--muted"}
+              onClick={() => onAnswer(gap.gapId, "unknown")}
+              disabled={actionsDisabled}
+              data-testid={`gap-answer-unknown-${gap.gapId}`}
+            >
+              回答：{GAP_ANSWER_LABELS.unknown}
+            </button>
+            <button
+              type="button"
+              className={gap.officerAnswer === "pending_verification" ? "button button--primary" : "button button--muted"}
+              onClick={() => onAnswer(gap.gapId, "pending_verification")}
+              disabled={actionsDisabled}
+              data-testid={`gap-answer-pending-${gap.gapId}`}
+            >
+              回答：{GAP_ANSWER_LABELS.pending_verification}
+            </button>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => onSupplement(gap)}
+              disabled={actionsDisabled}
+              data-testid="gap-supplement-entry"
+            >
+              补充这几项事实
+            </button>
+          </div>
+        </article>
+      ))}
+      {error !== null ? (
+        <p className="case-input__error" role="alert" data-testid="gap-answer-error">
+          {error}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function ReportBody({
   report,
   pendingModification,
+  supersededReport,
+  onDismissSuperseded,
   onModify,
   modifying,
   modifyError,
+  answeringGapId,
+  onAnswerGap,
+  gapError,
 }: {
   report: AnalysisReport;
   pendingModification: boolean;
-  onModify: () => void;
+  supersededReport: { snapshotVersion: number; snapshotHash: string } | null;
+  onDismissSuperseded: () => void;
+  onModify: (gap?: ReportGapBranch) => void;
   modifying: boolean;
   modifyError: string | null;
+  answeringGapId: string | null;
+  onAnswerGap: (gapId: string, answer: GapAnswer) => void;
+  gapError: string | null;
 }) {
   return (
     <div className="report-body" data-testid="analysis-report">
@@ -149,6 +270,28 @@ function ReportBody({
         </dl>
       </header>
 
+      {supersededReport !== null ? (
+        <section
+          className="superseded-report-notice"
+          role="status"
+          data-testid="superseded-report-notice"
+        >
+          <h2>旧报告已失效</h2>
+          <p>
+            快照 v{supersededReport.snapshotVersion}（{supersededReport.snapshotHash}）
+            对应的报告已被新快照取代，不再作为当前结论展示。
+          </p>
+          <button
+            type="button"
+            className="button button--muted"
+            onClick={onDismissSuperseded}
+            data-testid="dismiss-superseded-report"
+          >
+            知道了
+          </button>
+        </section>
+      ) : null}
+
       {reportHasUnconfirmedBasis(report) ? (
         <section
           className="unconfirmed-basis-notice"
@@ -177,7 +320,7 @@ function ReportBody({
           <button
             type="button"
             className="button button--secondary"
-            onClick={onModify}
+            onClick={() => onModify()}
             disabled={modifying}
             data-testid="begin-modification"
           >
@@ -190,6 +333,17 @@ function ReportBody({
         <p className="case-input__error" role="alert" data-testid="modify-error">
           {modifyError}
         </p>
+      ) : null}
+
+      {report.gapBranches.length > 0 ? (
+        <GapBranchSection
+          gapBranches={report.gapBranches}
+          answeringGapId={answeringGapId}
+          disabled={pendingModification}
+          onAnswer={onAnswerGap}
+          onSupplement={onModify}
+          error={gapError}
+        />
       ) : null}
 
       {report.factLimitations.length > 0 ? (
@@ -249,12 +403,23 @@ function ReportBody({
 }
 
 export function AnalysisReportPage() {
-  const { status, report, refresh, generateReport, beginModification } = useAnalysisFlow();
+  const {
+    status,
+    report,
+    refresh,
+    generateReport,
+    beginModification,
+    answerGap,
+    supersededReport,
+    dismissSupersededReport,
+  } = useAnalysisFlow();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiFailure | null>(null);
   const [modifying, setModifying] = useState(false);
   const [modifyError, setModifyError] = useState<string | null>(null);
+  const [answeringGap, setAnsweringGap] = useState<string | null>(null);
+  const [gapError, setGapError] = useState<string | null>(null);
 
   if (status.kind === "idle") return <Navigate to="/analysis" replace />;
   if (status.kind === "failed")
@@ -287,18 +452,41 @@ export function AnalysisReportPage() {
     }
   };
 
-  const modify = async () => {
+  const modify = async (gap?: ReportGapBranch) => {
     setModifying(true);
     setModifyError(null);
     try {
       await beginModification();
-      navigate("/analysis/modify");
+      navigate("/analysis/modify", {
+        state:
+          gap === undefined
+            ? null
+            : {
+                gapSupplement: {
+                  gapId: gap.gapId,
+                  factCategory: gap.factCategory,
+                  description: gap.description,
+                },
+              },
+      });
     } catch (caught) {
       setModifyError(
         caught instanceof ApiFailure ? caught.message : "暂时无法进入补充或修改事实，请稍后重试。",
       );
     } finally {
       setModifying(false);
+    }
+  };
+
+  const answer = async (gapId: string, value: GapAnswer) => {
+    setAnsweringGap(gapId);
+    setGapError(null);
+    try {
+      await answerGap(gapId, value);
+    } catch (caught) {
+      setGapError(caught instanceof ApiFailure ? caught.message : "暂时无法记录回答，请稍后重试。");
+    } finally {
+      setAnsweringGap(null);
     }
   };
 
@@ -316,9 +504,14 @@ export function AnalysisReportPage() {
         <ReportBody
           report={report}
           pendingModification={state.modification !== null}
-          onModify={() => void modify()}
+          supersededReport={supersededReport}
+          onDismissSuperseded={dismissSupersededReport}
+          onModify={(gap) => void modify(gap)}
           modifying={modifying}
           modifyError={modifyError}
+          answeringGapId={answeringGap}
+          onAnswerGap={(gapId, value) => void answer(gapId, value)}
+          gapError={gapError}
         />
       ) : (
         <section className="snapshot-panel">

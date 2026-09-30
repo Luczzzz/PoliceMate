@@ -154,6 +154,18 @@ describe("财产与经济类重点案情内容包", () => {
       for (const gap of focus.gaps) {
         expect(gapIds.has(gap.gapId), `${focus.caseFocusId} 缺口 ID 重复：${gap.gapId}`).toBe(false);
         gapIds.add(gap.gapId);
+        // 每个缺口至少一条“若…则…”分支，且分支的分流方向必须属于该缺口。
+        expect(gap.branches.length, `${focus.caseFocusId} ${gap.gapId} 缺少分支`).toBeGreaterThan(0);
+        const branchIds = new Set<string>();
+        for (const branch of gap.branches) {
+          expect(branch.branchId).not.toBe("");
+          expect(branch.condition.trim()).not.toBe("");
+          expect(gap.affectsDiversions).toContain(branch.diversion);
+          expect(branchIds.has(branch.branchId), `${focus.caseFocusId} 分支 ID 重复：${branch.branchId}`).toBe(false);
+          branchIds.add(branch.branchId);
+          const rule = focus.diversionRules.find((item) => item.diversion === branch.diversion);
+          expect(rule, `${focus.caseFocusId} ${gap.gapId} 缺少 ${branch.diversion} 分流规则`).toBeDefined();
+        }
       }
       for (const rule of focus.diversionRules) {
         for (const basis of rule.basis) {
@@ -282,10 +294,12 @@ describe("重点案情匹配与法源限定", () => {
     expect(matched).not.toContain(TELECOM_FRAUD_FOCUS_ID);
   });
 
-  it("未确认或已排除的事实不参与匹配", () => {
+  it("候选事实参与首份分析匹配，已排除事实不参与", () => {
     const store = createGovernedContentStore(createFixtureContent());
     const facts = extractCaseFactsFixture("3月2日，张某盗窃李某电动车。").facts;
-    expect(matchedCaseFocuses(store.caseFocuses(), facts)).toEqual([]);
+    expect(matchedCaseFocuses(store.caseFocuses(), facts).map((focus) => focus.caseFocusId)).toEqual([
+      THEFT_FOCUS_ID,
+    ]);
 
     const confirmedButExcluded = facts.map((fact) => ({
       ...fact,

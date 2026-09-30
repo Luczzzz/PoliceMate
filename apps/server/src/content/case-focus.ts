@@ -1,5 +1,15 @@
-import type { CandidateFact, LegalSourceReference } from "@policymate/contracts";
-import { effectiveReviewDueAtFor, evaluateGatedItem, toLegalSourceReference } from "./gating";
+import type {
+  CandidateFact,
+  GapBranch,
+  LegalSourceReference,
+} from "@policymate/contracts";
+import { CASE_FOCUS_DIVERSION_LABELS, FACT_CATEGORY_LABELS } from "@policymate/contracts";
+import {
+  effectiveReviewDueAtFor,
+  evaluateGatedItem,
+  firstReportLegalBasis,
+  toLegalSourceReference,
+} from "./gating";
 import type {
   CaseFocusGapRecord,
   CaseFocusRecord,
@@ -11,8 +21,9 @@ import type {
 /**
  * 派出所重点案情的当前状态门控与匹配。
  *
- * 匹配只依据候选事实中“已确认且未排除”的行为标签与原始表述线索，
- * 不解析模型生成的自然语言结论。任何命中重点案情的分析都必须使用该重点
+ * 首份分析允许依据未排除的候选或已确认行为标签与原始表述线索选择重点案情，
+ * 但不解析模型生成的自然语言结论；未知、否认与争议事实不参与单一路径匹配。
+ * 任何命中重点案情的分析都必须使用该重点
  * 案情当前批次内的受治理法源；重点案情不可用时立即停止支撑主结论。
  */
 
@@ -46,12 +57,17 @@ export function selectEligibleCaseFocuses(
   return focuses.filter((focus) => evaluateCaseFocusEligibility(focus, context) === null);
 }
 
-/** 参与匹配的事实：已确认、未被排除，且未被替代。 */
-export function matchableFacts(facts: readonly CandidateFact[]): CandidateFact[] {
+/**
+ * 参与重点案情识别的事实：候选或已确认、未被排除，且未被替代。
+ *
+ * ADR-0008 允许候选事实进入首份分析，因此候选行为可用于选择受治理重点案情；
+ * 未知、否认与争议事实仍不得被系统静默选作单一路径。
+ */
+export function focusMatchingFacts(facts: readonly CandidateFact[]): CandidateFact[] {
   return facts.filter(
     (fact) =>
       !fact.excluded &&
-      fact.status === "confirmed" &&
+      (fact.status === "candidate" || fact.status === "confirmed") &&
       (fact.supersededByFactId === null || fact.supersededByFactId === undefined),
   );
 }
@@ -70,7 +86,7 @@ function behaviorLabelsOf(facts: readonly CandidateFact[]): Set<string> {
   return labels;
 }
 
-/** 一个重点案情是否命中当前已确认事实。 */
+/** 一个重点案情是否命中当前事实（候选或已确认，且已排除与替代事实不参与）。 */
 export function matchesCaseFocus(focus: CaseFocusRecord, facts: readonly CandidateFact[]): boolean {
   const labels = behaviorLabelsOf(facts);
   const behaviorsMatched = focus.match.behaviorLabels.some((label) => labels.has(label));
@@ -90,19 +106,26 @@ export function matchedCaseFocuses(
   focuses: readonly CaseFocusRecord[],
   facts: readonly CandidateFact[],
 ): CaseFocusRecord[] {
-  const active = matchableFacts(facts);
+  const active = focusMatchingFacts(facts);
   if (active.length === 0) return [];
   return focuses.filter((focus) => matchesCaseFocus(focus, active));
 }
 
-/** 尚未解决的决定性事实缺口：不存在任何已确认且未排除的对应类别事实。 */
+/** 尚未解决的决定性事实缺口：不存在任何参与本次分析的对应事实。 */
 export function unresolvedCaseFocusGaps(
   focus: CaseFocusRecord,
   facts: readonly CandidateFact[],
 ): CaseFocusGapRecord[] {
-  const active = matchableFacts(facts);
+  const active = focusMatchingFacts(facts);
   return focus.gaps.filter(
-    (gap) => !active.some((fact) => fact.category === gap.factCategory),
+    (gap) =>
+      !active.some(
+        (fact) =>
+          // 系统初始提取事实按类别回答缺口；民警后续新增事实必须显式绑定
+          // 缺口 ID，避免任意同类别事实错误关闭不相关缺口。
+          (fact.sourceRound === 0 && fact.category === gap.factCategory) ||
+          (fact.category === gap.factCategory && fact.resolvesGapIds.includes(gap.gapId)),
+      ),
   );
 }
 
@@ -121,6 +144,45 @@ export function adjacentMatchedFocuses(
   );
 }
 
+/**
+ * 把未解决的决定性缺口展开为“若…则…”条件分支。
+ *
+ * 分支只声明条件与分流方向；程序路径与依据一律从该重点案情当前生效的
+ * `diversionRules` 读取，避免分支内容与分流规则两处漂移。缺口未解决时
+ * 不阻断报告生成，由报告呈现分支与补充建议。
+ */
+export function buildUnresolvedGapBranches(
+  focus: CaseFocusRecord,
+  gaps: readonly CaseFocusGapRecord[],
+  sources: ReadonlyMap<string, LegalSourceRecord>,
+): GapBranch[] {
+  return gaps.map((gap) => ({
+    gapId: gap.gapId,
+    description: gap.description,
+    factCategory: gap.factCategory,
+    factCategoryLabel: FACT_CATEGORY_LABELS[gap.factCategory],
+    supplementSuggestion:
+      `补充「${gap.description}」涉及的关键信息后重新分析，可缩小结论范围；` +
+      "也可以先回答“未知”或“待核实”，报告会继续保持分支呈现。",
+    branches: gap.branches.flatMap((branch) => {
+      const rule = focus.diversionRules.find(
+        (candidate) => candidate.diversion === branch.diversion,
+      );
+      if (rule === undefined) return [];
+      return [
+        {
+          branchId: branch.branchId,
+          condition: branch.condition,
+          diversion: branch.diversion,
+          diversionLabel: CASE_FOCUS_DIVERSION_LABELS[branch.diversion],
+          proceduralPath: [...rule.conditions],
+          basis: firstReportLegalBasis(rule.basis, sources),
+        },
+      ];
+    }),
+  }));
+}
+
 export interface CaseFocusResolutionResult {
   /** 当前事实命中的全部重点案情（含不可用的重点案情，用于保守降级）。 */
   matched: CaseFocusRecord[];
@@ -129,6 +191,8 @@ export interface CaseFocusResolutionResult {
   primaryEligible: boolean;
   adjacent: CaseFocusRecord[];
   unresolvedGaps: CaseFocusGapRecord[];
+  /** 未解决缺口的条件分支；未命中或缺口已解决时为空数组。 */
+  unresolvedGapBranches: GapBranch[];
   /** 该重点案情当前可用的受治理法源；不可用或未命中时为空。 */
   legalSources: LegalSourceReference[];
 }
@@ -145,7 +209,7 @@ export function resolveCaseFocus(
   facts: readonly CandidateFact[],
   context: EligibilityContext,
 ): CaseFocusResolutionResult {
-  const active = matchableFacts(facts);
+  const active = focusMatchingFacts(facts);
   const matched = focuses.filter((focus) => matchesCaseFocus(focus, active));
   if (matched.length === 0) {
     return {
@@ -154,6 +218,7 @@ export function resolveCaseFocus(
       primaryEligible: false,
       adjacent: [],
       unresolvedGaps: [],
+      unresolvedGapBranches: [],
       legalSources: [],
     };
   }
@@ -177,6 +242,7 @@ export function resolveCaseFocus(
     primaryEligible,
     adjacent,
     unresolvedGaps,
+    unresolvedGapBranches: buildUnresolvedGapBranches(primary, unresolvedGaps, context.sources),
     legalSources,
   };
 }

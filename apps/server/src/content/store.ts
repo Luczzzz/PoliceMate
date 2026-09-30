@@ -247,7 +247,11 @@ export function cloneCaseFocus(item: CaseFocusRecord): CaseFocusRecord {
       ...neighbor,
       decisiveFacts: [...neighbor.decisiveFacts],
     })),
-    gaps: item.gaps.map((gap) => ({ ...gap, affectsDiversions: [...gap.affectsDiversions] })),
+    gaps: item.gaps.map((gap) => ({
+      ...gap,
+      affectsDiversions: [...gap.affectsDiversions],
+      branches: gap.branches.map((branch) => ({ ...branch })),
+    })),
     highRiskBoundary: [...item.highRiskBoundary],
     sourceIds: [...item.sourceIds],
     scenarios: item.scenarios.map((scenario) => ({

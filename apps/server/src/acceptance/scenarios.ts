@@ -49,8 +49,8 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
     title: "候选、未知或争议事实不支撑主结论，只形成缺口、分支或风险提示",
     specSections: ["6.3", "7"],
     automated: [
-      { file: "apps/server/test/case-focus-content.test.ts", title: "未确认或已排除的事实不参与匹配" },
-      { file: "apps/server/test/family-minor-content.test.ts", title: "未确认、已排除或已替代的事实不参与匹配" },
+      { file: "apps/server/test/case-focus-content.test.ts", title: "候选事实参与首份分析匹配，已排除事实不参与" },
+      { file: "apps/server/test/family-minor-content.test.ts", title: "候选事实参与首份分析匹配，已排除事实不参与" },
       { file: "apps/server/test/family-minor-scenarios.test.ts", title: "%s 保留争议事实：结果事实存在争议时保留冲突表述并保守降级" },
     ],
     manual: [],

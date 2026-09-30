@@ -7,6 +7,7 @@ import type {
   DocumentTaskCandidate,
   DocumentTaskCandidateRequest,
   LegalSourceReference,
+  ReportLegalBasis,
 } from "@policymate/contracts";
 import {
   CONTENT_STATUS_LABELS,
@@ -186,6 +187,53 @@ export function selectTaskCandidates(
       preflightChecks: [...item.preflightChecks],
     };
   });
+}
+
+/**
+ * 把受治理法源记录中的一条条款投影为报告依据。
+ *
+ * 只有能定位到确切条款且法源当前有效时才返回；否则返回 `null`，
+ * 由调用方失败关闭或省略依据。
+ */
+export function toReportLegalBasis(
+  source: LegalSourceRecord,
+  articleLocation: string,
+): ReportLegalBasis | null {
+  if (source.status !== "current") return null;
+  const article = source.articles.find((candidate) => candidate.location === articleLocation);
+  if (article === undefined) return null;
+  return {
+    sourceId: source.sourceId,
+    version: source.version,
+    title: source.title,
+    issuingAuthority: source.issuingAuthority,
+    documentNumber: source.documentNumber,
+    article: article.location,
+    minimalText: article.minimalText,
+    status: source.status,
+    region: source.region,
+    publishedAt: source.publishedAt,
+    lastVerifiedAt: source.lastVerifiedAt,
+    retrievedAt: source.retrievedAt,
+    officialUrl: source.officialUrl,
+  };
+}
+
+/**
+ * 依次尝试投影一组条款依据，返回第一条可用的当前有效依据。
+ * 任一环节无法定位时跳过该条，不阻断其他依据。
+ */
+export function firstReportLegalBasis(
+  basis: readonly { sourceId: string; article: string }[],
+  sources: ReadonlyMap<string, LegalSourceRecord>,
+): ReportLegalBasis | null {
+  for (const entry of basis) {
+    const source = sources.get(entry.sourceId);
+    if (source === undefined) continue;
+    const resolved = toReportLegalBasis(source, entry.article);
+    if (resolved !== null) return resolved;
+  }
+  return null;
 }
 
 export function toSummary(

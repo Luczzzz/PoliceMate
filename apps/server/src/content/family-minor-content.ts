@@ -29,6 +29,7 @@ type CaseFocusSeed = Omit<CaseFocusRecord, "testResults">;
 
 const MAINTAINER = "受控试行内容维护者（家庭与未成年人高风险）";
 const VERIFIED_AT = "2026-09-29T00:00:00.000Z";
+const CASE_FOCUS_VERIFIED_AT = "2026-09-30T00:00:00.000Z";
 const RETRIEVED_AT = "2026-09-29T00:00:00.000Z";
 /** 初步定性、受立案条件与刑事/行政分流内容最长每 30 天重新核验（规格 13.7）。 */
 const NEXT_REVIEW_DUE_AT = "2026-10-29T00:00:00.000Z";
@@ -212,7 +213,7 @@ export const REQUIRED_FAMILY_MINOR_CASE_FOCUS_IDS = [
 
 const DOMESTIC_VIOLENCE_FOCUS: CaseFocusSeed = {
   caseFocusId: DOMESTIC_VIOLENCE_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "家庭暴力及婚恋、家庭矛盾升级",
   region: "国家",
@@ -298,18 +299,54 @@ const DOMESTIC_VIOLENCE_FOCUS: CaseFocusSeed = {
       description: "伤情或者精神损害后果尚未确认，无法判断家庭暴力的严重程度与刑事、行政分流方向。",
       factCategory: "result",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-harm-result-criminal",
+          condition: "伤情或者精神损害后果达到刑事追诉标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-harm-result-administrative",
+          condition: "伤情或者精神损害后果未达到刑事追诉标准",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-frequency",
       description: "家庭暴力是否多次、持续或者升级尚未确认，无法判断是否属于情节恶劣或者面临现实危险。",
       factCategory: "count",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-frequency-criminal",
+          condition: "多次、持续或者升级，达到情节恶劣等刑事追诉标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-frequency-administrative",
+          condition: "未达到上述标准，按治安管理处罚、告诫书与查访方向处理",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-dwelling",
       description: "双方是否共同居住、行为发生场所尚未确认，影响人身安全保护与出警处置判断。",
       factCategory: "place",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-dwelling-criminal",
+          condition: "关系与行为符合刑事追诉条件",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-dwelling-administrative",
+          condition: "关系或场所影响人身安全保护与出警处置，按治安管理处罚与告诫书方向处理",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -373,12 +410,12 @@ const DOMESTIC_VIOLENCE_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-22T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-29T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布家庭与未成年人高风险重点案情：家庭暴力及婚恋、家庭矛盾升级。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：家庭暴力及婚恋、家庭矛盾升级。",
   sourceVerificationNote:
     "反家庭暴力法、刑法、治安管理处罚法与民法典条款已核对；是否属于家庭成员或者共同生活的人、伤情程度、是否持续升级均须民警结合证据人工核验，不得由系统推定。",
   withdrawalNote: null,
@@ -386,7 +423,7 @@ const DOMESTIC_VIOLENCE_FOCUS: CaseFocusSeed = {
 
 const MINOR_HARM_FOCUS: CaseFocusSeed = {
   caseFocusId: MINOR_HARM_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "侵害未成年人及涉未成年人高风险案情",
   region: "国家",
@@ -483,18 +520,54 @@ const MINOR_HARM_FOCUS: CaseFocusSeed = {
       description: "未成年人的伤情、身心损害后果尚未确认，无法判断侵害程度与保护、救助的优先顺序。",
       factCategory: "result",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-harm-result-criminal",
+          condition: "未成年人的伤情、身心损害达到刑事追诉标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-harm-result-administrative",
+          condition: "未达到刑事追诉标准，按治安管理处罚与未成年人保护程序处理",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-age",
       description: "涉事未成年人的实际年龄尚未确认，无法判断是否不满十四周岁以及相应的程序与从重情节。",
       factCategory: "age",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-age-criminal",
+          condition: "已查明为未成年人（特别是不满十四周岁），适用相应刑事从重与特殊程序",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-age-administrative",
+          condition: "年龄暂未查明，先按未成年人保护与治安管理程序开展保护、救助与核验",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-repeat",
       description: "侵害行为是否多次、持续或者涉及多人尚未确认，无法判断是否属于情节恶劣或者面临持续危险。",
       factCategory: "count",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-repeat-criminal",
+          condition: "多次、持续或者涉及多人，达到情节恶劣等刑事追诉标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-repeat-administrative",
+          condition: "未达到上述标准，按治安管理处罚与未成年人保护程序处理",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -559,12 +632,12 @@ const MINOR_HARM_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-22T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-29T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布家庭与未成年人高风险重点案情：侵害未成年人及涉未成年人高风险案情。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：侵害未成年人及涉未成年人高风险案情。",
   sourceVerificationNote:
     "未成年人保护法、刑法、民法典、反家庭暴力法与强制报告意见条款已核对；年龄、监护与看护关系、是否触发强制报告和同步录音录像均须民警结合证据人工核验，不得由系统推定。",
   withdrawalNote: null,

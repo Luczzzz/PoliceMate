@@ -232,10 +232,12 @@ describe("家庭与未成年人高风险重点案情匹配与法源限定", () =
     }
   });
 
-  it("未确认、已排除或已替代的事实不参与匹配", () => {
+  it("候选事实参与首份分析匹配，已排除事实不参与", () => {
     const store = createGovernedContentStore(createFixtureContent());
     const candidates = extractCaseFactsFixture(DOMESTIC_TYPICAL).facts;
-    expect(matchedCaseFocuses(store.caseFocuses(), candidates)).toEqual([]);
+    expect(matchedCaseFocuses(store.caseFocuses(), candidates).map((focus) => focus.caseFocusId)).toEqual([
+      DOMESTIC_VIOLENCE_FOCUS_ID,
+    ]);
 
     const confirmedButExcluded = candidates.map((fact) => ({
       ...fact,
@@ -306,8 +308,10 @@ describe("家庭与未成年人高风险重点案情的风险提示边界", () =
       "有人反映某户可能存在家暴，孩子可能被打。",
     ).facts;
 
-    // 候选事实不参与重点案情匹配，也不触发紧急核验提示。
-    expect(matchedCaseFocuses(store.caseFocuses(), candidates)).toEqual([]);
+    // 候选事实可以选择首份分析的重点案情，但仍不触发已确认的紧急核验提示。
+    expect(matchedCaseFocuses(store.caseFocuses(), candidates).map((focus) => focus.caseFocusId)).toEqual([
+      MINOR_HARM_FOCUS_ID,
+    ]);
     expect(buildUrgentPrompts(candidates, NOW)).toEqual([]);
   });
 

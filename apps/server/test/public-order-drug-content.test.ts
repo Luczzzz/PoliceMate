@@ -222,14 +222,18 @@ describe("治安秩序与毒品类重点案情匹配与法源限定", () => {
     }
   });
 
-  it("未确认或已排除的事实不参与匹配", () => {
+  it("候选事实参与首份分析匹配，但缺失事实仍形成决定性缺口", () => {
     const store = createGovernedContentStore(createFixtureContent());
     const scenario = PUBLIC_ORDER_DRUG_CASE_FOCUSES[0]!.scenarios.find(
-      (item) => item.kind === "typical",
+      (item) => item.kind === "decisive_gap",
     )!;
     const unconfirmed = extractCaseFactsFixture(scenario.caseText).facts;
     const resolution = resolveCaseFocus(store.caseFocuses(), unconfirmed, contextOf(store));
-    expect(resolution.matched).toEqual([]);
+    expect(resolution.primary?.caseFocusId).toBe(ASSAULT_FOCUS_ID);
+    expect(resolution.unresolvedGaps.map((gap) => gap.gapId)).toEqual([
+      "gap-injury",
+      "gap-location",
+    ]);
   });
 
   it("决定性事实缺口按事实类别判定，未确认即为未解决", () => {

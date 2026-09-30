@@ -135,6 +135,19 @@ describe("财产与经济类重点案情：决定性事实缺失保守降级", (
     expect(report.factLimitations.length).toBeGreaterThanOrEqual(
       scenario.expectedUnresolvedGapIds.length,
     );
+
+    // 缺口以“若…则…”分支与程序路径呈现，并给出补充建议。
+    expect(report.gapBranches.map((gap) => gap.gapId).sort()).toEqual(
+      [...scenario.expectedUnresolvedGapIds].sort(),
+    );
+    for (const gap of report.gapBranches) {
+      expect(gap.branches.length).toBeGreaterThan(0);
+      expect(gap.supplementSuggestion).toContain("缩小结论范围");
+      for (const branch of gap.branches) {
+        expect(branch.condition).not.toBe("");
+        expect(branch.proceduralPath.length).toBeGreaterThan(0);
+      }
+    }
   });
 });
 

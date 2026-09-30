@@ -610,3 +610,210 @@ describe("报告依据标注确认状态", () => {
     await app.close();
   });
 });
+
+/**
+ * 决定性事实缺口以“若…则…”分支呈现（ADR-0008 第 3 点）。
+ *
+ * 缺口未解决不阻断报告生成；报告列出各分支的程序路径与补充建议。
+ * 民警可以回答“未知”或“待核实”，报告保持分支呈现；补齐对应缺口并
+ * 确认新快照后，缺口解决，旧快照报告立即失效。
+ */
+const GAP_TEXT = "4月1日晚上，张某殴打李某。";
+
+describe("决定性事实缺口以分支呈现", () => {
+  it("存在缺口时报告列出各缺口的条件分支与程序路径，不阻断报告生成", async () => {
+    const { app } = await makeApp();
+    const first = await submitCase(app, GAP_TEXT);
+
+    // 首份报告直接呈现缺口；不要求先确认候选事实或回答追问。
+    expect(first.report.status).toBe("insufficient_facts");
+    expect(first.report.statusLabel).toContain("条件不足");
+
+    const gaps = first.report.gapBranches;
+    expect(gaps.map((gap) => gap.gapId).sort()).toEqual(["gap-injury", "gap-location"]);
+    for (const gap of gaps) {
+      expect(gap.description).not.toBe("");
+      expect(gap.factCategoryLabel).not.toBe("");
+      expect(gap.supplementSuggestion).toContain("缩小结论范围");
+      expect(gap.officerAnswer).toBeNull();
+      expect(gap.officerAnswerLabel).toBeNull();
+      expect(gap.branches.length).toBeGreaterThan(0);
+      for (const branch of gap.branches) {
+        expect(branch.condition).not.toBe("");
+        expect(branch.diversionLabel).not.toBe("");
+        expect(branch.proceduralPath.length).toBeGreaterThan(0);
+        // 分支依据必须来自当前有效法源，可追溯到具体条款。
+        expect(branch.basis).not.toBeNull();
+        expect(branch.basis?.status).toBe("current");
+        expect(branch.basis?.article).not.toBe("");
+        expect(branch.basis?.minimalText).not.toBe("");
+      }
+    }
+
+    // 关键模块不得在缺口未解决时给出单一主结论。
+    for (const moduleId of ["preliminary_qualification", "filing_conditions", "legal_basis_trace"]) {
+      const module = first.report.modules.find((item) => item.id === moduleId);
+      expect(module?.status, moduleId).toBe("insufficient_facts");
+      expect(module?.traceLinks, moduleId).toEqual([]);
+    }
+    await app.close();
+  });
+
+  it("对缺口回答“未知”或“待核实”后报告保持分支呈现且不改变事实快照", async () => {
+    const { app } = await makeApp();
+    const first = await submitCase(app, GAP_TEXT);
+    const snapshotHash = first.state.snapshot?.snapshotHash;
+
+    const unknown = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/gaps/gap-injury/answer`,
+      headers: contractHeaders,
+      payload: { answer: "unknown" },
+    });
+    expect(unknown.statusCode).toBe(200);
+    const unknownBody = unknown.json() as AnalysisSubmissionResponse;
+    expect(unknownBody.report.snapshotHash).toBe(snapshotHash);
+    const injury = unknownBody.report.gapBranches.find((gap) => gap.gapId === "gap-injury");
+    expect(injury?.officerAnswer).toBe("unknown");
+    expect(injury?.officerAnswerLabel).toBe("未知");
+    expect(injury?.branches.length).toBeGreaterThan(0);
+
+    const pending = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/gaps/gap-location/answer`,
+      headers: contractHeaders,
+      payload: { answer: "pending_verification" },
+    });
+    expect(pending.statusCode).toBe(200);
+    const pendingBody = pending.json() as AnalysisSubmissionResponse;
+    const location = pendingBody.report.gapBranches.find((gap) => gap.gapId === "gap-location");
+    expect(location?.officerAnswer).toBe("pending_verification");
+    expect(location?.officerAnswerLabel).toBe("待核实");
+    expect(pendingBody.report.gapBranches.length).toBe(2);
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/gaps/gap-injury/answer`,
+      headers: contractHeaders,
+      payload: { answer: "confirmed" },
+    });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json().error.message).toContain("未知");
+    await app.close();
+  });
+
+  it("存在未确认修改时不能对当前报告的缺口作答", async () => {
+    const { app } = await makeApp();
+    const first = await submitCase(app, GAP_TEXT);
+
+    const begin = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(begin.statusCode).toBe(200);
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/gaps/gap-injury/answer`,
+      headers: contractHeaders,
+      payload: { answer: "unknown" },
+    });
+    expect(response.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("只有明确回答缺口的补充事实才能解决缺口，新快照清除旧回答并使旧报告失效", async () => {
+    const { app } = await makeApp();
+    const first = await submitCase(app, GAP_TEXT);
+    expect(first.report.gapBranches.some((gap) => gap.gapId === "gap-injury")).toBe(true);
+
+    // 先记录旧报告回答；形成新快照后不能把它迁移到新报告。
+    const answered = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/gaps/gap-location/answer`,
+      headers: contractHeaders,
+      payload: { answer: "pending_verification" },
+    });
+    expect(answered.statusCode).toBe(200);
+
+    const begin = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(begin.statusCode).toBe(200);
+
+    const added = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/facts`,
+      headers: contractHeaders,
+      // 同类别但未明确回答具体缺口，不得静默关闭该缺口。
+      payload: { statement: "另有一项一般后果材料待整理。", category: "result" },
+    });
+    expect(added.statusCode).toBe(200);
+
+    const unboundConfirmed = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/snapshot`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(unboundConfirmed.statusCode).toBe(200);
+    const unbound = unboundConfirmed.json() as AnalysisSubmissionResponse;
+    expect(unbound.report.gapBranches.some((gap) => gap.gapId === "gap-injury")).toBe(true);
+    expect(
+      unbound.report.gapBranches.find((gap) => gap.gapId === "gap-location")?.officerAnswer,
+    ).toBeNull();
+
+    const oldSnapshot = unbound.state.snapshot as NonNullable<typeof unbound.state.snapshot>;
+    const beginBound = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(beginBound.statusCode).toBe(200);
+    const addedBound = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/facts`,
+      headers: contractHeaders,
+      payload: {
+        statement: "经鉴定，李某损伤程度为轻伤二级。",
+        category: "result",
+        resolvesGapId: "gap-injury",
+      },
+    });
+    expect(addedBound.statusCode).toBe(200);
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/snapshot`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(confirmed.statusCode).toBe(200);
+    const newer = confirmed.json() as AnalysisSubmissionResponse;
+    expect(newer.state.snapshot?.snapshotHash).not.toBe(oldSnapshot.snapshotHash);
+    expect(newer.report.snapshotHash).toBe(newer.state.snapshot?.snapshotHash);
+    expect(newer.report.gapBranches.some((gap) => gap.gapId === "gap-injury")).toBe(false);
+    expect(newer.report.gapBranches.length).toBeGreaterThan(0);
+
+    // 旧快照对应的报告不再可作为当前结论展示：旧版本请求失败关闭。
+    const stale = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/report`,
+      headers: contractHeaders,
+      payload: {
+        contractVersion: "1.0",
+        requestId: "44444444-4444-4444-8444-444444444444",
+        snapshotVersion: oldSnapshot.snapshotVersion,
+        snapshotHash: oldSnapshot.snapshotHash,
+      } satisfies GenerateReportRequest,
+    });
+    expect(stale.statusCode).toBe(409);
+    await app.close();
+  });
+});

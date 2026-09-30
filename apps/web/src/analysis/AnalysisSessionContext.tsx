@@ -12,6 +12,9 @@ import type {
   AnalysisReport,
   AnalysisSessionState,
   AnalysisSubmissionResponse,
+  FactCategory,
+  FactStatus,
+  GapAnswer,
   ReviseFactRequest,
 } from "@policymate/contracts";
 import { ApiFailure, requestJson } from "../api/client";
@@ -52,11 +55,23 @@ interface AnalysisFlowContextValue {
   sessionGone: boolean;
   /** 当前有效的六模块报告；仅在绑定的事实快照仍有效时保留。 */
   report: AnalysisReport | null;
+  /** 因新快照而失效的旧报告标识；有值时报告页必须显示失效说明。 */
+  supersededReport: { snapshotVersion: number; snapshotHash: string } | null;
+  dismissSupersededReport: () => void;
   /** 正在进行的长任务（真实阶段 + 已等待时间由界面计算）。 */
   pendingOperation: PendingOperation | null;
   start: (caseText: string) => Promise<AnalysisSessionState>;
   refresh: () => Promise<void>;
-  addFact: (statement: string) => Promise<AnalysisSessionState>;
+  addFact: (
+    statement: string,
+    category?: FactCategory,
+    resolvesGapId?: string,
+  ) => Promise<AnalysisSessionState>;
+  /** 逐项标记：确认 / 否认 / 未知 / 争议。 */
+  setFactStatus: (
+    factId: string,
+    status: Exclude<FactStatus, "candidate">,
+  ) => Promise<AnalysisSessionState>;
   reviseFact: (
     factId: string,
     request: ReviseFactRequest,
@@ -64,6 +79,8 @@ interface AnalysisFlowContextValue {
   confirmSnapshot: () => Promise<AnalysisSessionState>;
   beginModification: () => Promise<AnalysisSessionState>;
   discardModification: () => Promise<AnalysisSessionState>;
+  /** 对决定性缺口回答“未知”或“待核实”，保持分支呈现。 */
+  answerGap: (gapId: string, answer: GapAnswer) => Promise<AnalysisReport>;
   generateReport: () => Promise<AnalysisReport>;
   /** 取消在途请求：迟到响应会被拒绝，不写回页面。 */
   cancel: () => void;
@@ -81,6 +98,9 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AnalysisFlowStatus>({ kind: "idle" });
   const [sessionGone, setSessionGone] = useState(false);
   const [report, setReport] = useState<AnalysisReport | null>(null);
+  const [supersededReport, setSupersededReport] = useState<
+    { snapshotVersion: number; snapshotHash: string } | null
+  >(null);
   const [hasSession, setHasSession] = useState(false);
   const [pendingOperation, setPendingOperation] = useState<PendingOperation | null>(null);
   const sessionIdRef = useRef<string | null>(null);
@@ -171,6 +191,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       run("提取候选事实并生成报告", async (signal) => {
         setSessionGone(false);
         setReport(null);
+        setSupersededReport(null);
         const submission = await requestJson<AnalysisSubmissionResponse>(
           "/api/v1/analysis/sessions",
           {
@@ -219,10 +240,12 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   );
 
   const addFact = useCallback(
-    (statement: string) => {
+    (statement: string, category?: FactCategory, resolvesGapId?: string) => {
       const sessionId = sessionIdRef.current;
       return mutate("新增事实", `/api/v1/analysis/sessions/${sessionId}/facts`, "POST", {
         statement,
+        category,
+        resolvesGapId,
       });
     },
     [mutate],
@@ -241,8 +264,22 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
+  const setFactStatus = useCallback(
+    (factId: string, status: Exclude<FactStatus, "candidate">) => {
+      const sessionId = sessionIdRef.current;
+      return mutate(
+        "标记事实状态",
+        `/api/v1/analysis/sessions/${sessionId}/facts/${factId}/status`,
+        "POST",
+        { status },
+      );
+    },
+    [mutate],
+  );
+
   const confirmSnapshot = useCallback(() => {
     const sessionId = sessionIdRef.current;
+    const previousReport = report;
     // 形成新快照会废弃依赖旧快照的在途工作与迟到响应。
     invalidateInFlight();
     return run("确认事实快照并重新生成报告", async (signal) => {
@@ -250,10 +287,42 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
         `/api/v1/analysis/sessions/${sessionId}/snapshot`,
         { method: "POST", body: {}, timeoutMs: SUBMISSION_REQUEST_TIMEOUT_MS, signal },
       );
+      // 旧报告立即失效：只保留新报告，并记录旧快照标识供页面提示。
+      if (
+        previousReport !== null &&
+        previousReport.snapshotHash !== submission.report.snapshotHash
+      ) {
+        setSupersededReport({
+          snapshotVersion: previousReport.snapshotVersion,
+          snapshotHash: previousReport.snapshotHash,
+        });
+      }
       setReport(submission.report);
       return applyState(submission.state);
     });
-  }, [applyState, invalidateInFlight, run]);
+  }, [applyState, invalidateInFlight, report, run]);
+
+  /**
+   * 对决定性缺口回答“未知”或“待核实”。
+   *
+   * 回答不改变事实快照，缺口仍未解决，因此后端返回的新报告必须继续保持
+   * 分支呈现；页面直接采用后端报告，不自行推断。
+   */
+  const answerGap = useCallback(
+    (gapId: string, answer: GapAnswer) => {
+      const sessionId = sessionIdRef.current;
+      return run("记录决定性缺口回答", async (signal) => {
+        const submission = await requestJson<AnalysisSubmissionResponse>(
+          `/api/v1/analysis/sessions/${sessionId}/gaps/${gapId}/answer`,
+          { method: "POST", body: { answer }, timeoutMs: REPORT_REQUEST_TIMEOUT_MS, signal },
+        );
+        setReport(submission.report);
+        applyState(submission.state);
+        return submission.report;
+      });
+    },
+    [applyState, run],
+  );
 
   const beginModification = useCallback(() => {
     const sessionId = sessionIdRef.current;
@@ -317,6 +386,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     setStatus({ kind: "idle" });
     setSessionGone(false);
     setReport(null);
+    setSupersededReport(null);
     if (sessionId !== null) {
       try {
         await requestJson(`/api/v1/analysis/sessions/${sessionId}`, { method: "DELETE" });
@@ -327,6 +397,7 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   }, [invalidateInFlight]);
 
   const dismissSessionGone = useCallback(() => setSessionGone(false), []);
+  const dismissSupersededReport = useCallback(() => setSupersededReport(null), []);
 
   /**
    * 存在未清除案情时设置通用离开提醒。提醒不含案情摘要，也不承诺恢复；
@@ -372,14 +443,18 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       sessionId: sessionIdRef.current,
       sessionGone,
       report,
+      supersededReport,
+      dismissSupersededReport,
       pendingOperation,
       start,
       refresh,
       addFact,
       reviseFact,
+      setFactStatus,
       confirmSnapshot,
       beginModification,
       discardModification,
+      answerGap,
       generateReport,
       cancel,
       clear,
@@ -389,14 +464,18 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       status,
       sessionGone,
       report,
+      supersededReport,
+      dismissSupersededReport,
       pendingOperation,
       start,
       refresh,
       addFact,
       reviseFact,
+      setFactStatus,
       confirmSnapshot,
       beginModification,
       discardModification,
+      answerGap,
       generateReport,
       cancel,
       clear,

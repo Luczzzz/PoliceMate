@@ -26,6 +26,7 @@ type CaseFocusSeed = Omit<CaseFocusRecord, "testResults">;
 
 const MAINTAINER = "受控试行内容维护者（治安秩序与毒品类）";
 const VERIFIED_AT = "2026-09-28T00:00:00.000Z";
+const CASE_FOCUS_VERIFIED_AT = "2026-09-30T00:00:00.000Z";
 const RETRIEVED_AT = "2026-09-28T00:00:00.000Z";
 /** 初步定性、受立案条件与刑事/行政分流内容最长每 30 天重新核验（规格 13.7）。 */
 const NEXT_REVIEW_DUE_AT = "2026-10-28T00:00:00.000Z";
@@ -174,7 +175,7 @@ export const REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS = [
 
 const ASSAULT_FOCUS: CaseFocusSeed = {
   caseFocusId: ASSAULT_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "打架斗殴和伤害类案情",
   region: "国家",
@@ -258,12 +259,36 @@ const ASSAULT_FOCUS: CaseFocusSeed = {
       description: "伤情与损伤程度鉴定意见尚未确认，无法判断是否达到轻伤以上的刑事追诉标准。",
       factCategory: "result",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-injury-criminal",
+          condition: "伤情与损伤程度达到轻伤以上",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-injury-administrative",
+          condition: "伤情与损伤程度未达到轻伤以上",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-location",
       description: "行为地点与是否属于公共场所或交通要道尚未确认，影响寻衅滋事、聚众斗殴加重情形与管辖的判断。",
       factCategory: "place",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-location-criminal",
+          condition: "行为地点属于公共场所或交通要道，可能影响寻衅滋事、聚众斗殴加重情形",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-location-administrative",
+          condition: "行为地点不属于上述加重情形",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -324,12 +349,12 @@ const ASSAULT_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布治安秩序与毒品类重点案情：打架斗殴和伤害类案情。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：打架斗殴和伤害类案情。",
   sourceVerificationNote:
     "刑法与治安管理处罚法条款已核对；伤情程度必须以鉴定意见为准，不得由系统推定，刑事与行政分流仍须结合完整证据判断。",
   withdrawalNote: null,
@@ -337,7 +362,7 @@ const ASSAULT_FOCUS: CaseFocusSeed = {
 
 const GAMBLING_FOCUS: CaseFocusSeed = {
   caseFocusId: GAMBLING_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "赌博类案情",
   region: "国家",
@@ -420,12 +445,36 @@ const GAMBLING_FOCUS: CaseFocusSeed = {
       description: "抽头渔利、赌资数额或获利数额尚未确认，无法判断是否达到刑事追诉标准。",
       factCategory: "amount",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-stake-criminal",
+          condition: "抽头渔利、赌资数额或获利数额达到刑事追诉标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-stake-administrative",
+          condition: "抽头渔利、赌资数额或获利数额未达到刑事追诉标准",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-scale",
       description: "参赌人数、组织次数或赌博规模尚未确认，无法判断是否属于聚众赌博或开设赌场。",
       factCategory: "count",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-scale-criminal",
+          condition: "参赌人数、组织次数或赌博规模达到聚众赌博或开设赌场的认定标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-scale-administrative",
+          condition: "未达到上述标准，按一般赌博治安违法方向审查",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -490,12 +539,12 @@ const GAMBLING_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布治安秩序与毒品类重点案情：赌博类案情。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：赌博类案情。",
   sourceVerificationNote:
     "刑法、司法解释与两高一部意见已核对；聚众赌博与开设赌场的具体数额、人数标准仍须结合现行司法解释逐项核对。",
   withdrawalNote: null,
@@ -503,7 +552,7 @@ const GAMBLING_FOCUS: CaseFocusSeed = {
 
 const PROSTITUTION_FOCUS: CaseFocusSeed = {
   caseFocusId: PROSTITUTION_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "卖淫嫖娼及相关组织、容留、介绍行为",
   region: "国家",
@@ -582,12 +631,36 @@ const PROSTITUTION_FOCUS: CaseFocusSeed = {
       description: "场所、资金往来与获利情况尚未确认，无法判断行为人是组织者、协助者还是仅提供一般劳务。",
       factCategory: "object",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-role-criminal",
+          condition: "行为人对卖淫活动实施组织、协助组织、引诱、容留或介绍等符合刑事构成的行为",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-role-administrative",
+          condition: "行为人仅提供一般劳务，未达到刑事构成",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-scale",
       description: "卖淫人员人数、介绍或容留次数尚未确认，无法判断是否达到组织卖淫的认定标准。",
       factCategory: "count",
-      affectsDiversions: ["criminal"],
+      affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-scale-criminal",
+          condition: "卖淫人员人数或介绍、容留次数达到组织卖淫等刑事认定标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-scale-administrative",
+          condition: "未达到上述标准，按治安违法方向审查",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -651,12 +724,12 @@ const PROSTITUTION_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布治安秩序与毒品类重点案情：卖淫嫖娼及相关组织、容留、介绍行为。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：卖淫嫖娼及相关组织、容留、介绍行为。",
   sourceVerificationNote:
     "刑法、司法解释与治安管理处罚法已核对；组织卖淫与一般卖淫嫖娼、协助组织卖淫与一般劳务的区分仍须结合完整事实判断。",
   withdrawalNote: null,
@@ -664,7 +737,7 @@ const PROSTITUTION_FOCUS: CaseFocusSeed = {
 
 const DRUG_FOCUS: CaseFocusSeed = {
   caseFocusId: DRUG_FOCUS_ID,
-  version: "1.0.0",
+  version: "1.1.0",
   contentStatus: "trial",
   title: "毒品类违法犯罪",
   region: "国家",
@@ -755,12 +828,36 @@ const DRUG_FOCUS: CaseFocusSeed = {
       description: "毒品种类、含量或者数量尚未确认，无法判断数量标准和情节严重程度。",
       factCategory: "count",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-quantity-criminal",
+          condition: "毒品种类、含量或数量达到刑事追诉的数量标准",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-quantity-administrative",
+          condition: "未达到刑事数量标准，按治安管理处罚法关于毒品违法的方向审查",
+          diversion: "administrative",
+        },
+      ],
     },
     {
       gapId: "gap-property",
       description: "毒品实物、包装、资金载体与场所关联物品等物品性质尚未确认，无法判断行为类型和共同关系。",
       factCategory: "object",
       affectsDiversions: ["criminal", "administrative"],
+      branches: [
+        {
+          branchId: "gap-property-criminal",
+          condition: "物品性质与关联能够查证走私、贩卖、运输、制造毒品等刑事行为",
+          diversion: "criminal",
+        },
+        {
+          branchId: "gap-property-administrative",
+          condition: "仅能认定为吸毒等治安违法行为，未达到刑事构成",
+          diversion: "administrative",
+        },
+      ],
     },
   ],
   highRiskBoundary: [
@@ -833,12 +930,12 @@ const DRUG_FOCUS: CaseFocusSeed = {
     },
   ],
   draftedAt: "2026-09-20T00:00:00.000Z",
-  verifiedAt: VERIFIED_AT,
-  publishedAt: "2026-09-28T00:00:00.000Z",
-  lastVerifiedAt: VERIFIED_AT,
+  verifiedAt: CASE_FOCUS_VERIFIED_AT,
+  publishedAt: "2026-09-30T00:00:00.000Z",
+  lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "初次发布治安秩序与毒品类重点案情：毒品类违法犯罪。",
+  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：毒品类违法犯罪。",
   sourceVerificationNote:
     "刑法、毒品犯罪司法解释与治安管理处罚法已核对；毒品种类、含量和数量必须依据鉴定意见与法定标准认定，不得由系统推定。",
   withdrawalNote: null,

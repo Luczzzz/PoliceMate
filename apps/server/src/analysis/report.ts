@@ -9,6 +9,7 @@ import type {
   ReportDocumentTask,
   ReportEvidenceChecklistItem,
   ReportFactReference,
+  ReportGapBranch,
   ReportInterviewPointItem,
   ReportModule,
   ReportModuleId,
@@ -272,6 +273,7 @@ export function buildReport(
     caseFocusId: null,
     caseFocusVersion: null,
   },
+  gapBranches: ReportGapBranch[] = [],
 ): AnalysisReport {
   return {
     contractVersion: CONTRACT_VERSION,
@@ -290,6 +292,7 @@ export function buildReport(
     caseFocusVersion: focus.caseFocusVersion,
     workflowVersion: result.workflowVersion,
     modules: result.modules,
+    gapBranches,
     documentTasks: result.documentTasks,
   };
 }
@@ -324,7 +327,7 @@ function moduleSeverity(status: ReportModule["status"]): number {
 const DOWNGRADE_SUMMARY: Record<"basis_unavailable" | "conflicting" | "insufficient_facts", string> = {
   basis_unavailable: "当前重点案情依赖的正式依据不可用或已失效，停止形成主判断。",
   conflicting: "存在不能排除的相邻方向，保留多种可能，不形成单一判断。",
-  insufficient_facts: "决定性事实尚未确认，暂不能形成单一主结论。",
+  insufficient_facts: "决定性事实尚未确认，暂不能形成单一主结论；请按条件分支补充核验。",
 };
 
 export type ConservativeDowngradeStatus = keyof typeof DOWNGRADE_SUMMARY;

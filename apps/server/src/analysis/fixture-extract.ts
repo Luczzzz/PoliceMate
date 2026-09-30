@@ -658,6 +658,7 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
     excluded: false,
     replacesFactId: null,
     supersededByFactId: null,
+    resolvesGapIds: [],
   }));
 
   return {

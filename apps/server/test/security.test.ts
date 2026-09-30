@@ -239,6 +239,7 @@ describe("请求体与流量限制", () => {
               excluded: false,
               replacesFactId: null,
               supersededByFactId: null,
+              resolvesGapIds: [],
             } satisfies CandidateFact,
           ],
           independentMatters: { detected: false, note: null },

@@ -221,6 +221,8 @@ export interface CandidateFact {
   replacesFactId: string | null;
   /** 替代本事实的较新事实项 ID；本事实未被替代时为 `null`。 */
   supersededByFactId: string | null;
+  /** 本事实明确补齐的决定性缺口 ID；系统初始提取未绑定缺口时为空数组。 */
+  resolvesGapIds: string[];
 }
 
 /** 报告前紧急核验提示。只由已确认的紧急风险事实触发。 */
@@ -338,6 +340,63 @@ export interface ReportLegalBasis {
   officialUrl: string | null;
 }
 
+/**
+ * 重点案情的分流方向。用于把未解决的决定性缺口呈现为“若…则…”分支；
+ * 展示名称必须来自契约，页面不得自行拼写。
+ */
+export type CaseFocusDiversion = "criminal" | "administrative" | "civil";
+
+export const CASE_FOCUS_DIVERSION_LABELS: Record<CaseFocusDiversion, string> = {
+  criminal: "刑事方向",
+  administrative: "行政（治安管理）方向",
+  civil: "民事方向",
+};
+
+/** 民警对决定性缺口的回答：不改变事实，只表明仍暂不可确认。 */
+export type GapAnswer = "unknown" | "pending_verification";
+
+export const GAP_ANSWER_LABELS: Record<GapAnswer, string> = {
+  unknown: "未知",
+  pending_verification: "待核实",
+};
+
+/**
+ * 一个决定性缺口下的条件分支。
+ *
+ * `condition` 是“若…”部分，`proceduralPath` 是“则…”部分；两者都必须来自
+ * 受治理内容或当前有效法源，页面不得自行补充结论。
+ */
+export interface GapBranchPath {
+  branchId: string;
+  condition: string;
+  diversion: CaseFocusDiversion;
+  diversionLabel: string;
+  proceduralPath: string[];
+  basis: ReportLegalBasis | null;
+}
+
+/**
+ * 一个未解决的决定性事实缺口及其全部条件分支。
+ *
+ * 缺口未解决不阻断报告生成：报告列出各分支的程序路径与补充建议，
+ * 由民警决定是否补充核验。
+ */
+export interface GapBranch {
+  gapId: string;
+  description: string;
+  factCategory: FactCategory;
+  factCategoryLabel: string;
+  branches: GapBranchPath[];
+  supplementSuggestion: string;
+}
+
+/** 报告中的缺口分支：附带民警对该缺口的回答。 */
+export interface ReportGapBranch extends GapBranch {
+  /** 民警回答“未知”或“待核实”；未回答时为 `null`。 */
+  officerAnswer: GapAnswer | null;
+  officerAnswerLabel: string | null;
+}
+
 export interface ReportTraceLink {
   factIds: string[];
   /** 依据事实的结构化明细，与 `factIds` 一一对应；确认状态由后端补齐。 */
@@ -453,6 +512,8 @@ export interface AnalysisReport {
   caseFocusVersion: string | null;
   workflowVersion: string;
   modules: ReportModule[];
+  /** 未解决的决定性事实缺口及其条件分支；全部解决时为空数组。 */
+  gapBranches: ReportGapBranch[];
   documentTasks: ReportDocumentTask[];
 }
 
@@ -574,6 +635,19 @@ export interface FactStatusUpdateRequest {
 /** `POST …/facts` 请求：新增系统未提取出的遗漏事实。 */
 export interface AddFactRequest {
   statement: string;
+  /** 补充事实的类别；用于补齐决定性缺口，未给出时按“其他事实”处理。 */
+  category?: FactCategory;
+  /** 从缺口补充入口提交时，明确标识本事实所回答的缺口。 */
+  resolvesGapId?: string;
+}
+
+/**
+ * `POST …/gaps/:gapId/answer` 请求：对决定性缺口回答“未知”或“待核实”。
+ *
+ * 该回答不改变事实快照，缺口因此仍然未解决，报告继续保持分支呈现。
+ */
+export interface AnswerGapRequest {
+  answer: GapAnswer;
 }
 
 /**

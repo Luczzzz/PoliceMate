@@ -202,3 +202,62 @@ test.describe("报告文书任务候选跳转", () => {
     await expect(page.getByTestId("documents-index")).toBeVisible();
   });
 });
+
+test.describe("决定性缺口分支与补充后重新分析", () => {
+  const GAP_TEXT = "4月1日晚上，张某殴打李某。";
+
+  test("首份报告列出缺口分支，回答未知保持分支，补充后缺口解决且旧报告失效", async ({ page }) => {
+    await page.goto("/analysis");
+    await page.getByTestId("case-text-input").fill(GAP_TEXT);
+    await page.getByTestId("case-input-submit").click();
+    await page.waitForURL(/\/analysis\/report$/);
+    await expect(page.getByTestId("analysis-report")).toBeVisible({ timeout: 20_000 });
+
+    // 首份报告直接列出各缺口的“若…则…”分支与程序路径，无需先确认或追问。
+    await expect(page.getByTestId("gap-branches")).toBeVisible();
+    await expect(page.getByTestId("gap-branch-gap-injury")).toBeVisible();
+    await expect(page.getByTestId("gap-branch-gap-location")).toBeVisible();
+    const injuryBranch = page.getByTestId("gap-branch-path-gap-injury-criminal");
+    await expect(injuryBranch).toContainText("若");
+    await expect(injuryBranch).toContainText("依据");
+    await expect(page.getByTestId("gap-branch-gap-injury")).toContainText("缩小结论范围");
+    const snapshotBeforeAnswer = await page
+      .getByTestId("analysis-report")
+      .locator("dd")
+      .nth(1)
+      .innerText();
+
+    // 回答“未知”：不改变事实快照，分支保持呈现。
+    await page.getByTestId("gap-answer-unknown-gap-injury").click();
+    await expect(page.getByTestId("gap-answer-label-gap-injury")).toContainText("未知");
+    await expect(page.getByTestId("gap-branch-gap-injury")).toBeVisible();
+    const snapshotAfterAnswer = await page
+      .getByTestId("analysis-report")
+      .locator("dd")
+      .nth(1)
+      .innerText();
+    expect(snapshotAfterAnswer).toBe(snapshotBeforeAnswer);
+
+    // 补充与缺口同类别的事实（结果后果），确认新快照后重新分析。
+    await page.getByTestId("gap-branch-gap-injury").getByTestId("gap-supplement-entry").click();
+    await page.waitForURL(/\/analysis\/modify$/);
+    await expect(page.getByTestId("modify-add-fact-category")).toHaveValue("result");
+    await page.getByTestId("modify-add-fact-input").fill("经鉴定，李某损伤程度为轻伤二级。");
+    await page.getByTestId("modify-add-fact-submit").click();
+    await expect(page.getByTestId("modify-fact-list")).toContainText("轻伤二级");
+    page.once("dialog", (dialog) => void dialog.accept());
+    await page.getByTestId("confirm-modification").click();
+    await page.waitForURL(/\/analysis\/report$/);
+    await expect(page.getByTestId("analysis-report")).toBeVisible({ timeout: 20_000 });
+
+    // 该缺口解决，新快照不同于旧快照，旧报告标为已失效。
+    await expect(page.getByTestId("gap-branch-gap-injury")).toHaveCount(0);
+    const snapshotAfterSupplement = await page
+      .getByTestId("analysis-report")
+      .locator("dd")
+      .nth(1)
+      .innerText();
+    expect(snapshotAfterSupplement).not.toBe(snapshotBeforeAnswer);
+    await expect(page.getByTestId("superseded-report-notice")).toContainText("旧报告已失效");
+  });
+});
