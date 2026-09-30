@@ -50,7 +50,7 @@ import {
  *   确认与追问的前置阶段；
  * - 事实是会话内的工作集合；快照形成后锁定，补充或修改事实进入
  *   `modifying_facts`，确认后形成新版本快照并使旧报告失效；
- * - 紧急风险提示只由“已确认”的紧急风险事实触发（报告后置补充场景）。
+ * - 紧急风险提示由系统提取出的风险标记直接触发，无需民警确认（ADR-0008 第 4 点）。
  */
 
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
@@ -272,39 +272,47 @@ function toSessionState(session: AnalysisSession, now: Date): AnalysisSessionSta
   };
 }
 
+/** 核验事项的固定前缀：提示措辞只保持“请核验”，不下结论。 */
+const HUMAN_CHECK_PREFIX = "请核验：";
+
 const URGENT_HUMAN_CHECKS: Record<UrgentRiskCategory, string[]> = {
   personal_safety: [
-    "确认相关人员当前是否仍处于危险之中，现场是否已得到控制。",
-    "按现行规程评估是否需要先行处置或保护措施，并记录判断依据。",
+    `${HUMAN_CHECK_PREFIX}相关人员当前是否仍处于危险之中，现场是否已得到控制。`,
+    `${HUMAN_CHECK_PREFIX}按现行规程是否需要先行处置或保护措施，并记录判断依据。`,
   ],
   medical: [
-    "确认受伤人员是否已获得医疗救助。",
-    "确认病历、诊断证明等医疗记录的获取渠道，避免证据难以取得。",
+    `${HUMAN_CHECK_PREFIX}受伤人员是否已获得医疗救助。`,
+    `${HUMAN_CHECK_PREFIX}病历、诊断证明等医疗记录的获取渠道，避免证据难以取得。`,
   ],
   minor_protection: [
-    "确认未成年人当前是否处于安全环境。",
-    "核实监护人或其他保护责任的落实情况。",
+    `${HUMAN_CHECK_PREFIX}未成年人当前是否处于安全环境。`,
+    `${HUMAN_CHECK_PREFIX}监护人或其他保护责任的落实情况。`,
   ],
   domestic_violence: [
-    "确认受害人当前是否安全。",
-    "评估是否存在再次发生的紧急风险，并按家庭暴力处置规程记录。",
+    `${HUMAN_CHECK_PREFIX}受害人当前是否安全。`,
+    `${HUMAN_CHECK_PREFIX}是否存在再次发生的紧急风险，并按家庭暴力处置规程记录。`,
   ],
   evidence_loss: [
-    "确认关键证据是否仍有保存可能。",
-    "评估立即保全的渠道与时限（如监控调取期限）。",
+    `${HUMAN_CHECK_PREFIX}关键证据是否仍有保存可能。`,
+    `${HUMAN_CHECK_PREFIX}立即保全的渠道与时限（如监控调取期限）。`,
   ],
 };
 
 const URGENT_BOUNDARY_STATEMENT =
-  "该提示由已确认事实触发，仅提醒人工核验，不构成自动处置决定或紧急状态的认定。";
+  "该提示由系统提取的风险标记直接触发，仅提醒人工核验；请核验后再作判断，不构成自动处置决定或紧急状态的认定。";
 
-/** 紧急核验提示：只由已确认且未被排除的紧急风险事实触发。 */
+/**
+ * 紧急核验提示：由系统提取的风险标记直接触发，无需民警确认。
+ *
+ * 已排除的事实不参与；民警明确否认的事实不触发提示。提示只列出触发事实、
+ * 需要人工核验的事项与固定边界说明，不下定性或处罚结论（ADR-0008 第 4 点）。
+ */
 export function buildUrgentPrompts(facts: CandidateFact[], _now: Date): UrgentRiskPrompt[] {
   const byCategory = new Map<UrgentRiskCategory, CandidateFact[]>();
   for (const fact of facts) {
     if (fact.excluded) continue;
+    if (fact.status === "denied") continue;
     if (fact.riskCategory === null) continue;
-    if (fact.status !== "confirmed") continue;
     const bucket = byCategory.get(fact.riskCategory) ?? [];
     bucket.push(fact);
     byCategory.set(fact.riskCategory, bucket);

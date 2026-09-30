@@ -356,7 +356,7 @@ const BEHAVIOR_LEXICON: Array<{ pattern: RegExp; label: string }> = [
   },
 ];
 
-/** 紧急风险关键词。只用于给事实打标；是否触发提示由确认状态决定。 */
+/** 紧急风险关键词。只用于给事实打标；提取出的风险标记直接触发提示（ADR-0008 第 4 点）。 */
 const RISK_KEYWORDS: Array<{ pattern: RegExp; category: UrgentRiskCategory }> = [
   { pattern: /持刀|拿刀|匕首|凶器|扬言伤人|正在行凶/, category: "personal_safety" },
   { pattern: /重伤|流血|昏迷|不省人事|送医|急救/, category: "medical" },
@@ -398,6 +398,12 @@ function personsIn(sentence: string, registry: AliasRegistry): Array<{ alias: st
   return found;
 }
 
+/**
+ * 单句风险标记：按固定顺序返回第一个命中的类别。
+ *
+ * 契约中一条事实只携带一个风险类别；同一句同时含多类风险时以最优先的一类
+ * 打标，避免重复事实与不稳定 ID。需要分别提示时请拆分为多句输入。
+ */
 function riskIn(sentence: string): UrgentRiskCategory | null {
   for (const rule of RISK_KEYWORDS) {
     if (rule.pattern.test(sentence)) return rule.category;

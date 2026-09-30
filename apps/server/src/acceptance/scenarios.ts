@@ -362,20 +362,20 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
   },
   {
     id: "AC-31",
-    title: "已确认事实触发人身危险、医疗、未成年人保护或证据灭失核验提示",
+    title: "系统提取的风险标记直接触发置顶核验提示，无需民警确认且不下结论",
     specSections: ["6.4.1"],
     automated: [
-      { file: "apps/server/test/family-minor-content.test.ts", title: "已确认事实触发家庭暴力、人身安全、医疗需要、未成年人保护与证据灭失提示，且只要求人工核验" },
+      { file: "apps/server/test/analysis-api.test.ts", title: "%s 的风险标记直接触发置顶紧急提示，无需民警确认" },
     ],
     manual: [],
     drills: [],
   },
   {
     id: "AC-32",
-    title: "仅有未经确认的危险关键词时不产生紧急结论",
+    title: "无风险标记的案情不出现紧急提示",
     specSections: ["6.4.1"],
     automated: [
-      { file: "apps/server/test/family-minor-content.test.ts", title: "只有候选关键词时不显示已触发的紧急风险结论" },
+      { file: "apps/server/test/analysis-api.test.ts", title: "无风险标记的案情不出现紧急提示" },
     ],
     manual: [],
     drills: [],

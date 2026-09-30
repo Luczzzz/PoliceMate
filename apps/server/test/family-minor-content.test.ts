@@ -302,20 +302,27 @@ describe("家庭与未成年人高风险重点案情匹配与法源限定", () =
 });
 
 describe("家庭与未成年人高风险重点案情的风险提示边界", () => {
-  it("只有候选关键词时不显示已触发的紧急风险结论", () => {
+  it("仅候选（未经民警确认）风险标记也直接触发核验提示，不产生紧急结论", () => {
     const store = createGovernedContentStore(createFixtureContent());
     const candidates = extractCaseFactsFixture(
       "有人反映某户可能存在家暴，孩子可能被打。",
     ).facts;
 
-    // 候选事实可以选择首份分析的重点案情，但仍不触发已确认的紧急核验提示。
+    // 候选事实可以选择首份分析的重点案情；风险标记无需民警确认即触发提示。
     expect(matchedCaseFocuses(store.caseFocuses(), candidates).map((focus) => focus.caseFocusId)).toEqual([
       MINOR_HARM_FOCUS_ID,
     ]);
-    expect(buildUrgentPrompts(candidates, NOW)).toEqual([]);
+    const prompts = buildUrgentPrompts(candidates, NOW);
+    expect(prompts.map((prompt) => prompt.category)).toContain("minor_protection");
+    for (const prompt of prompts) {
+      expect(prompt.triggeringFactIds.length).toBeGreaterThan(0);
+      expect(prompt.humanChecks.every((check) => check.includes("请核验"))).toBe(true);
+      expect(prompt.boundaryStatement).toContain("请核验");
+      expect(prompt.boundaryStatement).toContain("不构成自动处置决定");
+    }
   });
 
-  it("已确认事实触发家庭暴力、人身安全、医疗需要、未成年人保护与证据灭失提示，且只要求人工核验", () => {
+  it("五类风险标记各自触发对应核验提示，且只要求人工核验", () => {
     const domestic = extractCaseFactsFixture(
       "4月1日晚上，王某在某某小区家中多次家暴其妻子李某，致李某轻微伤。李某受伤后已送医治疗。王某持刀扬言报复李某。李某称王某曾威胁删除监控记录。",
     ).facts.map((fact) => ({ ...fact, status: "confirmed" as const, statusLabel: FACT_STATUS_LABELS.confirmed }));

@@ -5,6 +5,7 @@ import type {
   ReportGapBranch,
   ReportModule,
   ReportDocumentTask,
+  UrgentRiskPrompt,
 } from "@policymate/contracts";
 import {
   GAP_ANSWER_LABELS,
@@ -22,6 +23,10 @@ import { formatBeijingDateTime } from "../../util/datetime";
 
 const REPORT_BOUNDARY_STATEMENT =
   "本报告是程序辅助工具输出，不构成案件定性、受立案决定、处罚建议或法律结论；请结合现行规范、正式案卷和官方系统核验。";
+
+/** 置顶紧急提示的确认状态说明：风险标记由系统提取，未经民警确认（ADR-0008 第 2、4 点）。 */
+const URGENT_PROMPT_UNCONFIRMED_NOTE =
+  `以下触发事实为${REPORT_BASIS_CONFIRMATION_LABELS.system_extracted_unconfirmed}；请核验后再作判断。`;
 
 function documentTaskState(task: ReportDocumentTask) {
   return {
@@ -90,6 +95,38 @@ function DocumentTaskCard({ task }: { task: ReportDocumentTask }) {
         查看候选文书范例
       </Link>
     </li>
+  );
+}
+
+/**
+ * 置顶紧急核验提示。
+ *
+ * 由系统提取出的风险标记直接触发，无需民警确认；只展示触发事实、需要立即
+ * 人工核验的事项与固定边界说明，措辞保持“请核验”，不下定性或处罚结论。
+ */
+function UrgentPromptCard({ prompt }: { prompt: UrgentRiskPrompt }) {
+  return (
+    <section className="urgent-prompt" role="alert" data-testid={`urgent-prompt-${prompt.category}`}>
+      <h2 className="urgent-prompt__title">紧急核验提示：{prompt.categoryLabel}</h2>
+      <p className="field__note">{URGENT_PROMPT_UNCONFIRMED_NOTE}</p>
+      <div className="urgent-prompt__block">
+        <h3>触发的事实</h3>
+        <ul>
+          {prompt.triggeringStatements.map((statement, index) => (
+            <li key={index}>{statement}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="urgent-prompt__block">
+        <h3>需要立即人工核验</h3>
+        <ul>
+          {prompt.humanChecks.map((check, index) => (
+            <li key={index}>{check}</li>
+          ))}
+        </ul>
+      </div>
+      <p className="urgent-prompt__boundary">{prompt.boundaryStatement}</p>
+    </section>
   );
 }
 
@@ -216,6 +253,7 @@ function GapBranchSection({
 
 function ReportBody({
   report,
+  urgentPrompts,
   pendingModification,
   supersededReport,
   onDismissSuperseded,
@@ -227,6 +265,7 @@ function ReportBody({
   gapError,
 }: {
   report: AnalysisReport;
+  urgentPrompts: UrgentRiskPrompt[];
   pendingModification: boolean;
   supersededReport: { snapshotVersion: number; snapshotHash: string } | null;
   onDismissSuperseded: () => void;
@@ -239,6 +278,14 @@ function ReportBody({
 }) {
   return (
     <div className="report-body" data-testid="analysis-report">
+      {urgentPrompts.length > 0 ? (
+        <div data-testid="urgent-prompts">
+          {urgentPrompts.map((prompt) => (
+            <UrgentPromptCard key={prompt.promptId} prompt={prompt} />
+          ))}
+        </div>
+      ) : null}
+
       <header className="report-header">
         <p className="status-badge" data-testid="report-status">
           {report.statusLabel}
@@ -503,6 +550,7 @@ export function AnalysisReportPage() {
       {report ? (
         <ReportBody
           report={report}
+          urgentPrompts={state.urgentPrompts}
           pendingModification={state.modification !== null}
           supersededReport={supersededReport}
           onDismissSuperseded={dismissSupersededReport}

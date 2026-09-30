@@ -158,7 +158,7 @@ export const PRECISION_LABELS: Record<PrecisionLevel, string> = {
   unknown: "无法规范化",
 };
 
-/** 紧急风险类别。只有对应事实被民警确认后才可能触发报告前核验提示。 */
+/** 紧急风险类别。对应风险标记一经系统提取即触发置顶核验提示，无需民警确认（ADR-0008 第 4 点）。 */
 export type UrgentRiskCategory =
   | "personal_safety"
   | "medical"
@@ -213,7 +213,7 @@ export interface CandidateFact {
   /** 确认方式；未确认时为 `null`。 */
   confirmationMethod: "officer" | "officer_added" | null;
   confirmedAt: string | null;
-  /** 紧急风险类别标记；仅提取/回答时打标，触发提示仍以确认状态为准。 */
+  /** 紧急风险类别标记；系统提取/回答时打标，标记直接触发置顶核验提示，无需民警确认。 */
   riskCategory: UrgentRiskCategory | null;
   /** 是否已被排除（不纳入本次分析）。 */
   excluded: boolean;
@@ -225,15 +225,18 @@ export interface CandidateFact {
   resolvesGapIds: string[];
 }
 
-/** 报告前紧急核验提示。只由已确认的紧急风险事实触发。 */
+/**
+ * 报告置顶紧急核验提示。由系统提取出的风险标记直接触发，无需民警确认，
+ * 只列出触发事实与人工核验事项，措辞保持“请核验”，不下结论。
+ */
 export interface UrgentRiskPrompt {
   promptId: string;
   category: UrgentRiskCategory;
   categoryLabel: string;
   triggeringFactIds: string[];
-  /** 触发它的已确认事实（原始表述）。 */
+  /** 触发它的风险事实原始表述；事实可能尚未经民警确认。 */
   triggeringStatements: string[];
-  /** 需要民警立即人工核验的事项。 */
+  /** 需要民警立即人工核验的事项；措辞保持“请核验”，不下结论。 */
   humanChecks: string[];
   /** 固定边界说明：不构成自动处置或紧急状态认定。 */
   boundaryStatement: string;

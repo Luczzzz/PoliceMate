@@ -106,6 +106,31 @@ test.describe("提交案情直达报告", () => {
     }
   });
 
+  test("含风险标记的案情在报告正文之前置顶紧急核验提示", async ({ page }) => {
+    await submitCase(page, "3月2日晚上，张某在家中家暴其妻子李某。");
+
+    const prompts = page.getByTestId("urgent-prompts");
+    await expect(prompts).toBeVisible();
+    const card = page.getByTestId("urgent-prompt-domestic_violence");
+    await expect(card).toContainText("紧急核验提示");
+    await expect(card).toContainText("触发的事实");
+    await expect(card).toContainText("系统提取，未经确认");
+    await expect(card).toContainText("请核验");
+    await expect(card).toContainText("不构成自动处置决定");
+
+    // 置顶：紧急提示是报告正文的第一个区块。
+    const firstTestId = await page
+      .getByTestId("analysis-report")
+      .evaluate((node) => (node.firstElementChild as HTMLElement | null)?.getAttribute("data-testid"));
+    expect(firstTestId).toBe("urgent-prompts");
+  });
+
+  test("无风险标记的案情不出现紧急提示", async ({ page }) => {
+    await submitCase(page, NORMAL_TEXT);
+    await expect(page.getByTestId("analysis-report")).toBeVisible();
+    await expect(page.getByTestId("urgent-prompts")).toHaveCount(0);
+  });
+
   test("模糊事实仍被提取并形成报告，余额与范围不阻塞报告生成", async ({ page }) => {
     await submitCase(page, VAGUE_TEXT);
     await expect(page.getByTestId("analysis-report")).toBeVisible();

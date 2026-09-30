@@ -5,8 +5,9 @@ import type {
   CandidateFact,
   CreateAnalysisRequest,
   GenerateReportRequest,
+  UrgentRiskCategory,
 } from "@policymate/contracts";
-import { reportHasUnconfirmedBasis } from "@policymate/contracts";
+import { reportHasUnconfirmedBasis, URGENT_RISK_LABELS } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { AnalysisEngine, SESSION_IDLE_TTL_MS } from "../src/analysis/engine";
@@ -607,6 +608,114 @@ describe("报告依据标注确认状态", () => {
       expect(reference.confirmationLabel).toBe("民警已确认");
     }
     expect(reportHasUnconfirmedBasis(next.report)).toBe(false);
+    await app.close();
+  });
+});
+
+/**
+ * 风险标记直接触发置顶紧急核验提示（ADR-0008 第 4 点）。
+ *
+ * 人身安全、医疗救助、未成年人保护、家庭暴力、证据灭失五类风险由系统提取出的
+ * 风险标记直接触发提示，无需民警确认；措辞保持“请核验”，不下定性或处罚结论。
+ * 每类风险使用确定性固定样例，保证可复现。
+ */
+const RISK_SAMPLES: ReadonlyArray<[UrgentRiskCategory, string]> = [
+  ["personal_safety", "3月2日晚上，张某在城南市场门口持刀威胁李某。"],
+  ["medical", "3月2日晚上，张某在城南市场门口殴打李某，李某已送医急救。"],
+  ["minor_protection", "3月2日晚上，张某在城南市场门口殴打一名未成年学生。"],
+  ["domestic_violence", "3月2日晚上，张某在家中家暴其妻子李某。"],
+  ["evidence_loss", "3月2日晚上，张某在城南市场门口威胁删除监控记录。"],
+];
+
+const RISK_FREE_TEXT = "3月2日晚上，张某在城南市场门口盗窃李某手机一部。";
+
+/** 提示文案不得出现定性、处罚或“已查明”类表述。 */
+const CONCLUSION_PATTERN = /已查明|已构成|定罪|应当(?:处以|给予)?处罚|追究(?:刑事|行政)责任/;
+
+describe("风险标记直接触发置顶紧急提示", () => {
+  it.each(RISK_SAMPLES)("%s 的风险标记直接触发置顶紧急提示，无需民警确认", async (category, caseText) => {
+    const { app } = await makeApp();
+    const { state, report } = await submitCase(app, caseText);
+
+    // 事实在首份分析里全部未经民警确认，提示仍然必须出现。
+    expect(state.facts.length).toBeGreaterThan(0);
+    expect(state.facts.every((fact) => fact.status === "candidate")).toBe(true);
+
+    const prompt = state.urgentPrompts.find((item) => item.category === category);
+    expect(prompt, `缺少 ${category} 风险提示`).toBeDefined();
+    expect(prompt?.categoryLabel).toBe(URGENT_RISK_LABELS[category]);
+    expect(prompt?.promptId).not.toBe("");
+    expect(prompt?.triggeringFactIds.length).toBeGreaterThan(0);
+    expect(prompt?.triggeringStatements).toEqual(
+      state.facts
+        .filter((fact) => prompt?.triggeringFactIds.includes(fact.factId))
+        .map((fact) => fact.originalWording),
+    );
+    for (const statement of prompt?.triggeringStatements ?? []) {
+      expect(statement).not.toBe("");
+    }
+    expect(prompt?.humanChecks.length).toBeGreaterThan(0);
+    for (const check of prompt?.humanChecks ?? []) {
+      expect(check).toContain("请核验");
+    }
+    expect(prompt?.boundaryStatement).toContain("请核验");
+    expect(prompt?.boundaryStatement).toContain("不构成自动处置决定");
+
+    const text = [
+      prompt?.categoryLabel ?? "",
+      ...(prompt?.humanChecks ?? []),
+      ...(prompt?.triggeringStatements ?? []),
+      prompt?.boundaryStatement ?? "",
+    ].join("\n");
+    expect(text).not.toMatch(CONCLUSION_PATTERN);
+
+    // 提示与报告绑定同一会话与事实快照。
+    expect(report.sessionId).toBe(state.sessionId);
+    expect(report.snapshotHash).toBe(state.snapshot?.snapshotHash);
+    await app.close();
+  });
+
+  it("无风险标记的案情不出现紧急提示", async () => {
+    const { app } = await makeApp();
+    const { state } = await submitCase(app, RISK_FREE_TEXT);
+
+    expect(state.facts.some((fact) => fact.riskCategory !== null)).toBe(false);
+    expect(state.urgentPrompts).toEqual([]);
+    await app.close();
+  });
+
+  it("民警明确否认的风险事实不再触发提示", async () => {
+    const { app } = await makeApp();
+    const first = await submitCase(app, RISK_SAMPLES[0][1]);
+    expect(first.state.urgentPrompts.map((prompt) => prompt.category)).toContain("personal_safety");
+
+    const begin = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(begin.statusCode).toBe(200);
+    for (const fact of first.state.facts.filter((item) => item.riskCategory !== null)) {
+      const denied = await app.inject({
+        method: "POST",
+        url: `/api/v1/analysis/sessions/${first.state.sessionId}/facts/${fact.factId}/status`,
+        headers: contractHeaders,
+        payload: { status: "denied" },
+      });
+      expect(denied.statusCode).toBe(200);
+    }
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/snapshot`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(confirmed.statusCode).toBe(200);
+    const next = confirmed.json() as AnalysisSubmissionResponse;
+    expect(next.state.snapshot?.snapshotVersion).toBe(2);
+    expect(next.state.urgentPrompts).toEqual([]);
     await app.close();
   });
 });
