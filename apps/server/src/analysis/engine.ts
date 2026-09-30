@@ -34,6 +34,8 @@ import type {
   ReportGenerationRequest,
 } from "../providers/types";
 import type { TelemetrySink } from "../telemetry";
+import { ASSAULT_REPORT_VERSION } from "./assault-report";
+import { ASSAULT_FOCUS_ID } from "../content/public-order-drug-content";
 import {
   applyConservativeDowngrade,
   attachReportFactReferences,
@@ -92,18 +94,16 @@ export class AnalysisUpstreamError extends Error {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, signal?: AbortSignal): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new AnalysisTimeoutError(timeoutMs)), timeoutMs);
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); };
+    const abort = () => { cleanup(); reject(new AnalysisInputError("本次分析已取消。", 409)); };
+    const timer = setTimeout(() => { cleanup(); reject(new AnalysisTimeoutError(timeoutMs)); }, timeoutMs);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
+      (value) => { cleanup(); resolve(value); },
+      (error: unknown) => { cleanup(); reject(error); },
     );
   });
 }
@@ -112,6 +112,7 @@ export interface AnalysisEngineOptions {
   analysisTimeoutMs?: number;
   reportTimeoutMs?: number;
   maxAttempts?: number;
+  preserveConditionalAnalysis?: boolean;
   telemetry?: TelemetrySink;
 }
 
@@ -244,7 +245,7 @@ export function validateExtractionResult(result: CaseExtractionResult): void {
       if (typeof factId !== "string" || factId === "") throw new AnalysisContractError("候选事实缺少稳定 ID。");
       if (seen.has(factId)) throw new AnalysisContractError("候选事实 ID 重复。");
       seen.add(factId);
-      if (typeof fact.category !== "string") throw new AnalysisContractError("候选事实缺少类别。");
+      if (typeof fact.category !== "string" || !FACT_CATEGORIES.has(fact.category)) throw new AnalysisContractError("候选事实类别无效。");
       if (typeof fact.originalWording !== "string" || fact.originalWording.trim() === "") {
         throw new AnalysisContractError("候选事实缺少原始表述。");
       }
@@ -253,11 +254,21 @@ export function validateExtractionResult(result: CaseExtractionResult): void {
       if (fact.status !== "candidate" && fact.status !== "disputed") {
         throw new AnalysisContractError("提取结果不得预置已确认状态。");
       }
-      if (fact.riskCategory !== null && typeof fact.riskCategory !== "string") {
+      if (fact.riskCategory !== null && (typeof fact.riskCategory !== "string" || !(fact.riskCategory in URGENT_RISK_LABELS))) {
         throw new AnalysisContractError("候选事实紧急风险标记无效。");
       }
       if (fact.disputeGroupId !== null && typeof fact.disputeGroupId !== "string") {
         throw new AnalysisContractError("候选事实争议分组标识无效。");
+      }
+      if (typeof fact.statement !== "string" || fact.statement.trim() === "" ||
+          ![fact.eventRefs, fact.participantRefs, fact.behaviorRefs].every((refs) => Array.isArray(refs) && refs.every((ref) => typeof ref === "string" && ref !== "")) ||
+          fact.sourceRound !== 0 || fact.confirmationMethod !== null || fact.confirmedAt !== null || fact.excluded !== false ||
+          fact.replacesFactId !== null || fact.supersededByFactId !== null ||
+          fact.categoryLabel !== FACT_CATEGORY_LABELS[fact.category as FactCategory] || fact.statusLabel !== FACT_STATUS_LABELS[fact.status]) {
+        throw new AnalysisContractError("候选事实初始状态或结构无效。");
+      }
+      if ((fact.status === "disputed") !== (typeof fact.disputeGroupId === "string" && fact.disputeGroupId !== "")) {
+        throw new AnalysisContractError("争议事实状态与分组不一致。");
       }
       // 缺口绑定只能由民警在补充流程中显式建立，外部提取边界不得自行声明。
       if (!Array.isArray(fact.resolvesGapIds) || fact.resolvesGapIds.length > 0) {
@@ -397,10 +408,17 @@ function formSnapshot(session: AnalysisSession, version: number, now: Date): Fac
 
 export class AnalysisEngine {
   private readonly sessions = new Map<string, AnalysisSession>();
+  private readonly pendingReports = new Map<string, Set<AbortController>>();
+
+  private cancelReports(sessionId: string): void {
+    for (const controller of this.pendingReports.get(sessionId) ?? []) controller.abort();
+    this.pendingReports.delete(sessionId);
+  }
   private readonly analysisTimeoutMs: number;
   private readonly reportTimeoutMs: number;
   private readonly maxAttempts: number;
   private readonly telemetry: TelemetrySink | undefined;
+  private readonly preserveConditionalAnalysis: boolean;
 
   constructor(
     private readonly deps: EngineDeps,
@@ -410,6 +428,7 @@ export class AnalysisEngine {
     this.reportTimeoutMs = options.reportTimeoutMs ?? DEFAULT_REPORT_TIMEOUT_MS;
     this.maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
     this.telemetry = options.telemetry;
+    this.preserveConditionalAnalysis = options.preserveConditionalAnalysis ?? false;
   }
 
   /**
@@ -423,14 +442,20 @@ export class AnalysisEngine {
     label: string,
     kind: string,
     totalTimeoutMs: number,
-    attempt: () => Promise<T>,
+    attempt: (signal: AbortSignal) => Promise<T>,
+    signal?: AbortSignal,
   ): Promise<T> {
     const perAttemptMs = Math.max(1, Math.floor(totalTimeoutMs / this.maxAttempts));
     let lastError: unknown;
     for (let tries = 1; tries <= this.maxAttempts; tries += 1) {
+      if (signal?.aborted) throw new AnalysisInputError("本次分析已取消。", 409);
+      const controller = new AbortController();
+      const attemptSignal = signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
       try {
-        return await withTimeout(attempt(), perAttemptMs);
+        return await withTimeout(attempt(attemptSignal), perAttemptMs, signal);
       } catch (error) {
+        controller.abort();
+        if (signal?.aborted) throw new AnalysisInputError("本次分析已取消。", 409);
         lastError = error;
         const wasTimeout = error instanceof AnalysisTimeoutError;
         this.telemetry?.record({
@@ -448,6 +473,7 @@ export class AnalysisEngine {
   private pruneExpired(now: number): void {
     for (const [sessionId, session] of this.sessions) {
       if (now - session.lastActiveAt > SESSION_IDLE_TTL_MS) {
+        this.cancelReports(sessionId);
         this.sessions.delete(sessionId);
       }
     }
@@ -475,7 +501,7 @@ export class AnalysisEngine {
    * 独立会话标识与独立不可变事实快照。不再经过候选事实确认与决定性追问，
    * 报告由路由在每个会话上生成。
    */
-  async createSessions(request: CreateAnalysisRequest, now = new Date()): Promise<AnalysisSessionState[]> {
+  async createSessions(request: CreateAnalysisRequest, now = new Date(), signal?: AbortSignal): Promise<AnalysisSessionState[]> {
     const caseText = validateCaseText(request?.caseText);
     this.pruneExpired(now.getTime());
 
@@ -483,12 +509,14 @@ export class AnalysisEngine {
       "候选事实提取",
       "analysis.extraction",
       this.analysisTimeoutMs,
-      async () => {
-        const result = await this.deps.extractCaseFacts({ caseText });
+      async (signal) => {
+        const result = await this.deps.extractCaseFacts({ caseText }, signal);
         validateExtractionResult(result);
         return result;
       },
+      signal,
     );
+    if (signal?.aborted) throw new AnalysisInputError("本次分析已取消。", 409);
     const totalFacts = extraction.matters.reduce((sum, matter) => sum + matter.facts.length, 0);
     this.telemetry?.record({
       requestId: randomUUID(),
@@ -540,6 +568,7 @@ export class AnalysisEngine {
     now = new Date(),
     releaseId = "",
     resolveCaseFocus?: CaseFocusResolver,
+    signal?: AbortSignal,
   ): Promise<AnalysisReport> {
     const session = this.getLiveSession(sessionId, now.getTime());
     if (session.stage !== "snapshot_confirmed") {
@@ -563,12 +592,14 @@ export class AnalysisEngine {
     };
     const downgradeNotes: string[] = [];
     let gapBranches: ReportGapBranch[] = [];
+    let alternativeDirections: string[] = [];
     if (resolveCaseFocus !== undefined) {
       const resolution = await resolveCaseFocus(
         session.facts.map((fact) => ({ ...fact })),
         now,
       );
       effectiveLegalSources = resolution.legalSources;
+      alternativeDirections = [...resolution.unresolvedAlternatives];
       reportFocus = {
         caseFocusId: resolution.caseFocusId,
         caseFocusVersion: resolution.caseFocusVersion,
@@ -618,27 +649,54 @@ export class AnalysisEngine {
     }
 
     const providerRequest: ReportGenerationRequest = {
+      requestId: request.requestId,
       facts: session.facts.map((fact) => ({ ...fact })),
       snapshot: { ...session.snapshot },
       legalSources: effectiveLegalSources.map((source) => ({ ...source, articles: source.articles.map((article) => ({ ...article })) })),
+      caseFocusId: reportFocus.caseFocusId,
+      unresolvedGapIds: gapBranches.map((branch) => branch.gapId),
+      gapBranches: gapBranches.map((branch) => ({ ...branch, branches: branch.branches.map((path) => ({ ...path, proceduralPath: [...path.proceduralPath], basis: path.basis === null ? null : { ...path.basis } })) })),
+      alternativeDirections,
+      contentReleaseId: releaseId,
     };
     const state = toSessionState(session, now);
-    const result = await this.callUpstream(
+    const controller = new AbortController();
+    const pending = this.pendingReports.get(sessionId) ?? new Set<AbortController>();
+    pending.add(controller);
+    this.pendingReports.set(sessionId, pending);
+    const reportSignal = signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
+    let result;
+    try {
+      result = await this.callUpstream(
       "报告生成",
       "analysis.report",
       this.reportTimeoutMs,
-      async () => {
-        const generated = await this.deps.generateReport!(providerRequest);
+      async (signal) => {
+        const generated = await this.deps.generateReport!(providerRequest, signal);
         // 提供者只返回事实 ID；确认状态与依据明细必须由后端从未被排除的事实补齐。
         const enriched = attachReportFactReferences(generated, session.facts);
         validateReportResult(enriched, state, effectiveLegalSources);
         return enriched;
       },
+      reportSignal,
     );
+    } finally {
+      pending.delete(controller);
+      if (pending.size === 0) this.pendingReports.delete(sessionId);
+    }
+    const current = this.getLiveSession(sessionId, now.getTime());
+    if (reportSignal.aborted || current.stage !== "snapshot_confirmed" || current.snapshot.snapshotHash !== state.snapshot.snapshotHash) {
+      throw new AnalysisInputError("本次分析已取消或快照已改变，已丢弃迟到报告。", 409);
+    }
     const effectiveResult =
       forcedStatus === null
         ? result
-        : applyConservativeDowngrade(result, forcedStatus, downgradeNotes);
+        : applyConservativeDowngrade(result, forcedStatus, downgradeNotes, {
+            preserveActionableContent:
+              this.preserveConditionalAnalysis ||
+              (reportFocus.caseFocusId === ASSAULT_FOCUS_ID &&
+              result.workflowVersion === ASSAULT_REPORT_VERSION && forcedStatus === "insufficient_facts"),
+          });
     this.telemetry?.record({
       requestId: request.requestId,
       timestamp: new Date().toISOString(),
@@ -664,6 +722,7 @@ export class AnalysisEngine {
 
   clearSession(sessionId: string, now = new Date()): void {
     this.pruneExpired(now.getTime());
+    this.cancelReports(sessionId);
     this.sessions.delete(sessionId);
   }
 
@@ -786,6 +845,7 @@ export class AnalysisEngine {
     if (session.stage !== "snapshot_confirmed") {
       throw new AnalysisInputError("只有已生成报告的已确认事实快照才能进入补充或修改事实。", 409);
     }
+    this.cancelReports(sessionId);
     session.stage = "modifying_facts";
     session.modification = {
       baseSnapshotVersion: session.snapshot.snapshotVersion,
@@ -891,6 +951,7 @@ export class AnalysisEngine {
   }
 
   resetForTests(): void {
+    for (const sessionId of this.pendingReports.keys()) this.cancelReports(sessionId);
     this.sessions.clear();
   }
 }

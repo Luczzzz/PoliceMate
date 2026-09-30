@@ -412,13 +412,26 @@ export function applyConservativeDowngrade(
   result: ReportGenerationResult,
   forcedStatus: ConservativeDowngradeStatus,
   notes: string[],
+  options: { preserveActionableContent?: boolean } = {},
 ): ReportGenerationResult {
-  if (STATUS_SEVERITY[forcedStatus] <= STATUS_SEVERITY[result.status]) return result;
+  const preserveActionableContent = options.preserveActionableContent === true && forcedStatus === "insufficient_facts";
+  const mergedNotes = [...new Set([...result.factLimitations, ...notes])];
+  // 提供者已给出更保守的状态时不再改写；仅补记本次解析出的缺口说明。
+  if (STATUS_SEVERITY[forcedStatus] < STATUS_SEVERITY[result.status]) return result;
+  if (STATUS_SEVERITY[forcedStatus] === STATUS_SEVERITY[result.status] && !preserveActionableContent) {
+    return { ...result, factLimitations: mergedNotes };
+  }
 
   const critical = new Set<string>(CRITICAL_MODULE_IDS);
   const summary = DOWNGRADE_SUMMARY[forcedStatus];
   const modules = result.modules.map((module) => {
     if (!critical.has(module.id)) return module;
+    if (preserveActionableContent) {
+      // 缺口或相邻方向限制确定性判断，不抹去已校验的条件性内容与法源。
+      return module.id === "preliminary_qualification"
+        ? { ...module, status: forcedStatus }
+        : module;
+    }
     const status =
       moduleSeverity(module.status) > STATUS_SEVERITY[forcedStatus]
         ? module.status
@@ -438,8 +451,8 @@ export function applyConservativeDowngrade(
   return {
     ...result,
     status: forcedStatus,
-    headline: summary,
-    factLimitations: [...result.factLimitations, ...notes],
+    headline: preserveActionableContent ? result.headline : summary,
+    factLimitations: mergedNotes,
     modules,
   };
 }

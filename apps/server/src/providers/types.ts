@@ -69,6 +69,14 @@ export interface ReportGenerationRequest {
   facts: CandidateFact[];
   snapshot: FactSnapshot;
   legalSources: LegalSourceReference[];
+  /** 后端从受治理内容解析出的重点案情与缺口，不由模型自行选择。 */
+  caseFocusId?: string | null;
+  /** 本次报告请求编号；用于把上游输出绑定回具体请求。 */
+  requestId?: string;
+  unresolvedGapIds?: string[];
+  gapBranches?: GapBranch[];
+  alternativeDirections?: string[];
+  contentReleaseId?: string;
   mode?: string;
 }
 
@@ -88,8 +96,27 @@ export interface ReportGenerationResult {
  * 真实 Dify 接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
  */
 export interface CaseAnalysisProvider {
-  extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult>;
-  generateReport?(request: ReportGenerationRequest): Promise<ReportGenerationResult>;
+  extractCaseFacts(request: CaseExtractionRequest, signal?: AbortSignal): Promise<CaseExtractionResult>;
+  generateReport?(request: ReportGenerationRequest, signal?: AbortSignal): Promise<ReportGenerationResult>;
+}
+
+/** Dify 输出封装；提取不依赖快照，相关字段必须为 null。 */
+export interface DifyOutputMetadata {
+  contractVersion: "1.0";
+  promptVersion: "actionable-analysis-v1";
+  workflowVersion: string;
+  requestId: string;
+  snapshotVersion: number | null;
+  snapshotHash: string | null;
+  contentReleaseId: string | null;
+}
+
+export interface DifyExtractionOutput extends DifyOutputMetadata {
+  result: CaseExtractionResult;
+}
+
+export interface DifyReportOutput extends DifyOutputMetadata {
+  result: ReportGenerationResult;
 }
 
 /** 当前激活的不可变内容发布批次摘要。 */

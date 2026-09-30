@@ -5,6 +5,7 @@ import {
   PUBLIC_SECURITY_PUNISHMENTS_LAW,
 } from "./national-legal-sources";
 import { cloneCaseFocus, cloneLegalSources } from "./store";
+import { ADMIN_CASE_PROCEDURE } from "./document-example-content";
 
 /**
  * 治安秩序与毒品类派出所重点案情内容包。
@@ -152,6 +153,7 @@ const DRUG_INTERPRETATION: LegalSourceRecord = {
 };
 
 export const PUBLIC_ORDER_DRUG_SOURCES: LegalSourceRecord[] = [
+  ADMIN_CASE_PROCEDURE,
   CRIMINAL_LAW,
   PUBLIC_SECURITY_PUNISHMENTS_LAW,
   CIVIL_CODE,
@@ -175,7 +177,7 @@ export const REQUIRED_PUBLIC_ORDER_DRUG_CASE_FOCUS_IDS = [
 
 const ASSAULT_FOCUS: CaseFocusSeed = {
   caseFocusId: ASSAULT_FOCUS_ID,
-  version: "1.1.0",
+  version: "1.2.0",
   contentStatus: "trial",
   title: "打架斗殴和伤害类案情",
   region: "国家",
@@ -299,6 +301,7 @@ const ASSAULT_FOCUS: CaseFocusSeed = {
     "src-cn-public-security-punishments",
     "src-cn-criminal-law",
     "src-cn-civil-code",
+    "src-cn-mps-admin-procedure",
   ],
   scenarios: [
     {
@@ -354,7 +357,7 @@ const ASSAULT_FOCUS: CaseFocusSeed = {
   lastVerifiedAt: CASE_FOCUS_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: MAINTAINER,
-  changeNote: "增加决定性事实缺口的条件分支、程序路径与补充建议：打架斗殴和伤害类案情。",
+  changeNote: "殴打伤害报告增加先受理调查的程序依据、酒后处置、伤情转换条件和可执行取证与询问事项；缺口不再清空可支持的条件性分析。",
   sourceVerificationNote:
     "刑法与治安管理处罚法条款已核对；伤情程度必须以鉴定意见为准，不得由系统推定，刑事与行政分流仍须结合完整证据判断。",
   withdrawalNote: null,

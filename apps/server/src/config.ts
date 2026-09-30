@@ -10,8 +10,8 @@ import type { DataUseServiceInfo } from "@policymate/contracts";
 export interface AppConfig {
   host: string;
   port: number;
-  /** 提供者模式。当前只有确定性替身，真实 Dify / 内容源在后续切片接入。 */
-  providerMode: "fixture";
+  /** 真实 Dify 与开发测试替身显式分开，不自动回退。 */
+  providerMode: "fixture" | "dify";
   /** 是否挂载测试用替身控制接口；生产环境必须关闭。 */
   enableTestControls: boolean;
   /** 后端总开关；关闭时两个入口均不可用。 */
@@ -45,6 +45,8 @@ export interface AppConfig {
   /** 真实 Dify 适配层配置；密钥只存在于后端。 */
   difyBaseUrl?: string | null;
   difyApiKey?: string | null;
+  difyWorkflowVersion?: string | null;
+  difyMaxResponseBytes?: number;
   /** 运行环境标识；用于发布检查，不参与产品行为。 */
   environment?: "development" | "production";
 }
@@ -119,14 +121,20 @@ function readNumber(raw: string | undefined, fallback: number): number {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const staticDirCandidate = readOptional(env.PM_WEB_DIST) ?? defaultStaticDir;
   const configuredOrigins = readList(env.PM_ALLOWED_ORIGINS);
+  const mode = readOptional(env.PM_PROVIDER_MODE) ?? (env.NODE_ENV === "production" ? "dify" : "fixture");
+  if (mode !== "fixture" && mode !== "dify") throw new Error("PM_PROVIDER_MODE 必须为 fixture 或 dify。");
+  const testControls = readBoolean(env.PM_ENABLE_TEST_CONTROLS, false);
+  if (testControls && (mode !== "fixture" || env.NODE_ENV === "production")) {
+    throw new Error("测试控制只允许在非生产 fixture 模式启用。");
+  }
 
   return {
     host: readOptional(env.PM_HOST) ?? "127.0.0.1",
     port: Number(readOptional(env.PM_SERVER_PORT) ?? "8787"),
-    providerMode: "fixture",
-    enableTestControls: readBoolean(env.PM_ENABLE_TEST_CONTROLS, false),
+    providerMode: mode,
+    enableTestControls: testControls,
     masterSwitch: readBoolean(env.PM_MASTER_SWITCH, true),
-    analysisEnabled: readBoolean(env.PM_ANALYSIS_ENABLED, true),
+    analysisEnabled: readBoolean(env.PM_ANALYSIS_ENABLED, env.NODE_ENV !== "production"),
     documentsEnabled: readBoolean(env.PM_DOCUMENTS_ENABLED, true),
     staticDir: existsSync(resolve(staticDirCandidate, "index.html")) ? staticDirCandidate : null,
     service: {
@@ -146,6 +154,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxProviderAttempts: readNumber(env.PM_MAX_PROVIDER_ATTEMPTS, 2),
     difyBaseUrl: readOptional(env.PM_DIFY_BASE_URL),
     difyApiKey: readOptional(env.PM_DIFY_API_KEY),
+    difyWorkflowVersion: readOptional(env.PM_DIFY_WORKFLOW_VERSION),
+    difyMaxResponseBytes: readNumber(env.PM_DIFY_MAX_RESPONSE_BYTES, 512 * 1024),
     environment: env.NODE_ENV === "production" ? "production" : "development",
   };
 }

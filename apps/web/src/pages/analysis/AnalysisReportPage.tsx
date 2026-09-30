@@ -254,6 +254,41 @@ function FactConflictSection({ conflicts }: { conflicts: ReportFactConflict[] })
   );
 }
 
+function ReportOverview({ report }: { report: AnalysisReport }) {
+  const qualification = report.modules.find((module) => module.id === "preliminary_qualification");
+  const evidence = report.modules.find((module) => module.id === "evidence_checklist");
+  const sourceFacts = qualification?.traceLinks.flatMap((trace) => trace.factReferences) ?? [];
+  const facts = [...new Map(sourceFacts.map((fact) => [fact.factId, fact])).values()].slice(0, 3);
+  const priority = { high: 0, medium: 1, low: 2 };
+  const actions = [...(evidence?.evidenceItems ?? [])].sort((a, b) => priority[a.priority] - priority[b.priority]).slice(0, 3);
+  return (
+    <section className="report-overview" aria-label="研判概览" data-testid="report-overview">
+      <div className="report-overview__reason">
+        <h2>判断依据</h2>
+        {qualification?.summary ? <p>{qualification.summary}</p> : null}
+        {facts.length > 0 ? <ul>{facts.map((fact) => <li key={fact.factId}>{fact.statement}</li>)}</ul> :
+          <p>当前没有通过校验的定性依据，请查看各模块限制。</p>}
+      </div>
+      <div className="report-overview__actions">
+        <h2>优先核查</h2>
+        {actions.length > 0 ? (
+          <ol>{actions.map((item) => <li key={item.itemId}>
+            <a href="#report-module-evidence_checklist">{item.text}</a>
+            {item.purpose ? <p className="field__note">证明目的：{item.purpose}</p> : null}
+          </li>)}</ol>
+        ) : <p>{evidence?.summary ?? "当前没有通过校验的证据核查建议。"}</p>}
+      </div>
+      {report.gapBranches.length > 0 || report.conflicts.length > 0 ? (
+        <div className="report-overview__conditions">
+          <h2>影响方向的条件</h2>
+          {report.conflicts.length > 0 ? <p>存在 {report.conflicts.length} 组争议事实，不能选定单一版本。</p> : null}
+          <ul>{report.gapBranches.map((gap) => <li key={gap.gapId}><a href="#report-gaps">{gap.description}</a></li>)}</ul>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function ReportModuleIndex({ modules }: { modules: ReportModule[] }) {
   return (
     <nav className="report-index" aria-label="六模块索引" data-testid="report-module-index">
@@ -419,38 +454,15 @@ function ReportBody({
           <p className="status-badge" data-testid="report-status">
             {report.statusLabel}
           </p>
-          <span className="report-header__label">案情分析报告</span>
+  
         </div>
         <h1 className="page-title" data-testid="report-headline">{report.headline}</h1>
-        <p className="report-header__lead">{REPORT_BOUNDARY_STATEMENT}</p>
-        <p className="report-header__time">{formatBeijingDateTime(report.generatedAt)}</p>
-        <details className="report-metadata" data-testid="report-metadata">
-          <summary>报告信息与事实快照</summary>
-          <dl className="detail-list">
-            <div>
-              <dt>生成时间</dt>
-              <dd>{formatBeijingDateTime(report.generatedAt)}</dd>
-            </div>
-            <div>
-              <dt>事实快照</dt>
-              <dd>
-                v{report.snapshotVersion} · {report.snapshotHash}
-              </dd>
-            </div>
-            <div>
-              <dt>内容发布批次</dt>
-              <dd>{report.contentReleaseId}</dd>
-            </div>
-            <div>
-              <dt>工作流版本</dt>
-              <dd>{report.workflowVersion}</dd>
-            </div>
-            <div>
-              <dt>契约版本</dt>
-              <dd>{report.contractVersion}</dd>
-            </div>
-          </dl>
-        </details>
+        <p className="report-header__lead">辅助参考，未经过正式内容审定；不构成案件定性或受立案决定。</p>
+        {reportHasUnconfirmedBasis(report) ? (
+          <p className="report-unconfirmed" role="status" data-testid="unconfirmed-basis-notice">
+            依据包含“{REPORT_BASIS_CONFIRMATION_LABELS.system_extracted_unconfirmed}”的事实，请对照原始陈述核验。
+          </p>
+        ) : null}
       </header>
 
       {supersededReport !== null ? (
@@ -475,19 +487,7 @@ function ReportBody({
         </section>
       ) : null}
 
-      {reportHasUnconfirmedBasis(report) ? (
-        <section
-          className="unconfirmed-basis-notice"
-          role="status"
-          data-testid="unconfirmed-basis-notice"
-        >
-          <h2>存在{REPORT_BASIS_CONFIRMATION_LABELS.system_extracted_unconfirmed}的依据</h2>
-          <p>
-            本报告部分依据为系统从案情中提取、尚未经民警确认。相关结论仅供核验方向，请先对照原始表述核对，确认后再据此判断。
-          </p>
-        </section>
-      ) : null}
-
+      <ReportOverview report={report} />
       <ReportModuleIndex modules={modules} />
 
       <div className="report-actions" aria-label="报告操作">
@@ -595,6 +595,17 @@ function ReportBody({
           </ul>
         )}
       </section>
+
+      <details className="report-metadata" data-testid="report-metadata">
+        <summary>报告信息与事实快照</summary>
+        <dl className="detail-list">
+          <div><dt>生成时间</dt><dd>{formatBeijingDateTime(report.generatedAt)}</dd></div>
+          <div><dt>事实快照</dt><dd>v{report.snapshotVersion} · {report.snapshotHash}</dd></div>
+          <div><dt>内容发布批次</dt><dd>{report.contentReleaseId}</dd></div>
+          <div><dt>工作流版本</dt><dd>{report.workflowVersion}</dd></div>
+          <div><dt>契约版本</dt><dd>{report.contractVersion}</dd></div>
+        </dl>
+      </details>
 
       <footer className="report-footer">
         <p>{REPORT_BOUNDARY_STATEMENT}</p>

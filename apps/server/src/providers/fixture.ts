@@ -22,6 +22,8 @@ import { resolveCaseFocus as resolveCaseFocusFromContent } from "../content/case
 import { toLegalSourceReference, selectEligibleExamples, selectTaskCandidates } from "../content/gating";
 import { createGovernedContentStore } from "../content/store";
 import { extractCaseFactsFixture } from "../analysis/fixture-extract";
+import { buildAssaultReport } from "../analysis/assault-report";
+import { ASSAULT_FOCUS_ID } from "../content/public-order-drug-content";
 import type {
   CaseAnalysisProvider,
   CaseExtractionRequest,
@@ -286,7 +288,10 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
                     },
               )
             : modules;
-      return { status, headline: status === "complete" ? "存在可供核验的初步方向" : status === "conflicting" ? "存在多种可能，不能单一判断" : status === "insufficient_facts" ? "当前事实不足，需补充核验" : "当前不能形成受法源支持的主判断", participantBehaviorSummary: active.flatMap((fact) => fact.participantRefs.flatMap((participant) => fact.behaviorRefs.map((behavior) => ({ participant, behavior, factIds: [fact.factId], note: fact.statement })))), factLimitations: active.filter((fact) => fact.status !== "confirmed").map((fact) => `${fact.statement}（${fact.statusLabel}）`), modules: effectiveModules, documentTasks, contentReleaseId: "release-fixture-2026-08", workflowVersion: "report-fixture-v1" };
+      const result: ReportGenerationResult = { status, headline: status === "complete" ? "存在可供核验的初步方向" : status === "conflicting" ? "存在多种可能，不能单一判断" : status === "insufficient_facts" ? "当前事实不足，需补充核验" : "当前不能形成受法源支持的主判断", participantBehaviorSummary: active.flatMap((fact) => fact.participantRefs.flatMap((participant) => fact.behaviorRefs.map((behavior) => ({ participant, behavior, factIds: [fact.factId], note: fact.statement })))), factLimitations: active.filter((fact) => fact.status !== "confirmed").map((fact) => `${fact.statement}（${fact.statusLabel}）`), modules: effectiveModules, documentTasks, contentReleaseId: "release-fixture-2026-08", workflowVersion: "report-fixture-v1" };
+      return mode === "complete" && status === "complete" && request.caseFocusId === ASSAULT_FOCUS_ID
+        ? buildAssaultReport(request, result)
+        : result;
     },
   };
 

@@ -86,11 +86,12 @@ describe("治安秩序与毒品类重点案情：相邻与不应命中反例", (
     expect(resolution.caseFocusId).toBeNull();
     expect(report.caseFocusId).toBeNull();
     expect(report.status).toBe("complete");
-    // 未命中重点案情时只使用通用法源，不引用任何重点案情的法源。
+    // 未命中重点案情时不产生该重点案情分析；通用行政程序法源可以与重点案情共享。
+    expect(report.workflowVersion).toBe("report-fixture-v1");
     const traceSourceIds = report.modules
       .flatMap((module) => module.traceLinks)
       .map((trace) => trace.basis?.sourceId);
-    for (const sourceId of expectedFocusSourceIds(caseFocusId)) {
+    for (const sourceId of expectedFocusSourceIds(caseFocusId).filter((id) => id !== "src-cn-mps-admin-procedure")) {
       expect(traceSourceIds).not.toContain(sourceId);
     }
   });
@@ -144,11 +145,22 @@ describe("治安秩序与毒品类重点案情：决定性事实缺失保守降�
       [...scenario.expectedUnresolvedGapIds].sort(),
     );
     expect(report.status).toBe("insufficient_facts");
-    expect(report.headline).toContain("决定性事实");
-    for (const moduleId of CRITICAL_MODULE_IDS) {
-      const module = report.modules.find((item) => item.id === moduleId);
-      expect(module?.status, moduleId).toBe("insufficient_facts");
-      expect(module?.traceLinks).toEqual([]);
+    if (caseFocusId === ASSAULT_FOCUS_ID) {
+      expect(report.headline).toContain("涉嫌殴打他人");
+      expect(report.modules.find((item) => item.id === "preliminary_qualification")?.status).toBe("insufficient_facts");
+      for (const moduleId of ["filing_conditions", "legal_basis_trace"]) {
+        expect(report.modules.find((item) => item.id === moduleId)?.status).toBe("present");
+      }
+      for (const moduleId of CRITICAL_MODULE_IDS) {
+        expect(report.modules.find((item) => item.id === moduleId)?.traceLinks.length).toBeGreaterThan(0);
+      }
+    } else {
+      expect(report.headline).toContain("决定性事实");
+      for (const moduleId of CRITICAL_MODULE_IDS) {
+        const module = report.modules.find((item) => item.id === moduleId);
+        expect(module?.status, moduleId).toBe("insufficient_facts");
+        expect(module?.traceLinks).toEqual([]);
+      }
     }
     expect(report.factLimitations.length).toBeGreaterThanOrEqual(
       scenario.expectedUnresolvedGapIds.length,

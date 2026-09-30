@@ -1,0 +1,696 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/DifyReportOutput",
+  "definitions": {
+    "DifyReportOutput": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "promptVersion": {
+          "type": "string",
+          "const": "actionable-analysis-v1"
+        },
+        "workflowVersion": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "snapshotVersion": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snapshotHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentReleaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "result": {
+          "$ref": "#/definitions/ReportGenerationResult"
+        }
+      },
+      "required": [
+        "contentReleaseId",
+        "contractVersion",
+        "promptVersion",
+        "requestId",
+        "result",
+        "snapshotHash",
+        "snapshotVersion",
+        "workflowVersion"
+      ],
+      "additionalProperties": false
+    },
+    "ReportGenerationResult": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "$ref": "#/definitions/ReportStatus"
+        },
+        "headline": {
+          "type": "string"
+        },
+        "participantBehaviorSummary": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportParticipantBehaviorSummary"
+          }
+        },
+        "factLimitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportModule"
+          }
+        },
+        "documentTasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportDocumentTask"
+          }
+        },
+        "contentReleaseId": {
+          "type": "string"
+        },
+        "workflowVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "headline",
+        "participantBehaviorSummary",
+        "factLimitations",
+        "modules",
+        "documentTasks",
+        "contentReleaseId",
+        "workflowVersion"
+      ],
+      "additionalProperties": false
+    },
+    "ReportStatus": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "insufficient_facts",
+        "conflicting",
+        "basis_unavailable",
+        "generation_failed",
+        "partial_failure"
+      ]
+    },
+    "ReportParticipantBehaviorSummary": {
+      "type": "object",
+      "properties": {
+        "participant": {
+          "type": "string"
+        },
+        "behavior": {
+          "type": "string"
+        },
+        "factIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "participant",
+        "behavior",
+        "factIds",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "ReportModule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/ReportModuleId"
+        },
+        "label": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/ReportModuleStatus"
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "traceLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportTraceLink"
+          }
+        },
+        "failureReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidenceItems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportEvidenceChecklistItem"
+          },
+          "description": "仅“核心证据核查清单”使用的结构化项目；其余模块为空数组。"
+        },
+        "interviewItems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportInterviewPointItem"
+          },
+          "description": "仅“分角色询问要点”使用的结构化项目；其余模块为空数组。"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "status",
+        "summary",
+        "items",
+        "traceLinks",
+        "failureReason",
+        "evidenceItems",
+        "interviewItems"
+      ],
+      "additionalProperties": false
+    },
+    "ReportModuleId": {
+      "type": "string",
+      "enum": [
+        "preliminary_qualification",
+        "filing_conditions",
+        "evidence_checklist",
+        "interview_points",
+        "enforcement_risks",
+        "legal_basis_trace"
+      ]
+    },
+    "ReportModuleStatus": {
+      "type": "string",
+      "enum": [
+        "present",
+        "not_applicable",
+        "insufficient_facts",
+        "basis_unavailable",
+        "conflicting",
+        "generation_failed"
+      ]
+    },
+    "ReportTraceLink": {
+      "type": "object",
+      "properties": {
+        "factIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "factReferences": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportFactReference"
+          },
+          "description": "依据事实的结构化明细，与 `factIds` 一一对应；确认状态由后端补齐。"
+        },
+        "condition": {
+          "type": "string"
+        },
+        "conditionStatus": {
+          "type": "string",
+          "enum": [
+            "satisfied",
+            "not_satisfied",
+            "unknown",
+            "conflicting"
+          ]
+        },
+        "judgment": {
+          "type": "string"
+        },
+        "basis": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReportLegalBasis"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "basisKind": {
+          "type": "string",
+          "enum": [
+            "formal_basis",
+            "practical_check"
+          ]
+        }
+      },
+      "required": [
+        "factIds",
+        "factReferences",
+        "condition",
+        "conditionStatus",
+        "judgment",
+        "basis",
+        "basisKind"
+      ],
+      "additionalProperties": false
+    },
+    "ReportFactReference": {
+      "type": "object",
+      "properties": {
+        "factId": {
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/definitions/FactCategory"
+        },
+        "categoryLabel": {
+          "type": "string"
+        },
+        "statement": {
+          "type": "string"
+        },
+        "originalWording": {
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FactValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "$ref": "#/definitions/FactStatus"
+        },
+        "confirmation": {
+          "$ref": "#/definitions/ReportBasisConfirmation"
+        },
+        "confirmationLabel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "factId",
+        "category",
+        "categoryLabel",
+        "statement",
+        "originalWording",
+        "value",
+        "status",
+        "confirmation",
+        "confirmationLabel"
+      ],
+      "additionalProperties": false,
+      "description": "报告中的一条依据事实。\n\n携带稳定 ID、类别、结构化值与原始表述，便于民警核对系统有没有理解错； `confirmation`/`confirmationLabel` 是报告必须展示的确认状态。"
+    },
+    "FactCategory": {
+      "type": "string",
+      "enum": [
+        "event",
+        "participant",
+        "behavior",
+        "object",
+        "time",
+        "place",
+        "amount",
+        "count",
+        "age",
+        "result",
+        "relationship",
+        "background",
+        "other"
+      ],
+      "description": "事实类别目录。展示名称由后端/契约统一提供，页面不得自行拼写。"
+    },
+    "FactValue": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "原始表述（用户原文片段）。"
+        },
+        "normalizedMin": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "规范化范围下界；开放范围时为 `null`。展示用字符串，不是日期对象。"
+        },
+        "normalizedMax": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "规范化范围上界；开放范围时为 `null`。"
+        },
+        "precision": {
+          "$ref": "#/definitions/PrecisionLevel"
+        },
+        "precisionLabel": {
+          "type": "string"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "raw",
+        "normalizedMin",
+        "normalizedMax",
+        "precision",
+        "precisionLabel",
+        "unit"
+      ],
+      "additionalProperties": false,
+      "description": "模糊值的结构化表达：原值 + 规范化范围 + 精确程度。"
+    },
+    "PrecisionLevel": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "approximate",
+        "bounded",
+        "open",
+        "unknown"
+      ],
+      "description": "精确程度。模糊值必须同时保留原始表述、规范化范围与精确程度。"
+    },
+    "FactStatus": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "confirmed",
+        "denied",
+        "unknown",
+        "disputed"
+      ],
+      "description": "事实状态。`confirmed` 表示民警已确认；候选事实也可支撑初步定性意见， 但依据必须标注“系统提取，未经确认”（ADR-0008）。"
+    },
+    "ReportBasisConfirmation": {
+      "type": "string",
+      "enum": [
+        "officer_confirmed",
+        "system_extracted_unconfirmed"
+      ],
+      "description": "报告依据的确认状态（ADR-0008 第 2 点）。\n\n未确认事实可以支撑初步定性意见，但每条依据必须可见地标注来源； 只有民警在后续补充中确认过的事实才是 `officer_confirmed`。"
+    },
+    "ReportLegalBasis": {
+      "type": "object",
+      "properties": {
+        "sourceId": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "issuingAuthority": {
+          "type": "string"
+        },
+        "documentNumber": {
+          "type": "string"
+        },
+        "article": {
+          "type": "string"
+        },
+        "minimalText": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/definitions/LegalSourceStatus"
+        },
+        "region": {
+          "type": "string"
+        },
+        "publishedAt": {
+          "type": "string"
+        },
+        "lastVerifiedAt": {
+          "type": "string"
+        },
+        "retrievedAt": {
+          "type": "string"
+        },
+        "officialUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "sourceId",
+        "version",
+        "title",
+        "issuingAuthority",
+        "documentNumber",
+        "article",
+        "minimalText",
+        "status",
+        "region",
+        "publishedAt",
+        "lastVerifiedAt",
+        "retrievedAt",
+        "officialUrl"
+      ],
+      "additionalProperties": false
+    },
+    "LegalSourceStatus": {
+      "type": "string",
+      "enum": [
+        "current",
+        "future",
+        "superseded",
+        "repealed",
+        "uncertain"
+      ],
+      "description": "法源效力状态；与内容状态严格分离。"
+    },
+    "ReportEvidenceChecklistItem": {
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "type": "string",
+          "description": "批次内稳定项目 ID，用于临时标记；不写入事实或 Dify 请求。"
+        },
+        "text": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceHint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "preservationRisk": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priority": {
+          "$ref": "#/definitions/EvidencePriority"
+        },
+        "priorityLabel": {
+          "type": "string"
+        },
+        "holdingStatus": {
+          "$ref": "#/definitions/EvidenceHoldingStatus"
+        },
+        "holdingStatusLabel": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemId",
+        "text",
+        "purpose",
+        "sourceHint",
+        "preservationRisk",
+        "priority",
+        "priorityLabel",
+        "holdingStatus",
+        "holdingStatusLabel"
+      ],
+      "additionalProperties": false,
+      "description": "核心证据核查清单中的一条结构化项目。"
+    },
+    "EvidencePriority": {
+      "type": "string",
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "description": "证据核查清单的优先级；展示名称由后端目录提供。"
+    },
+    "EvidenceHoldingStatus": {
+      "type": "string",
+      "enum": [
+        "held",
+        "partial",
+        "not_held",
+        "unknown"
+      ],
+      "description": "证据当前掌握状态；这是报告结构化内容，不是临时标记。"
+    },
+    "ReportInterviewPointItem": {
+      "type": "object",
+      "properties": {
+        "itemId": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "description": "询问对象角色的稳定 ID；展示名称由 `roleLabel` 提供。"
+        },
+        "roleLabel": {
+          "type": "string"
+        },
+        "topic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "itemId",
+        "text",
+        "role",
+        "roleLabel",
+        "topic"
+      ],
+      "additionalProperties": false,
+      "description": "分角色询问要点中的一条结构化项目。"
+    },
+    "ReportDocumentTask": {
+      "type": "object",
+      "properties": {
+        "taskId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "procedureCategory": {
+          "$ref": "#/definitions/ProcedureCategory"
+        },
+        "procedureCategoryLabel": {
+          "type": "string"
+        },
+        "stageId": {
+          "$ref": "#/definitions/HandlingStageId"
+        },
+        "stageLabel": {
+          "type": "string"
+        },
+        "applicableRoles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "caseTags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "boundaryStatement": {
+          "type": "string",
+          "description": "固定非结论性边界说明。"
+        }
+      },
+      "required": [
+        "taskId",
+        "title",
+        "description",
+        "procedureCategory",
+        "procedureCategoryLabel",
+        "stageId",
+        "stageLabel",
+        "applicableRoles",
+        "caseTags",
+        "boundaryStatement"
+      ],
+      "additionalProperties": false,
+      "description": "报告中的文书任务。只携带程序类别、办理阶段、适用对象与案情标签等结构化条件， 用于筛选候选文书范例；不携带任何案情事实，不使用结论性表达。"
+    },
+    "ProcedureCategory": {
+      "type": "string",
+      "enum": [
+        "administrative",
+        "criminal"
+      ],
+      "description": "程序类别。"
+    },
+    "HandlingStageId": {
+      "type": "string",
+      "enum": [
+        "reception_acceptance",
+        "investigation_evidence",
+        "measures_approval",
+        "notification_service",
+        "decision_disposition",
+        "execution_closure"
+      ],
+      "description": "第一版固定的六个办理阶段。顺序即展示顺序，不得增删或改变含义。"
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type {
   AddFactRequest,
   AnalysisIntakeResponse,
@@ -98,8 +98,9 @@ export async function registerAnalysisRoutes(
 
   /** 同一令牌的并发在途请求；超过上限时失败关闭并提示稍后重试。 */
   const withConcurrency = async <T>(
-    request: { headers: Record<string, unknown>; ip: string },
-    action: () => Promise<T>,
+    request: FastifyRequest,
+    reply: FastifyReply,
+    action: (signal: AbortSignal) => Promise<T>,
   ): Promise<T> => {
     const token = request.headers["x-pm-anonymous-token"];
     const key = typeof token === "string" && token !== "" ? token : request.ip;
@@ -107,9 +108,16 @@ export async function registerAnalysisRoutes(
     if (release === null) {
       throw new AnalysisInputError("请求并发过多，请稍后重试。", 429);
     }
+    const controller = new AbortController();
+    const abort = () => { controller.abort(); };
+    const disconnect = () => { if (!reply.raw.writableFinished) abort(); };
+    request.raw.once("aborted", abort);
+    reply.raw.once("close", disconnect);
     try {
-      return await action();
+      return await action(controller.signal);
     } finally {
+      request.raw.removeListener("aborted", abort);
+      reply.raw.removeListener("close", disconnect);
       release();
     }
   };
@@ -122,6 +130,7 @@ export async function registerAnalysisRoutes(
     sessionId: string,
     requestId: string,
     snapshot: { snapshotVersion: number; snapshotHash: string },
+    signal?: AbortSignal,
   ): Promise<import("@policymate/contracts").AnalysisReport> => {
     const [legalSources, activeReleaseId] = await Promise.all([
       options.legalSources(),
@@ -139,6 +148,7 @@ export async function registerAnalysisRoutes(
       undefined,
       activeReleaseId,
       options.caseFocusResolver,
+      signal,
     );
   };
 
@@ -149,15 +159,20 @@ export async function registerAnalysisRoutes(
     async (request, reply) => {
       try {
         await assertCapability();
-        const response = await withConcurrency(request, async (): Promise<AnalysisIntakeResponse> => {
-          const states = await engine.createSessions(request.body);
-          const analyses = await Promise.all(
-            states.map(async (state) => ({
-              state,
-              report: await generateCurrentReport(state.sessionId, request.id, state.snapshot),
-            })),
-          );
-          return { contractVersion: CONTRACT_VERSION, analyses };
+        const response = await withConcurrency(request, reply, async (signal): Promise<AnalysisIntakeResponse> => {
+          const states = await engine.createSessions(request.body, undefined, signal);
+          try {
+            const analyses = await Promise.all(
+              states.map(async (state) => ({
+                state,
+                report: await generateCurrentReport(state.sessionId, request.id, state.snapshot, signal),
+              })),
+            );
+            return { contractVersion: CONTRACT_VERSION, analyses };
+          } catch (error) {
+            for (const state of states) engine.clearSession(state.sessionId);
+            throw error;
+          }
         });
         return reply.code(201).send(response);
       } catch (error) {
@@ -242,13 +257,14 @@ export async function registerAnalysisRoutes(
         await assertCapability();
         const response = await withConcurrency(
           request,
-          async (): Promise<AnalysisSubmissionResponse> => {
+          reply,
+          async (signal): Promise<AnalysisSubmissionResponse> => {
             const state = engine.answerGap(
               request.params.sessionId,
               request.params.gapId,
               request.body?.answer,
             );
-            const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot);
+            const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot, signal);
             return { contractVersion: CONTRACT_VERSION, state, report };
           },
         );
@@ -269,8 +285,8 @@ export async function registerAnalysisRoutes(
         if (body === null || typeof body !== "object") {
           return reply.code(400).send(errorBody(request.id, "报告请求缺少快照版本。", 400));
         }
-        return await withConcurrency(request, () =>
-          generateCurrentReport(request.params.sessionId, body.requestId ?? request.id, body),
+        return await withConcurrency(request, reply, (signal) =>
+          generateCurrentReport(request.params.sessionId, body.requestId ?? request.id, body, signal),
         );
       } catch (error) {
         return handleError(error, request.id, reply);
@@ -284,9 +300,9 @@ export async function registerAnalysisRoutes(
     async (request, reply) => {
       try {
         await assertCapability();
-        const response = await withConcurrency(request, async (): Promise<AnalysisSubmissionResponse> => {
+        const response = await withConcurrency(request, reply, async (signal): Promise<AnalysisSubmissionResponse> => {
           const state = engine.confirmSnapshot(request.params.sessionId);
-          const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot);
+          const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot, signal);
           return { contractVersion: CONTRACT_VERSION, state, report };
         });
         return reply.code(200).send(response);

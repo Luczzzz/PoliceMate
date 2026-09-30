@@ -13,16 +13,18 @@
 
 项目边界以 [CONTEXT.md](../../CONTEXT.md)、[会话隐私与传输安全 ADR](../adr/0004-session-privacy-and-transport-hardening.md) 和 [受控试行门槛 ADR](../adr/0007-controlled-trial-acceptance-and-release-gate.md) 为准。本指南不改变这些产品决策。
 
-当前仓库的 `apps/server/src/index.ts` 创建的是 fixture 提供者；`apps/server/src/config.ts` 的 `providerMode` 仍为 `fixture`。`PM_DIFY_BASE_URL` 和 `PM_DIFY_API_KEY` 是预留配置，填入后不会自动调用 Dify。
+当前仓库的 `apps/server/src/index.ts` 按 `PM_PROVIDER_MODE` 装配提供者：`fixture`（开发/测试）
+或 `dify`（真实）。生产默认 `dify`，缺少 Dify 地址、应用密钥或允许的工作流版本时失败关闭，
+不回退 fixture。真实接入的输入、输出、版本绑定与验收见 [Dify 接入与验收](dify-integration.md)。
 
 本次基础设施部署的目标是：
 
 - PoliceMate 的 H5、后端、文书范例与使用说明通过 HTTPS 可访问。
 - Dify 可登录、配置模型、发布 Workflow 并通过 API 完成虚构数据测试。
-- PoliceMate 保持 `PM_ANALYSIS_ENABLED=off`，直到真实适配器实现并验收。
-- “两个服务正常运行”不等于“PoliceMate 已接入真实模型”，交接时分别报告。
+- 在所有者确认 Dify 工作流契约与留存边界前，PoliceMate 保持 `PM_ANALYSIS_ENABLED=off`。
+- “两个服务正常运行”不等于“案情分析已验收启用”，交接时分别报告。
 
-真实分析接入的后续任务见 [Dify 接入与验收](dify-integration.md)。部署 AI 不应为了显示成功而改变 fixture 行为、开启测试控制、伪造内容审批或跳过发布门槛。
+部署 AI 不应为了显示成功而改变 provider 模式、开启测试控制、伪造内容审批或跳过发布门槛。
 
 ### 执行规则
 
@@ -286,9 +288,13 @@ PM_HOST=127.0.0.1
 PM_SERVER_PORT=8787
 PM_WEB_DIST=/opt/policymate/current/apps/web/dist
 PM_MASTER_SWITCH=on
+PM_PROVIDER_MODE=dify
 PM_ANALYSIS_ENABLED=off
 PM_DOCUMENTS_ENABLED=on
 PM_ENABLE_TEST_CONTROLS=0
+PM_DIFY_BASE_URL=https://实际Dify域名/v1
+PM_DIFY_API_KEY=实际应用Key
+PM_DIFY_WORKFLOW_VERSION=审查通过的工作流版本
 PM_ALLOWED_ORIGINS="https://app.example.com"
 PM_SERVICE_PROVIDER="真实运营主体"
 PM_SERVICE_CONTACT="真实反馈渠道"
@@ -341,7 +347,8 @@ systemctl is-active policemate
 curl --fail --silent --show-error http://127.0.0.1:8787/api/v1/health
 ```
 
-健康响应中的 `providerMode: fixture` 是当前事实，不是 Dify 连接成功的证据。如果启动后短时间还没监听，检查服务状态后重试，不用固定等待替代检查。
+健康响应中的 `providerMode` 反映实际选择；生产默认 `dify`，配置不完整时分析失败关闭，
+这不是 Dify 连接成功的证据。如果启动后短时间还没监听，检查服务状态后重试，不用固定等待替代检查。
 
 **验收**：本机健康检查 200、H5 构建存在、服务非 root 运行、测试控制关闭、分析开关关闭。
 
@@ -640,7 +647,7 @@ ssh -N -L 8443:127.0.0.1:443 ubuntu@服务器地址
 
 ### 工作流
 
-选择 Workflow 类型，不依赖聊天历史。建议一个应用用 `operation` 区分提取/报告，便于使用当前单个应用 Key；两个应用也可以，但需要后端新增两个独立 Key 配置。正式输入、输出和接入任务见 [Dify 接入与验收](dify-integration.md)。
+选择 Workflow 类型，不依赖聊天历史。建议一个应用用 `operation` 区分提取/报告，便于使用当前单个应用 Key；两个应用也可以，但需要后端新增两个独立 Key 配置。完整的节点、代码、Prompt、验收与留档要求见 [Dify 工作流搭建任务](dify-workflow-build.md)；后端侧输入输出契约见 [Dify 接入与验收](dify-integration.md)。
 
 基础设施阶段可以先创建临时 `deployment-smoke-test` Workflow：开始节点的字符串输入 `query` → LLM 节点处理虚构文本 → 输出节点映射为 `result`。发布应用后，从“访问 API/API 文档”页创建应用 Key。该应用仅用于确认模型与 API 可用，不把它当作 PoliceMate 报告应用，也不直接展示它返回的自然语言。
 
@@ -696,12 +703,12 @@ node --env-file=/etc/policymate/policymate.env ./node_modules/tsx/dist/cli.mjs s
 - [ ] 两站点 HTTPS 正常，证书续期通过，现有网站无回归。
 - [ ] 宿主机公网仅暴露批准的 SSH/HTTP/HTTPS；其他入口限 loopback。
 - [ ] PoliceMate 健康检查、首页、文书范例、使用与数据说明正常，测试控制关闭。
-- [ ] PoliceMate 案情分析关闭，交接单明确当前 `fixture` 状态。
+- [ ] PoliceMate 案情分析关闭待验收，交接单明确 `PM_PROVIDER_MODE` 与工作流版本。
 - [ ] Dify 管理来源限制有效，管理员已初始化，供应商连接及 Workflow API 成功。
 - [ ] 连续观察至少 15 分钟并执行几次串行虚构请求，无 OOM、反复重启或持续高 Swap。
 - [ ] 留存边界、备份位置、恢复步骤、费用限额及未完成试行门槛已记录。
 
-交接只输出域名、非秘密版本、文件路径、健康状态、通过/失败项、遗留任务。当前版本的预期结果是：“PoliceMate 文书功能已部署，Dify 独立可用；真实分析适配器待开发”。如果所有者要求完整真实分析上线，明确报告该代码 blocker，不擅自在服务器改出未审查版本。
+交接只输出域名、非秘密版本、文件路径、健康状态、通过/失败项、遗留任务。当前版本的预期结果是：“PoliceMate 文书功能已部署，Dify 独立可用；真实分析已实现但保持关闭，待工作流契约与留存边界验收”。如果所有者要求完整真实分析上线，按 [Dify 接入与验收](dify-integration.md) 完成门槛后再开启。
 
 ## 9. 更新、备份、回滚与紧急停用
 
@@ -788,7 +795,7 @@ Docker 启用后按 Compose 默认 restart 策略恢复容器。维护窗口内�
 | 登录循环/跨域 | 检查控制台 URL、HTTPS/端口、反向代理头及 Cookie；不直接放开所有 CORS |
 | Certbot 失败 | 检查 A/AAAA、80 入站、备案/网络限制、challenge 路径与白名单 |
 | npm 启动找不到 tsx | 保留开发依赖；检查 ExecStart 的 Node/npm 路径、WorkingDirectory 与权限 |
-| 案情分析不可用 | 当前版本预期行为；填密钥不会启用真实适配器，按接入文档开发并验收 |
+| 案情分析不可用 | 检查 `PM_PROVIDER_MODE`、Dify 地址/应用 Key/工作流版本与 Dify 可用性；生产模式不回退 fixture |
 
 本机可查看 `journalctl -u policemate -n 80 --no-pager`、`docker compose logs --tail=80 服务名`、Nginx 错误日志，但日志可能含凭据或运行内容，向外提供前裁剪和脱敏。
 
@@ -808,7 +815,8 @@ Docker 启用后按 Compose 默认 restart 策略恢复容器。维护窗口内�
 请阅读当前仓库 docs/deployment/tencent-cloud-policymate-dify.md 全文，按阶段在这台腾讯云服务器（4 核、4 GB 内存，发行版以 /etc/os-release 实际值为准）部署 PoliceMate 和 Dify。
 先盘点已有服务、端口、目录、内存、Swap 与磁盘，报告修改范围；需要域名、管理 IP、备案、安全组、模型账号和真实服务信息时向我索取。已有服务先备份再合并，不覆盖其他网站。
 固定 PoliceMate 提交及 Dify 稳定 tag，先验证再发布，按文档逐阶段验收。
-保持 PM_ANALYSIS_ENABLED=off 和 PM_ENABLE_TEST_CONTROLS=0：当前真实适配器尚未实现。
+保持 PM_ANALYSIS_ENABLED=off 和 PM_ENABLE_TEST_CONTROLS=0：真实分析已实现但尚未完成工作流契约与留存边界验收，开启前必须完成 [Dify 接入与验收](dify-integration.md) 中的门槛。
+Dify 工作流按 [Dify 工作流搭建任务](dify-workflow-build.md) 搭建、发布、导出 DSL 并跑通 `npm run dify:smoke`；只用虚构案情，不输出密钥。
 只用虚构数据验证 Dify Workflow API，不将密钥、环境文件或原始内容输出到聊天和 GitHub。
 最后提供版本、域名、文件路径、验收结果、备份/回滚方法和未完成项，分别报告基础设施就绪与真实分析接入状态。不要将部署完成等同受控试行获准。
 ```

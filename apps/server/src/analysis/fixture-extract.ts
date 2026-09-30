@@ -159,6 +159,16 @@ function matchTime(sentence: string): RawMatch | null {
     };
   }
 
+  const clock = sentence.match(/(?:今天|昨日|昨天|前天|当天|当日)?(?:凌晨|清晨|早上|上午|中午|下午|傍晚|晚上|夜里|深夜)?\s*([01]?\d|2[0-3])[:：]([0-5]\d)/);
+  if (clock) {
+    return {
+      raw: clock[0].trim(),
+      precision: "exact",
+      min: clock[0].trim(),
+      max: clock[0].trim(),
+    };
+  }
+
   const monthDay = sentence.match(new RegExp(`([01]?\\d)月([0-3]?\\d)[日号]${TIME_PART}`));
   if (monthDay) {
     return {
@@ -382,7 +392,7 @@ const BEHAVIOR_RISK_FALLBACK: Record<string, UrgentRiskCategory> = {
   家庭暴力: "domestic_violence",
 };
 
-const RESULT_PATTERN = /轻微伤|轻伤|重伤|擦伤|挫伤|受伤|流血|昏迷|不省人事/g;
+const RESULT_PATTERN = /未达到轻伤|未达轻伤|不构成轻伤|无明显外伤|未受伤|无伤|轻微伤|轻伤|重伤|擦伤|挫伤|受伤|流血|昏迷|不省人事/g;
 const OBJECT_PATTERN = /手机|电动车|摩托车|电瓶|自行车|现金|钱包|项链|手镯|笔记本电脑|平板电脑/;
 
 const PERSON_PATTERN =
@@ -424,6 +434,13 @@ function sentenceBehavior(sentence: string): string | null {
     if (entry.pattern.test(sentence)) return entry.label;
   }
   return null;
+}
+
+function assaultStatement(sentence: string, persons: Array<{ alias: string; sourceWording: string }>): string {
+  let statement = sentence;
+  for (const person of persons) statement = statement.replaceAll(person.sourceWording, person.alias);
+  // 保留主客体、否定和转述关系，不因人物同时出现就推定共同实施。
+  return `输入表述：${statement}`;
 }
 
 function eventLabel(index: number): string {
@@ -595,9 +612,11 @@ function extractMatterDrafts(
       push({
         category: "behavior",
         statement:
-          participantRefs.length > 0
+          behavior === "殴打推搡"
+            ? assaultStatement(sentence.text, persons)
+            : (participantRefs.length > 0
             ? `${participantRefs.join("、")}实施了「${behavior}」行为`
-            : `相关人员实施了「${behavior}」行为`,
+            : `相关人员实施了「${behavior}」行为`),
         originalWording: sentence.text,
         value: valueOf(behavior, "exact", behavior, behavior, null),
         // 侵害未成年人、家庭暴力行为即使未出现字面风险词，也属于优先核验事项。
@@ -710,6 +729,17 @@ function extractMatterDrafts(
         originalWording: sentence.text,
         value: valueOf(result, "exact", result, result, null),
         riskCategory: /重伤|流血|昏迷|不省人事|送医|急救/.test(sentence.text) ? "medical" : null,
+      });
+    }
+
+    const drinking = sentence.text.match(/(?<!没有|并未|未|不|没)(喝酒|饮酒|醉酒)/);
+    if (drinking !== null) {
+      push({
+        category: "background",
+        statement: `输入存在饮酒相关表述「${drinking[0]}」，具体饮酒人员与状态按原文核对`,
+        originalWording: sentence.text,
+        value: valueOf(drinking[0], "exact", drinking[0], drinking[0], null),
+        riskCategory: null,
       });
     }
 

@@ -39,7 +39,7 @@ test("先展示分析方向与受立案条件，再展示待核验分支和行�
 test("摘要不重复展示，模块使用中文状态并具有明确段落间距", async ({ page }) => {
   await reachReport(page);
   const module = page.getByTestId("report-module-enforcement_risks");
-  const summary = "核查紧急风险、程序期限和告知送达记录。";
+  const summary = "重点控制证据灭失、伤情漏查、传唤时限与程序误用。";
   const text = await module.innerText();
   expect(text.split(summary)).toHaveLength(2);
   expect(text).not.toMatch(/\bpresent\b|\binsufficient_facts\b/);

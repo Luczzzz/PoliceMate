@@ -42,21 +42,22 @@ test.describe("报告临时工作台", () => {
 
     // 按临时标记筛选：只改变可见性，显示 X/Y 和清除筛选。
     await page.getByTestId("workbench-filter-mark-reviewed-evidence").click();
-    await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 1 项，共 3 项");
+    await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 1 项，共 4 项");
     await expect(page.getByTestId("workbench-item-ev-02")).toHaveCount(0);
     await page.getByTestId("workbench-clear-evidence").click();
     await expect(page.getByTestId("workbench-item-ev-02")).toBeVisible();
 
     // 证据清单可按优先级与当前掌握状态筛选。
     await page.getByTestId("workbench-filter-priority-high-evidence").click();
-    await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 1 项，共 3 项");
+    await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 1 项，共 4 项");
     await page.getByTestId("workbench-filter-status-unknown-evidence").click();
-    await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 0 项，共 3 项");
+    await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 1 项，共 4 项");
+    await expect(page.getByTestId("workbench-filter-status-unknown-evidence")).toHaveAttribute("aria-pressed", "true");
     await page.getByTestId("workbench-clear-evidence").click();
 
     // 询问要点可按询问对象角色筛选。
     await page.getByTestId("workbench-filter-role-suspect-interview").click();
-    await expect(page.getByTestId("workbench-count-interview")).toHaveText("当前显示 1 项，共 3 项");
+    await expect(page.getByTestId("workbench-count-interview")).toHaveText("当前显示 2 项，共 5 项");
     await page.getByTestId("workbench-item-iv-02").waitFor({ state: "detached" });
     await page.getByTestId("workbench-clear-interview").click();
     await expect(page.getByTestId("workbench-item-iv-02")).toBeVisible();

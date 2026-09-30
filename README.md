@@ -53,8 +53,11 @@ Ubuntu 22.04/24.04、4 核 4 GB 单机部署 PoliceMate 与 Dify，见
 [详细部署与服务器 AI 交接指南](docs/deployment/tencent-cloud-policymate-dify.md)。
 包括国内软件源与镜像加速、资源检查、Swap、Docker、systemd、Nginx/HTTPS、
 工作流 API 验证、备份与回滚。
-当前真实 Dify 适配器尚未实现，部署时保持案情分析关闭；后续代码接入与验收见
-[Dify 真实分析接入](docs/deployment/dify-integration.md)。
+当前真实 Dify 适配器已实现（见 [Dify 真实分析接入](docs/deployment/dify-integration.md)）；
+Dify 端的搭建任务、Prompt 与验收步骤见
+[Dify 工作流搭建任务](docs/deployment/dify-workflow-build.md)。
+生产式部署默认 `PM_PROVIDER_MODE=dify` 且案情分析关闭，需要显式配置 Dify 地址、应用密钥与
+允许的工作流版本并验收后再开启。
 
 ## 安装
 
@@ -157,6 +160,11 @@ bash scripts/install-browser-deps.sh
 | `PM_SERVICE_CONTACT` | 未配置 | 试行反馈联系人 |
 | `PM_DATA_PROCESSING_STATEMENT` | 未配置 | 适用的数据处理说明 |
 | `PM_TECHNICAL_LOGGING_BOUNDARY` | 空 | 技术日志边界，多行文本 |
+| `PM_PROVIDER_MODE` | 开发 `fixture`／生产 `dify` | 外部边界提供者模式；`dify` 不回退替身 |
+| `PM_DIFY_BASE_URL` | 未配置 | 真实 Dify 基地址，必须是以 `/v1` 结尾的 HTTPS 地址 |
+| `PM_DIFY_API_KEY` | 未配置 | Dify 应用密钥，只存在于后端 |
+| `PM_DIFY_WORKFLOW_VERSION` | 未配置 | 允许的工作流版本；与上游返回值不一致时丢弃响应 |
+| `PM_DIFY_MAX_RESPONSE_BYTES` | `524288` | 上游响应大小上限（字节） |
 
 使用与数据说明中的服务提供者、联系人和数据处理说明未配置时，页面如实显示“尚未配置”，
 不得使用虚构主体；受控试行前必须填写实际信息。可参考

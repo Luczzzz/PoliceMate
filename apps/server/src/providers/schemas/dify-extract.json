@@ -1,0 +1,345 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/DifyExtractionOutput",
+  "definitions": {
+    "DifyExtractionOutput": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "promptVersion": {
+          "type": "string",
+          "const": "actionable-analysis-v1"
+        },
+        "workflowVersion": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "snapshotVersion": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snapshotHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentReleaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "result": {
+          "$ref": "#/definitions/CaseExtractionResult"
+        }
+      },
+      "required": [
+        "contentReleaseId",
+        "contractVersion",
+        "promptVersion",
+        "requestId",
+        "result",
+        "snapshotHash",
+        "snapshotVersion",
+        "workflowVersion"
+      ],
+      "additionalProperties": false
+    },
+    "CaseExtractionResult": {
+      "type": "object",
+      "properties": {
+        "matters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CaseExtractionMatter"
+          }
+        }
+      },
+      "required": [
+        "matters"
+      ],
+      "additionalProperties": false,
+      "description": "提取结果：按连续案情拆出的一个或多个事项分组。 替身实现必须稳定；后端会在结构校验失败时整体失败关闭。"
+    },
+    "CaseExtractionMatter": {
+      "type": "object",
+      "properties": {
+        "matterId": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CandidateFact"
+          }
+        }
+      },
+      "required": [
+        "matterId",
+        "label",
+        "facts"
+      ],
+      "additionalProperties": false,
+      "description": "一份连续案情的提取结果。输入含互不相关事项时边界返回多个分组， 每个分组形成一份独立分析（独立会话标识与独立事实快照）。 同一事实的不同说法共享 `disputeGroupId`，读取方必须并列展示、不得择一。"
+    },
+    "CandidateFact": {
+      "type": "object",
+      "properties": {
+        "factId": {
+          "type": "string"
+        },
+        "category": {
+          "$ref": "#/definitions/FactCategory"
+        },
+        "categoryLabel": {
+          "type": "string"
+        },
+        "statement": {
+          "type": "string",
+          "description": "面向民警的中性结构化陈述。"
+        },
+        "originalWording": {
+          "type": "string",
+          "description": "原始表述或对应原文片段，便于发现提取偏差。"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FactValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "eventRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "关联事件 ID（如“事件一”）。"
+        },
+        "participantRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "关联参与者（中性代号：人员甲、报案人等）。"
+        },
+        "behaviorRefs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "关联行为 ID（如“行为一”）。"
+        },
+        "status": {
+          "$ref": "#/definitions/FactStatus"
+        },
+        "statusLabel": {
+          "type": "string"
+        },
+        "sourceRound": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "来源轮次：0 = 初始提取；民警新增为 null。"
+        },
+        "confirmationMethod": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "officer",
+            "officer_added",
+            null
+          ],
+          "description": "确认方式；未确认时为 `null`。"
+        },
+        "confirmedAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "riskCategory": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UrgentRiskCategory"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "紧急风险类别标记；系统提取/回答时打标，标记直接触发置顶核验提示，无需民警确认。"
+        },
+        "excluded": {
+          "type": "boolean",
+          "description": "是否已被排除（不纳入本次分析）。"
+        },
+        "replacesFactId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "被本事实替代的旧事实项 ID；本事实不是替代项时为 `null`。"
+        },
+        "supersededByFactId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "替代本事实的较新事实项 ID；本事实未被替代时为 `null`。"
+        },
+        "resolvesGapIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "本事实明确补齐的决定性缺口 ID；系统初始提取未绑定缺口时为空数组。"
+        },
+        "disputeGroupId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "争议事实分组标识。同一事实存在不同说法时，各版本共享同一分组， 报告必须并列展示全部版本，不得静默选定其中之一；非争议事实为 `null`。"
+        }
+      },
+      "required": [
+        "factId",
+        "category",
+        "categoryLabel",
+        "statement",
+        "originalWording",
+        "value",
+        "eventRefs",
+        "participantRefs",
+        "behaviorRefs",
+        "status",
+        "statusLabel",
+        "sourceRound",
+        "confirmationMethod",
+        "confirmedAt",
+        "riskCategory",
+        "excluded",
+        "replacesFactId",
+        "supersededByFactId",
+        "resolvesGapIds",
+        "disputeGroupId"
+      ],
+      "additionalProperties": false,
+      "description": "候选事实。系统不默认确认任何事实；删除（排除）只表示不纳入本次分析， 不代表确认其没有发生。"
+    },
+    "FactCategory": {
+      "type": "string",
+      "enum": [
+        "event",
+        "participant",
+        "behavior",
+        "object",
+        "time",
+        "place",
+        "amount",
+        "count",
+        "age",
+        "result",
+        "relationship",
+        "background",
+        "other"
+      ],
+      "description": "事实类别目录。展示名称由后端/契约统一提供，页面不得自行拼写。"
+    },
+    "FactValue": {
+      "type": "object",
+      "properties": {
+        "raw": {
+          "type": "string",
+          "description": "原始表述（用户原文片段）。"
+        },
+        "normalizedMin": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "规范化范围下界；开放范围时为 `null`。展示用字符串，不是日期对象。"
+        },
+        "normalizedMax": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "规范化范围上界；开放范围时为 `null`。"
+        },
+        "precision": {
+          "$ref": "#/definitions/PrecisionLevel"
+        },
+        "precisionLabel": {
+          "type": "string"
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "raw",
+        "normalizedMin",
+        "normalizedMax",
+        "precision",
+        "precisionLabel",
+        "unit"
+      ],
+      "additionalProperties": false,
+      "description": "模糊值的结构化表达：原值 + 规范化范围 + 精确程度。"
+    },
+    "PrecisionLevel": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "approximate",
+        "bounded",
+        "open",
+        "unknown"
+      ],
+      "description": "精确程度。模糊值必须同时保留原始表述、规范化范围与精确程度。"
+    },
+    "FactStatus": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "confirmed",
+        "denied",
+        "unknown",
+        "disputed"
+      ],
+      "description": "事实状态。`confirmed` 表示民警已确认；候选事实也可支撑初步定性意见， 但依据必须标注“系统提取，未经确认”（ADR-0008）。"
+    },
+    "UrgentRiskCategory": {
+      "type": "string",
+      "enum": [
+        "personal_safety",
+        "medical",
+        "minor_protection",
+        "domestic_violence",
+        "evidence_loss"
+      ],
+      "description": "紧急风险类别。对应风险标记一经系统提取即触发置顶核验提示，无需民警确认（ADR-0008 第 4 点）。"
+    }
+  }
+}

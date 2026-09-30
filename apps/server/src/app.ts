@@ -33,6 +33,7 @@ import { buildFacets } from "./content/gating";
 import { AnalysisEngine } from "./analysis/engine";
 import { registerAnalysisRoutes } from "./analysis/routes";
 import type { FixtureControls, FixturePatch } from "./providers/fixture";
+import type { Providers } from "./providers/types";
 import {
   AnonymousTokenService,
   ConcurrencyGate,
@@ -49,7 +50,8 @@ import {
 
 export interface BuildAppDeps {
   config: AppConfig;
-  fixtures: FixtureControls;
+  fixtures?: FixtureControls;
+  providers?: Providers;
   /** 测试可以注入固定引擎以控制会话状态；默认使用按配置构造的引擎。 */
   analysisEngine?: AnalysisEngine;
   /** 运行元数据接收端；默认只保存在内存。 */
@@ -313,6 +315,11 @@ function sanitizeLegalSource(source: LegalSourceReference): LegalSourceReference
  */
 export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const { config, fixtures } = deps;
+  const providers = deps.providers ?? fixtures;
+  if (providers === undefined) throw new Error("缺少外部边界提供者。");
+  if (config.enableTestControls && (fixtures === undefined || config.providerMode !== "fixture" || config.environment === "production")) {
+    throw new Error("测试控制只允许在非生产 fixture 模式启用。");
+  }
   const runtime = deps.runtime ?? resolveRuntimeConfig(config);
   const telemetry = deps.telemetry ?? createMemoryTelemetrySink();
   const tokenService = deps.tokenService ?? anonymousTokens;
@@ -446,7 +453,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         analysisEnabled: config.analysisEnabled,
         documentsEnabled: config.documentsEnabled,
       },
-      fixtures,
+      providers,
     );
     return buildProductShell(inputs, CONTRACT_VERSION);
   });
@@ -488,7 +495,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const documentsRetrievalEnabled = isDocumentRetrievalEnabled(config);
 
   app.get("/api/v1/document-examples", async (): Promise<DocumentExampleListResponse> => {
-    const index = await fixtures.content.listExamples();
+    const index = await providers.content.listExamples();
     const items = documentsRetrievalEnabled ? index.items : [];
     const facets = documentsRetrievalEnabled ? index.facets : buildFacets([]);
     return {
@@ -524,9 +531,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
             ),
           );
       }
-      const index = await fixtures.content.listExamples();
-      const candidates = fixtures.content.listTaskCandidates
-        ? await fixtures.content.listTaskCandidates(parsed)
+      const index = await providers.content.listExamples();
+      const candidates = providers.content.listTaskCandidates
+        ? await providers.content.listTaskCandidates(parsed)
         : [];
       const response: DocumentTaskCandidatesResponse = {
         contractVersion: CONTRACT_VERSION,
@@ -544,7 +551,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     "/api/v1/document-examples/:exampleId",
     async (request, reply) => {
       const lookup = documentsRetrievalEnabled
-        ? await fixtures.content.getExample(request.params.exampleId)
+        ? await providers.content.getExample(request.params.exampleId)
         : ({ outcome: "unavailable" } as const);
       if (lookup.outcome === "not_found") {
         return reply.code(404).send(errorBody(request.id, "not_found", "未找到该文书范例。"));
@@ -575,7 +582,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     },
   );
 
-  if (config.enableTestControls) {
+  if (config.enableTestControls && fixtures !== undefined) {
     app.post<{ Body: FixtureControlRequest }>("/api/test/fixtures", async (request, reply) => {
       const patch = readFixturePatch(request.body);
       if (patch === null) {
@@ -595,25 +602,26 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   // 案情分析：会话存于短暂运行内存；能力停用或边界不可用时失败关闭。
   const analysisEngineResolved =
     deps.analysisEngine ??
-    new AnalysisEngine(fixtures.analysis, {
+    new AnalysisEngine(providers.analysis, {
       analysisTimeoutMs: runtime.analysisTimeoutMs,
       reportTimeoutMs: runtime.reportTimeoutMs,
       maxAttempts: runtime.maxProviderAttempts,
+      preserveConditionalAnalysis: config.providerMode === "dify",
       telemetry,
     });
   const legalSources = async (): Promise<LegalSourceReference[]> =>
-    (fixtures.content.listLegalSources ? await fixtures.content.listLegalSources() : []).map(
+    (providers.content.listLegalSources ? await providers.content.listLegalSources() : []).map(
       sanitizeLegalSource,
     );
   await registerAnalysisRoutes(app, {
     engine: analysisEngineResolved,
     legalSources,
-    activeReleaseId: async () => (await fixtures.content.getActiveRelease()).releaseId,
+    activeReleaseId: async () => (await providers.content.getActiveRelease()).releaseId,
     analysisCapabilityEnabled: () => config.masterSwitch && config.analysisEnabled,
-    analysisBoundaryAvailable: async () => fixtures.dify.getAvailability(),
-    caseFocusResolver: fixtures.content.resolveCaseFocus
+    analysisBoundaryAvailable: async () => providers.dify.getAvailability(),
+    caseFocusResolver: providers.content.resolveCaseFocus
       ? async (facts, now) => {
-          const resolution = await fixtures.content.resolveCaseFocus!(facts, now);
+          const resolution = await providers.content.resolveCaseFocus!(facts, now);
           return {
             ...resolution,
             legalSources: resolution.legalSources.map(sanitizeLegalSource),

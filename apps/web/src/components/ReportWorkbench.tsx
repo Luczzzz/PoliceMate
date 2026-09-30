@@ -225,6 +225,32 @@ function interviewKey(itemId: string): string {
   return `interview:${itemId}`;
 }
 
+function InterviewRoleGroup({ role, items }: {
+  role: { id: string; label: string };
+  items: ReportInterviewPointItem[];
+}) {
+  const { reviewed, focus } = useWorkbench();
+  return (
+    <li className="interview-role-group">
+      <h3>{role.label}</h3>
+      <ul className="workbench-list">
+        {items.map((item) => (
+          <li className="workbench-item" key={item.itemId} data-testid={`workbench-item-${item.itemId}`}>
+            {item.topic !== null ? <p className="workbench-item__meta">{item.topic}</p> : null}
+            <p className="workbench-item__text">{item.text}</p>
+            <WorkbenchMarkButtons
+              itemId={item.itemId}
+              markKey={interviewKey(item.itemId)}
+              reviewed={reviewed.includes(interviewKey(item.itemId))}
+              focus={focus.includes(interviewKey(item.itemId))}
+            />
+          </li>
+        ))}
+      </ul>
+    </li>
+  );
+}
+
 export function EvidenceChecklistWorkbench({ module }: { module: ReportModule }) {
   const {
     reviewed,
@@ -407,21 +433,9 @@ export function InterviewPointsWorkbench({ module }: { module: ReportModule }) {
           ) : visible.length === 0 ? (
             <p data-testid="workbench-empty-interview">当前筛选条件下没有项目，请清除筛选或调整条件。</p>
           ) : (
-            <ul className="workbench-list" data-testid="workbench-list-interview">
-              {visible.map((item) => (
-                <li className="workbench-item" key={item.itemId} data-testid={`workbench-item-${item.itemId}`}>
-                  <p className="workbench-item__text">{item.text}</p>
-                  <p className="workbench-item__meta">
-                    <span>询问对象：{item.roleLabel}</span>
-                    {item.topic !== null ? <span>要点：{item.topic}</span> : null}
-                  </p>
-                  <WorkbenchMarkButtons
-                    itemId={item.itemId}
-                    markKey={interviewKey(item.itemId)}
-                    reviewed={reviewed.includes(interviewKey(item.itemId))}
-                    focus={focus.includes(interviewKey(item.itemId))}
-                  />
-                </li>
+            <ul className="interview-role-list" data-testid="workbench-list-interview">
+              {roleOptions.filter((role) => visible.some((item) => item.role === role.id)).map((role) => (
+                <InterviewRoleGroup key={role.id} role={role} items={visible.filter((item) => item.role === role.id)} />
               ))}
             </ul>
           )}

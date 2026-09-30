@@ -768,12 +768,12 @@ describe("决定性事实缺口以分支呈现", () => {
       }
     }
 
-    // 关键模块不得在缺口未解决时给出单一主结论。
-    for (const moduleId of ["preliminary_qualification", "filing_conditions", "legal_basis_trace"]) {
-      const module = first.report.modules.find((item) => item.id === moduleId);
-      expect(module?.status, moduleId).toBe("insufficient_facts");
-      expect(module?.traceLinks, moduleId).toEqual([]);
-    }
+    // 缺口不得产生单一主结论；受治理殴打伤害内容仍可保留条件性依据与受理调查建议。
+    const qualification = first.report.modules.find((item) => item.id === "preliminary_qualification");
+    expect(qualification?.status).toBe("insufficient_facts");
+    expect(qualification?.traceLinks.length).toBeGreaterThan(0);
+    expect(first.report.modules.find((item) => item.id === "filing_conditions")?.status).toBe("present");
+    expect(first.report.modules.find((item) => item.id === "legal_basis_trace")?.status).toBe("present");
     await app.close();
   });
 

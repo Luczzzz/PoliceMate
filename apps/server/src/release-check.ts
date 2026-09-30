@@ -116,6 +116,13 @@ export function checkReleaseReadiness(input: ReleaseCheckInput): ReleaseCheckRes
     failures.push("生产环境不得启用测试用替身控制接口。");
   }
 
+  if (input.config.environment === "production" && input.config.analysisEnabled) {
+    if (input.config.providerMode !== "dify") failures.push("生产分析必须使用真实 Dify，不能使用 fixture。");
+    if (!input.config.difyBaseUrl || !input.config.difyApiKey || !input.config.difyWorkflowVersion) {
+      failures.push("真实分析缺少 Dify 地址、应用密钥或允许的工作流版本。");
+    }
+  }
+
   if (input.config.difyBaseUrl !== null && input.config.difyBaseUrl !== undefined) {
     if (!input.config.difyBaseUrl.startsWith("https://")) {
       failures.push("Dify 基地址必须使用 HTTPS。");
