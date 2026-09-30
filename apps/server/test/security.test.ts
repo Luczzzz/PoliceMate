@@ -212,6 +212,9 @@ describe("请求体与流量限制", () => {
   });
 
   it("并发超限时失败关闭", async () => {
+    const slowFixtures = createFixtureControls();
+    const reportBound = slowFixtures.analysis.generateReport;
+    if (reportBound === undefined) throw new Error("替身边界缺少报告生成能力。");
     const slowAnalysis = {
       async extractCaseFacts() {
         await new Promise((resolve) => setTimeout(resolve, 80));
@@ -241,9 +244,7 @@ describe("请求体与流量限制", () => {
           independentMatters: { detected: false, note: null },
         };
       },
-      async proposeDecisiveQuestions() {
-        return { questions: [] };
-      },
+      generateReport: reportBound.bind(slowFixtures.analysis),
     };
 
     const { app } = await makeApp(

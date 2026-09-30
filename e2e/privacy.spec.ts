@@ -17,8 +17,8 @@ async function startAnalysis(page: Page): Promise<void> {
   await page.goto("/analysis");
   await page.getByTestId("case-text-input").fill(TEXT);
   await page.getByTestId("case-input-submit").click();
-  await page.waitForURL(/\/analysis\/facts$/);
-  await expect(page.getByTestId("fact-list")).toBeVisible();
+  await page.waitForURL(/\/analysis\/report$/);
+  await expect(page.getByTestId("analysis-report")).toBeVisible({ timeout: 20_000 });
 }
 
 test.describe("会话隐私边界", () => {
@@ -72,7 +72,7 @@ test.describe("会话隐私边界", () => {
     expect(warnedWhileActive).toBe(true);
 
     page.once("dialog", (dialog) => void dialog.accept());
-    await page.getByTestId("clear-analysis").click();
+    await page.getByTestId("clear-analysis-report").click();
     await page.waitForURL(/\/analysis$/);
 
     await expect(page.locator("body")).not.toContainText(CANARY);
@@ -89,12 +89,12 @@ test.describe("会话隐私边界", () => {
   test("空闲 30 分钟后当前标签页状态不可恢复", async ({ page }) => {
     await page.clock.install();
     await startAnalysis(page);
-    await expect(page.getByTestId("fact-list")).toBeVisible();
+    await expect(page.getByTestId("analysis-report")).toBeVisible();
 
     await page.clock.fastForward(31 * 60 * 1000);
 
     await page.waitForURL(/\/analysis$/);
-    await expect(page.getByTestId("fact-list")).toHaveCount(0);
+    await expect(page.getByTestId("analysis-report")).toHaveCount(0);
     await expect(page.locator("body")).not.toContainText(CANARY);
   });
 
@@ -102,14 +102,14 @@ test.describe("会话隐私边界", () => {
     await startAnalysis(page);
 
     page.once("dialog", (dialog) => void dialog.dismiss());
-    await page.getByTestId("clear-analysis").click();
+    await page.getByTestId("clear-analysis-report").click();
 
-    await expect(page).toHaveURL(/\/analysis\/facts$/);
-    await expect(page.getByTestId("fact-list")).toBeVisible();
+    await expect(page).toHaveURL(/\/analysis\/report$/);
+    await expect(page.getByTestId("analysis-report")).toBeVisible();
 
     page.once("dialog", (dialog) => void dialog.accept());
-    await page.getByTestId("clear-analysis").click();
+    await page.getByTestId("clear-analysis-report").click();
     await page.waitForURL(/\/analysis$/);
-    await expect(page.getByTestId("fact-list")).toHaveCount(0);
+    await expect(page.getByTestId("analysis-report")).toHaveCount(0);
   });
 });

@@ -39,8 +39,6 @@ export function makeHarness(): Harness {
   const engine = new AnalysisEngine(
     {
       extractCaseFacts: base.extractCaseFacts.bind(base),
-      // 场景只验证重点案情内容与报告门控：不产生追问轮次，避免追问答案改变事实。
-      proposeDecisiveQuestions: async () => ({ questions: [] }),
       generateReport: generateReport.bind(base),
     },
     { analysisTimeoutMs: 5000, reportTimeoutMs: 5000 },
@@ -67,12 +65,14 @@ export async function runScenario(
 ): Promise<ScenarioOutcome> {
   const { fixtures, engine } = harness;
   const created = await engine.createSession({ caseText }, SCENARIO_NOW);
-  await engine.advanceRound(created.sessionId, { answers: [] }, SCENARIO_NOW);
 
+  // 场景需要已确认事实参与内容匹配：从报告进入补充或修改事实，逐项标记后
+  // 确认新快照，等价于民警在报告后主动核对事实。
+  await engine.beginModification(created.sessionId, SCENARIO_NOW);
   const mutable = engine.getSession(created.sessionId, SCENARIO_NOW);
   const disputed = new Set(options.disputedCategories ?? []);
   for (const fact of mutable.facts) {
-    await engine.setFactStatus(
+    engine.setFactStatus(
       created.sessionId,
       fact.factId,
       disputed.has(fact.category) ? "disputed" : "confirmed",
@@ -80,7 +80,7 @@ export async function runScenario(
     );
   }
 
-  const confirmed = await engine.confirmSnapshot(created.sessionId, SCENARIO_NOW);
+  const confirmed = engine.confirmSnapshot(created.sessionId, SCENARIO_NOW);
   const snapshot = confirmed.snapshot;
   if (snapshot === null) throw new Error("事实快照确认失败。");
 

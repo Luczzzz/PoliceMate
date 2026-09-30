@@ -93,9 +93,6 @@ const FEEDBACK_CATEGORIES = Object.keys(FEEDBACK_CATEGORY_LABELS) as FeedbackCat
 const FEEDBACK_PAGE_IDS = new Set([
   "home",
   "analysis_input",
-  "analysis_facts",
-  "analysis_questions",
-  "analysis_review",
   "analysis_report",
   "analysis_modify",
   "documents",
@@ -182,12 +179,6 @@ function readFixturePatch(body: unknown): FixturePatch | null {
     const mode = readUpstreamMode(candidate.extractionMode);
     if (mode === null) return null;
     patch.extractionMode = mode;
-  }
-
-  if ("questionMode" in candidate) {
-    const mode = readUpstreamMode(candidate.questionMode);
-    if (mode === null) return null;
-    patch.questionMode = mode;
   }
 
   if ("difyAvailable" in candidate) {

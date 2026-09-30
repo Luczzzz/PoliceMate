@@ -10,7 +10,7 @@ import { FailurePanel } from "../../components/FailurePanel";
  *
  * 修改以当前事实快照为起点：在确认新快照前，旧报告仍然可见并显示
  * “修改尚未应用”，民警可以放弃修改。确认新快照后，旧报告及其全部临时
- * 状态立即失效，系统重新计算决定性追问与报告。
+ * 状态立即失效，系统在同一请求内生成绑定新快照的报告。
  *
  * 两种事实版本都不能排除时，必须记录为争议事实，系统不静默选择其中一个。
  */
@@ -119,15 +119,7 @@ export function ModifyFactsPage() {
   const state = status.state;
   if (state.stage !== "modifying_facts") {
     // 确认修改后阶段会立即变化；由这里的重定向接管跳转，避免竞态。
-    const target =
-      state.stage === "collecting_answers"
-        ? "/analysis/questions"
-        : state.stage === "ready_to_analyze"
-          ? "/analysis/review"
-          : state.stage === "snapshot_confirmed"
-            ? "/analysis/report"
-            : "/analysis";
-    return <Navigate to={target} replace />;
+    return <Navigate to="/analysis/report" replace />;
   }
 
   const activeFacts = state.facts.filter((fact) => !fact.excluded);
@@ -149,14 +141,14 @@ export function ModifyFactsPage() {
   const confirm = async () => {
     if (
       !window.confirm(
-        "确认新的事实快照？确认后旧报告及其临时标记、筛选和折叠状态会立即失效，系统将重新计算决定性追问和报告。",
+        "确认新的事实快照？确认后旧报告及其临时标记、筛选和折叠状态会立即失效，系统将基于新快照生成新报告。",
       )
     ) {
       return;
     }
     await run(async () => {
-      const next = await confirmSnapshot();
-      navigate(next.stage === "collecting_answers" ? "/analysis/questions" : "/analysis/review");
+      await confirmSnapshot();
+      navigate("/analysis/report");
     });
   };
 

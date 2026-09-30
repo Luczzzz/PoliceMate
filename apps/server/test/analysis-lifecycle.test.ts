@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
+import type {
+  AnalysisSubmissionResponse,
+  CreateAnalysisRequest,
+  GenerateReportRequest,
+} from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
@@ -53,7 +57,7 @@ interface SnapshotSession {
   snapshotHash: string;
 }
 
-async function runToSnapshot(app: App): Promise<SnapshotSession> {
+async function submitCase(app: App): Promise<SnapshotSession> {
   const created = await app.inject({
     method: "POST",
     url: "/api/v1/analysis/sessions",
@@ -61,50 +65,13 @@ async function runToSnapshot(app: App): Promise<SnapshotSession> {
     payload: { caseText: SAMPLE_TEXT } satisfies CreateAnalysisRequest,
   });
   expect(created.statusCode).toBe(201);
-  let current = created.json();
-
-  current = (
-    await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
-      headers,
-      payload: { answers: [] },
-    })
-  ).json();
-
-  let guard = 0;
-  while (current.stage === "collecting_answers" && guard < 6) {
-    guard += 1;
-    current = (
-      await app.inject({
-        method: "POST",
-        url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
-        headers,
-        payload: {
-          answers: current.questions.map((question: { questionId: string }) => ({
-            questionId: question.questionId,
-            kind: "value",
-            text: "已核实的情况说明。",
-          })),
-        },
-      })
-    ).json();
-  }
-  expect(current.stage).toBe("ready_to_analyze");
-
-  const confirm = await app.inject({
-    method: "POST",
-    url: `/api/v1/analysis/sessions/${current.sessionId}/snapshot`,
-    headers,
-    payload: {},
-  });
-  expect(confirm.statusCode).toBe(200);
-  const body = confirm.json();
-  expect(body.stage).toBe("snapshot_confirmed");
+  const body = created.json() as AnalysisSubmissionResponse;
+  const snapshot = body.state.snapshot;
+  if (snapshot === null) throw new Error("缺少事实快照。");
   return {
-    sessionId: body.sessionId,
-    snapshotVersion: body.snapshot.snapshotVersion,
-    snapshotHash: body.snapshot.snapshotHash,
+    sessionId: body.state.sessionId,
+    snapshotVersion: snapshot.snapshotVersion,
+    snapshotHash: snapshot.snapshotHash,
   };
 }
 
@@ -126,7 +93,7 @@ function generateReport(app: App, session: SnapshotSession, overrides: Partial<G
 describe("报告生命周期与迟到响应", () => {
   it("报告超时后的迟到响应不得回写会话状态", async () => {
     const { app, fixtures } = await makeApp({ reportTimeoutMs: 20 });
-    const session = await runToSnapshot(app);
+    const session = await submitCase(app);
 
     fixtures.updateState({ reportMode: "timeout" });
     const timedOut = await generateReport(app, session);
@@ -145,7 +112,7 @@ describe("报告生命周期与迟到响应", () => {
 
   it("清除分析后的迟到响应被拒绝", async () => {
     const { app } = await makeApp({ reportTimeoutMs: 500 });
-    const session = await runToSnapshot(app);
+    const session = await submitCase(app);
 
     const cleared = await app.inject({
       method: "DELETE",
@@ -163,7 +130,7 @@ describe("报告生命周期与迟到响应", () => {
 
   it("旧快照版本的迟到响应在新快照后失败关闭", async () => {
     const { app } = await makeApp({ reportTimeoutMs: 500 });
-    const session = await runToSnapshot(app);
+    const session = await submitCase(app);
 
     // 进入补充或修改事实并确认，形成新版本快照。
     const begin = await app.inject({
@@ -180,7 +147,7 @@ describe("报告生命周期与迟到响应", () => {
       payload: {},
     });
     expect(confirmed.statusCode).toBe(200);
-    const newVersion = confirmed.json().snapshot.snapshotVersion;
+    const newVersion = (confirmed.json() as AnalysisSubmissionResponse).state.snapshot?.snapshotVersion;
     expect(newVersion).not.toBe(session.snapshotVersion);
 
     const late = await generateReport(app, session);

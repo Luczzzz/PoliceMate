@@ -30,14 +30,14 @@ test("核心流程在目标移动浏览器引擎下可用", async ({ page }) => 
   await expect(page.getByTestId("example-detail")).toBeVisible();
   await expect(page.getByTestId("legal-sources")).toBeVisible();
 
-  // 案情分析：可进入输入页并形成候选事实。
+  // 案情分析：可进入输入页并直接得到分析报告。
   await page.goto("/");
   await page.getByTestId("entry-action-caseAnalysis").click();
   await page.waitForURL(/\/analysis$/);
   await page.getByTestId("case-text-input").fill("3月2日晚上，张某在城南市场门口殴打李某。");
   await page.getByTestId("case-input-submit").click();
-  await page.waitForURL(/\/analysis\/facts$/);
-  await expect(page.getByTestId("fact-list")).toBeVisible();
+  await page.waitForURL(/\/analysis\/report$/);
+  await expect(page.getByTestId("analysis-report")).toBeVisible({ timeout: 20_000 });
 
   // 竖屏无横向滚动。
   const overflow = await page.evaluate(() => ({

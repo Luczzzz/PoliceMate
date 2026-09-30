@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { AnalysisReport, CandidateFact, CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
+import type {
+  AnalysisReport,
+  AnalysisSubmissionResponse,
+  CandidateFact,
+  CreateAnalysisRequest,
+  GenerateReportRequest,
+} from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { AnalysisEngine } from "../src/analysis/engine";
@@ -36,7 +42,16 @@ async function makeApp(overrides: Partial<AppConfig> = {}) {
 
 type App = Awaited<ReturnType<typeof buildApp>>;
 
-async function createSession(app: App, caseText = SAMPLE_TEXT) {
+interface Submission {
+  sessionId: string;
+  snapshotVersion: number;
+  snapshotHash: string;
+  facts: CandidateFact[];
+  report: AnalysisReport;
+}
+
+/** 提交案情：一次请求即取得事实快照与报告。 */
+async function submitCase(app: App, caseText = SAMPLE_TEXT): Promise<Submission> {
   const response = await app.inject({
     method: "POST",
     url: "/api/v1/analysis/sessions",
@@ -44,66 +59,29 @@ async function createSession(app: App, caseText = SAMPLE_TEXT) {
     payload: { caseText } satisfies CreateAnalysisRequest,
   });
   expect(response.statusCode).toBe(201);
-  return response.json();
-}
-
-/** 一路回答到分析前确认，并确认事实快照。 */
-async function runToSnapshot(app: App): Promise<{ sessionId: string; snapshotVersion: number; snapshotHash: string; facts: CandidateFact[] }> {
-  const state = await createSession(app);
-  let current = state;
-  const started = await app.inject({
-    method: "POST",
-    url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
-    headers: contractHeaders,
-    payload: { answers: [] },
-  });
-  current = started.json();
-  let guard = 0;
-  while (current.stage === "collecting_answers" && guard < 5) {
-    guard += 1;
-    const response = await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
-      headers: contractHeaders,
-      payload: {
-        answers: current.questions.map((question: { questionId: string }) => ({
-          questionId: question.questionId,
-          kind: "value",
-          text: "已核实的情况说明。",
-        })),
-      },
-    });
-    current = response.json();
-  }
-  expect(current.stage).toBe("ready_to_analyze");
-
-  const confirm = await app.inject({
-    method: "POST",
-    url: `/api/v1/analysis/sessions/${current.sessionId}/snapshot`,
-    headers: contractHeaders,
-    payload: {},
-  });
-  const body = confirm.json();
-  expect(body.stage).toBe("snapshot_confirmed");
+  const body = response.json() as AnalysisSubmissionResponse;
+  const snapshot = body.state.snapshot;
+  if (snapshot === null) throw new Error("缺少事实快照。");
   return {
-    sessionId: body.sessionId,
-    snapshotVersion: body.snapshot.snapshotVersion,
-    snapshotHash: body.snapshot.snapshotHash,
-    facts: body.facts,
+    sessionId: body.state.sessionId,
+    snapshotVersion: snapshot.snapshotVersion,
+    snapshotHash: snapshot.snapshotHash,
+    facts: body.state.facts,
+    report: body.report,
   };
 }
 
-async function generateReport(app: App, sessionId: string, snapshotVersion: number, snapshotHash: string) {
+async function regenerateReport(app: App, session: Submission): Promise<AnalysisReport> {
   const requestId = "11111111-1111-4111-8111-111111111111";
   const response = await app.inject({
     method: "POST",
-    url: `/api/v1/analysis/sessions/${sessionId}/report`,
+    url: `/api/v1/analysis/sessions/${session.sessionId}/report`,
     headers: contractHeaders,
     payload: {
       contractVersion: "1.0",
       requestId,
-      snapshotVersion,
-      snapshotHash,
+      snapshotVersion: session.snapshotVersion,
+      snapshotHash: session.snapshotHash,
     } satisfies GenerateReportRequest,
   });
   expect(response.statusCode).toBe(200);
@@ -113,8 +91,8 @@ async function generateReport(app: App, sessionId: string, snapshotVersion: numb
 describe("六模块报告：临时工作台结构化内容", () => {
   it("证据清单与询问要点返回结构化项目，其他模块不携带工作台项目", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
-    const report = await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+    const session = await submitCase(app);
+    const report = await regenerateReport(app, session);
 
     const evidence = report.modules.find((module) => module.id === "evidence_checklist");
     const interview = report.modules.find((module) => module.id === "interview_points");
@@ -141,8 +119,8 @@ describe("六模块报告：临时工作台结构化内容", () => {
 
   it("报告文书任务只携带结构化办案条件与非结论性说明", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
-    const report = await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+    const session = await submitCase(app);
+    const report = await regenerateReport(app, session);
 
     expect(report.documentTasks.length).toBeGreaterThan(0);
     for (const task of report.documentTasks) {
@@ -159,7 +137,6 @@ describe("六模块报告：临时工作台结构化内容", () => {
     const base = fixtures.analysis;
     const broken = {
       extractCaseFacts: base.extractCaseFacts.bind(base),
-      proposeDecisiveQuestions: base.proposeDecisiveQuestions.bind(base),
       async generateReport(request: Parameters<NonNullable<typeof base.generateReport>>[0]) {
         const result = await (base.generateReport as NonNullable<typeof base.generateReport>)(request);
         const [first, ...rest] = result.modules;
@@ -196,17 +173,11 @@ describe("六模块报告：临时工作台结构化内容", () => {
       fixtures,
       analysisEngine: new AnalysisEngine(broken),
     });
-    const session = await runToSnapshot(app);
     const response = await app.inject({
       method: "POST",
-      url: `/api/v1/analysis/sessions/${session.sessionId}/report`,
+      url: "/api/v1/analysis/sessions",
       headers: contractHeaders,
-      payload: {
-        contractVersion: "1.0",
-        requestId: "22222222-2222-4222-8222-222222222222",
-        snapshotVersion: session.snapshotVersion,
-        snapshotHash: session.snapshotHash,
-      },
+      payload: { caseText: SAMPLE_TEXT } satisfies CreateAnalysisRequest,
     });
     expect(response.statusCode).toBe(503);
     expect(response.json().error.code).toBe("service_unavailable");
@@ -217,8 +188,8 @@ describe("六模块报告：临时工作台结构化内容", () => {
 describe("补充或修改事实", () => {
   it("从报告进入修改：旧快照保持不变，旧报告仍可查看", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
-    await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+    const session = await submitCase(app);
+    await regenerateReport(app, session);
 
     const response = await app.inject({
       method: "POST",
@@ -237,7 +208,7 @@ describe("补充或修改事实", () => {
 
   it("替代旧版本：旧事实退出本次分析并记录替代关系", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
+    const session = await submitCase(app);
     await app.inject({
       method: "POST",
       url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
@@ -264,7 +235,7 @@ describe("补充或修改事实", () => {
 
   it("两个版本都不能排除时记录为争议事实，不静默选择", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
+    const session = await submitCase(app);
     await app.inject({
       method: "POST",
       url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
@@ -292,7 +263,7 @@ describe("补充或修改事实", () => {
 
   it("放弃修改恢复进入修改前的事实与快照", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
+    const session = await submitCase(app);
     await app.inject({
       method: "POST",
       url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
@@ -323,10 +294,9 @@ describe("补充或修改事实", () => {
     await app.close();
   });
 
-  it("确认新快照后旧报告失效，丢弃旧回答并重新计算追问", async () => {
+  it("确认新快照后旧报告失效并生成绑定新快照的报告", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
-    await generateReport(app, session.sessionId, session.snapshotVersion, session.snapshotHash);
+    const session = await submitCase(app);
     await app.inject({
       method: "POST",
       url: `/api/v1/analysis/sessions/${session.sessionId}/modifications`,
@@ -348,15 +318,13 @@ describe("补充或修改事实", () => {
       payload: {},
     });
     expect(confirm.statusCode).toBe(200);
-    const body = confirm.json();
-    expect(body.modification).toBeNull();
-    expect(body.snapshot.snapshotVersion).toBe(session.snapshotVersion + 1);
-    expect(body.snapshot.snapshotHash).not.toBe(session.snapshotHash);
-    expect(body.answers).toHaveLength(0);
-    expect(["collecting_answers", "ready_to_analyze"]).toContain(body.stage);
-    if (body.stage === "collecting_answers") {
-      expect(body.questions.length).toBeGreaterThan(0);
-    }
+    const body = confirm.json() as AnalysisSubmissionResponse;
+    expect(body.state.modification).toBeNull();
+    expect(body.state.snapshot?.snapshotVersion).toBe(session.snapshotVersion + 1);
+    expect(body.state.snapshot?.snapshotHash).not.toBe(session.snapshotHash);
+    // 新报告绑定新快照，而不是旧快照。
+    expect(body.report.snapshotHash).toBe(body.state.snapshot?.snapshotHash);
+    expect(body.report.snapshotVersion).toBe(body.state.snapshot?.snapshotVersion);
 
     // 旧快照/旧报告的生成请求被拒绝：迟到或错版本响应不得覆盖当前状态。
     const stale = await app.inject({
@@ -376,7 +344,7 @@ describe("补充或修改事实", () => {
 
   it("未进入修改阶段时不能创建替代事实项", async () => {
     const { app } = await makeApp();
-    const session = await runToSnapshot(app);
+    const session = await submitCase(app);
     const target = session.facts.find((fact) => !fact.excluded) as CandidateFact;
     const response = await app.inject({
       method: "POST",

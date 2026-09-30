@@ -1,17 +1,14 @@
 import type {
   AnalysisReport,
   CandidateFact,
-  DecisiveAnswerKind,
   DocumentExampleFacets,
   DocumentExampleNotice,
   DocumentExampleVariantDetail,
   DocumentExampleVariantSummary,
   DocumentTaskCandidateRequest,
   DocumentTaskCandidate,
-  FactCategory,
   HandlingStageCatalogEntry,
   IndependentMatters,
-  QuestionTopic,
   ReportDocumentTask,
   UrgentRiskCategory,
   FactSnapshot,
@@ -57,38 +54,7 @@ export interface CaseExtractionResult {
   independentMatters: IndependentMatters;
 }
 
-/** 决定性追问选题请求：后端传入完整结构化状态，而不是对话历史。 */
-export interface QuestionPoolRequest {
-  facts: CandidateFact[];
-  answers: AnsweredQuestionSummary[];
-  askedQuestionIds: string[];
-  maxQuestions: number;
-}
-
-/** 已回答问题的结构化摘要（追问边界只需要这些字段）。 */
-export interface AnsweredQuestionSummary {
-  questionId: string;
-  topic: QuestionTopic;
-  kind: DecisiveAnswerKind;
-}
-
-/** 候选问题。后端负责按优先级截断到体验上限。 */
-export interface ProposedQuestion {
-  questionId: string;
-  priority: 1 | 2 | 3 | 4 | 5 | 6;
-  topic: QuestionTopic;
-  text: string;
-  whyItMatters: string;
-  kind: "standard" | "neutral_safety";
-  relatedFactIds: string[];
-  /** 文本回答将形成的补充事实类别。 */
-  answerCategory: FactCategory;
-}
-
-export interface QuestionPoolResult {
-  questions: ProposedQuestion[];
-}
-
+/** 报告生成请求。 */
 export interface ReportGenerationRequest {
   facts: CandidateFact[];
   snapshot: FactSnapshot;
@@ -108,12 +74,11 @@ export interface ReportGenerationResult {
 }
 
 /**
- * 案情分析边界：候选事实提取与决定性追问选题。
+ * 案情分析边界：候选事实提取与报告生成。
  * 真实 Dify 接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
  */
 export interface CaseAnalysisProvider {
   extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult>;
-  proposeDecisiveQuestions(request: QuestionPoolRequest): Promise<QuestionPoolResult>;
   generateReport?(request: ReportGenerationRequest): Promise<ReportGenerationResult>;
 }
 

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CandidateFact } from "@policymate/contracts";
 import { extractCaseFactsFixture } from "../src/analysis/fixture-extract";
-import { proposeDecisiveQuestionsFixture } from "../src/analysis/fixture-questions";
 
 function factsOf(text: string): CandidateFact[] {
   return extractCaseFactsFixture(text).facts;
@@ -121,95 +120,3 @@ describe("fixture 提取：紧急风险标记与独立事项", () => {
   });
 });
 
-describe("fixture 追问选题", () => {
-  const extraction = extractCaseFactsFixture(
-    "3月2日晚上，张某在城南市场门口殴打李某。李某手部擦伤。",
-  );
-
-  it("每题带确认理由，按优先级排序并截断到上限", () => {
-    const result = proposeDecisiveQuestionsFixture({
-      facts: extraction.facts,
-      answers: [],
-      askedQuestionIds: [],
-      maxQuestions: 5,
-    });
-    expect(result.questions.length).toBeLessThanOrEqual(5);
-    expect(result.questions.length).toBeGreaterThan(0);
-    for (const question of result.questions) {
-      expect(question.whyItMatters.length).toBeGreaterThan(0);
-      expect(question.text.length).toBeGreaterThan(0);
-    }
-    const priorities = result.questions.map((question) => question.priority);
-    expect([...priorities].sort((a, b) => a - b)).toEqual(priorities);
-  });
-
-  it("不重复返回已问过的问题", () => {
-    const first = proposeDecisiveQuestionsFixture({
-      facts: extraction.facts,
-      answers: [],
-      askedQuestionIds: [],
-      maxQuestions: 5,
-    });
-    const second = proposeDecisiveQuestionsFixture({
-      facts: extraction.facts,
-      answers: first.questions.map((question) => ({ questionId: question.questionId, topic: question.topic, kind: "unknown" as const })),
-      askedQuestionIds: first.questions.map((question) => question.questionId),
-      maxQuestions: 5,
-    });
-    const firstIds = new Set(first.questions.map((question) => question.questionId));
-    for (const question of second.questions) {
-      expect(firstIds.has(question.questionId)).toBe(false);
-    }
-  });
-
-  it("文本回答形成已确认事实后，对应缺口不再出题", () => {
-    const withoutTime = proposeDecisiveQuestionsFixture({
-      facts: extraction.facts.filter((fact) => fact.category !== "time"),
-      answers: [],
-      askedQuestionIds: [],
-      maxQuestions: 12,
-    });
-    expect(withoutTime.questions.some((question) => question.questionId === "q-time")).toBe(true);
-
-    const withConfirmedTime: CandidateFact[] = [
-      ...extraction.facts.filter((fact) => fact.category !== "time"),
-      {
-        ...extraction.facts[0],
-        factId: "fact-answer-time",
-        category: "time",
-        status: "confirmed",
-      },
-    ];
-    const afterAnswer = proposeDecisiveQuestionsFixture({
-      facts: withConfirmedTime,
-      answers: [],
-      askedQuestionIds: [],
-      maxQuestions: 12,
-    });
-    expect(afterAnswer.questions.some((question) => question.questionId === "q-time")).toBe(false);
-  });
-
-  it("未经确认的风险事实触发中性安全问题；确认后不再触发", () => {
-    const risky = extractCaseFactsFixture("今天凌晨，刘某持刀威胁王某。");
-    const unconfirmed = proposeDecisiveQuestionsFixture({
-      facts: risky.facts,
-      answers: [],
-      askedQuestionIds: [],
-      maxQuestions: 12,
-    });
-    const safety = unconfirmed.questions.find((question) => question.kind === "neutral_safety");
-    expect(safety).toBeDefined();
-    expect(safety?.priority).toBe(1);
-
-    const confirmedFacts = risky.facts.map((fact) =>
-      fact.riskCategory === null ? fact : { ...fact, status: "confirmed" as const },
-    );
-    const afterConfirm = proposeDecisiveQuestionsFixture({
-      facts: confirmedFacts,
-      answers: [],
-      askedQuestionIds: [],
-      maxQuestions: 12,
-    });
-    expect(afterConfirm.questions.some((question) => question.kind === "neutral_safety")).toBe(false);
-  });
-});

@@ -6,9 +6,6 @@ import { AnalysisProgress } from "./components/AnalysisProgress";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { CaseInputPage } from "./pages/analysis/CaseInputPage";
-import { CandidateFactsPage } from "./pages/analysis/CandidateFactsPage";
-import { DecisiveQuestionsPage } from "./pages/analysis/DecisiveQuestionsPage";
-import { PreAnalysisReviewPage } from "./pages/analysis/PreAnalysisReviewPage";
 import { AnalysisReportPage } from "./pages/analysis/AnalysisReportPage";
 import { ModifyFactsPage } from "./pages/analysis/ModifyFactsPage";
 import { DataUsePage } from "./pages/DataUsePage";
@@ -36,9 +33,6 @@ export function App() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/data-use" element={<DataUsePage />} />
                   <Route path="/analysis" element={<CaseInputPage />} />
-                  <Route path="/analysis/facts" element={<CandidateFactsPage />} />
-                  <Route path="/analysis/questions" element={<DecisiveQuestionsPage />} />
-                  <Route path="/analysis/review" element={<PreAnalysisReviewPage />} />
                   <Route path="/analysis/report" element={<AnalysisReportPage />} />
                   <Route path="/analysis/modify" element={<ModifyFactsPage />} />
                   <Route

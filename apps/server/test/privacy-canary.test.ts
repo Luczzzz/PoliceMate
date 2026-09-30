@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
+import type { AnalysisSubmissionResponse, CreateAnalysisRequest } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
@@ -53,51 +53,15 @@ describe("合成 canary 不进入遥测、日志、缓存或第三方工具", ()
       payload: { caseText: SAMPLE_TEXT } satisfies CreateAnalysisRequest,
     });
     expect(created.statusCode).toBe(201);
-    const sessionId = created.json().sessionId as string;
+    const state = created.json() as AnalysisSubmissionResponse;
+    const sessionId = state.state.sessionId;
+    expect(state.report.snapshotHash).toMatch(/^[0-9a-f]{64}$/);
 
-    let current = (
-      await app.inject({
-        method: "POST",
-        url: `/api/v1/analysis/sessions/${sessionId}/rounds`,
-        headers,
-        payload: { answers: [] },
-      })
-    ).json();
-    let guard = 0;
-    while (current.stage === "collecting_answers" && guard < 6) {
-      guard += 1;
-      current = (
-        await app.inject({
-          method: "POST",
-          url: `/api/v1/analysis/sessions/${sessionId}/rounds`,
-          headers,
-          payload: {
-            answers: current.questions.map((question: { questionId: string }) => ({
-              questionId: question.questionId,
-              kind: "value",
-              text: CANARY,
-            })),
-          },
-        })
-      ).json();
-    }
-    const snapshotResponse = await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${sessionId}/snapshot`,
-      headers,
-      payload: {},
-    });
-    const snapshot = snapshotResponse.json().snapshot;
+    // 报告已在提交请求内生成；这里再读取一次状态，覆盖状态接口的元数据出口。
     await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${sessionId}/report`,
+      method: "GET",
+      url: `/api/v1/analysis/sessions/${sessionId}`,
       headers,
-      payload: {
-        contractVersion: "1.0",
-        requestId: "66666666-6666-4666-8666-666666666666",
-        snapshotVersion: snapshot.snapshotVersion,
-        snapshotHash: snapshot.snapshotHash,
-      } satisfies GenerateReportRequest,
     });
     await app.inject({ method: "GET", url: `/api/v1/document-examples?q=${CANARY}`, headers });
     await app.inject({

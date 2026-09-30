@@ -9,11 +9,9 @@ import {
   type ReactNode,
 } from "react";
 import type {
-  AdvanceRoundRequest,
   AnalysisReport,
   AnalysisSessionState,
-  DecisiveAnswer,
-  FactStatus,
+  AnalysisSubmissionResponse,
   ReviseFactRequest,
 } from "@policymate/contracts";
 import { ApiFailure, requestJson } from "../api/client";
@@ -33,9 +31,12 @@ export type AnalysisFlowStatus =
 
 /** 会话空闲上限：与产品规格一致（30 分钟不可恢复）。 */
 export const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
-/** 事实提取与追问最多等待 30 秒（含一次自动重试）；客户端留出传输余量。 */
-export const ANALYSIS_REQUEST_TIMEOUT_MS = 35 * 1000;
-/** 完整报告最多等待 90 秒（含一次自动重试）；客户端留出传输余量。 */
+/**
+ * 提交案情一次请求内完成提取与报告生成：提取最多 30 秒、报告最多 90 秒
+ * （均含一次自动重试），客户端留出传输余量。
+ */
+export const SUBMISSION_REQUEST_TIMEOUT_MS = 125 * 1000;
+/** 单独重新生成报告最多等待 90 秒（含一次自动重试）；客户端留出传输余量。 */
 export const REPORT_REQUEST_TIMEOUT_MS = 95 * 1000;
 
 /** 正在进行的真实阶段。只描述真实处理阶段，不显示虚假百分比。 */
@@ -55,14 +56,11 @@ interface AnalysisFlowContextValue {
   pendingOperation: PendingOperation | null;
   start: (caseText: string) => Promise<AnalysisSessionState>;
   refresh: () => Promise<void>;
-  setFactStatus: (factId: string, status: FactStatus) => Promise<AnalysisSessionState>;
-  setFactExclusion: (factId: string, excluded: boolean) => Promise<AnalysisSessionState>;
   addFact: (statement: string) => Promise<AnalysisSessionState>;
   reviseFact: (
     factId: string,
     request: ReviseFactRequest,
   ) => Promise<AnalysisSessionState>;
-  advanceRound: (answers: DecisiveAnswer[]) => Promise<AnalysisSessionState>;
   confirmSnapshot: () => Promise<AnalysisSessionState>;
   beginModification: () => Promise<AnalysisSessionState>;
   discardModification: () => Promise<AnalysisSessionState>;
@@ -164,23 +162,26 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     const state = status.state;
     const snapshot = state.snapshot;
     const stageAllowsReport = state.stage === "snapshot_confirmed" || state.stage === "modifying_facts";
-    const valid =
-      snapshot !== null && stageAllowsReport && snapshot.snapshotHash === report.snapshotHash;
+    const valid = stageAllowsReport && snapshot.snapshotHash === report.snapshotHash;
     if (!valid) setReport(null);
   }, [report, status]);
 
   const start = useCallback(
     (caseText: string) =>
-      run("提取候选事实", async (signal) => {
+      run("提取候选事实并生成报告", async (signal) => {
         setSessionGone(false);
         setReport(null);
-        const state = await requestJson<AnalysisSessionState>("/api/v1/analysis/sessions", {
-          method: "POST",
-          body: { caseText },
-          timeoutMs: ANALYSIS_REQUEST_TIMEOUT_MS,
-          signal,
-        });
-        return applyState(state);
+        const submission = await requestJson<AnalysisSubmissionResponse>(
+          "/api/v1/analysis/sessions",
+          {
+            method: "POST",
+            body: { caseText },
+            timeoutMs: SUBMISSION_REQUEST_TIMEOUT_MS,
+            signal,
+          },
+        );
+        setReport(submission.report);
+        return applyState(submission.state);
       }),
     [applyState, run],
   );
@@ -217,32 +218,6 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     [applyState, run],
   );
 
-  const setFactStatus = useCallback(
-    (factId: string, status: FactStatus) => {
-      const sessionId = sessionIdRef.current;
-      return mutate(
-        "更新事实状态",
-        `/api/v1/analysis/sessions/${sessionId}/facts/${factId}/status`,
-        "POST",
-        { status },
-      );
-    },
-    [mutate],
-  );
-
-  const setFactExclusion = useCallback(
-    (factId: string, excluded: boolean) => {
-      const sessionId = sessionIdRef.current;
-      return mutate(
-        "更新事实范围",
-        `/api/v1/analysis/sessions/${sessionId}/facts/${factId}/exclusion`,
-        "PUT",
-        { excluded },
-      );
-    },
-    [mutate],
-  );
-
   const addFact = useCallback(
     (statement: string) => {
       const sessionId = sessionIdRef.current;
@@ -266,32 +241,19 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     [mutate],
   );
 
-  const advanceRound = useCallback(
-    (answers: DecisiveAnswer[]) => {
-      const sessionId = sessionIdRef.current;
-      return mutate(
-        "生成决定性追问",
-        `/api/v1/analysis/sessions/${sessionId}/rounds`,
-        "POST",
-        { answers } satisfies AdvanceRoundRequest,
-        ANALYSIS_REQUEST_TIMEOUT_MS,
-      );
-    },
-    [mutate],
-  );
-
   const confirmSnapshot = useCallback(() => {
     const sessionId = sessionIdRef.current;
     // 形成新快照会废弃依赖旧快照的在途工作与迟到响应。
     invalidateInFlight();
-    return mutate(
-      "确认事实快照并重新计算追问",
-      `/api/v1/analysis/sessions/${sessionId}/snapshot`,
-      "POST",
-      {},
-      ANALYSIS_REQUEST_TIMEOUT_MS,
-    );
-  }, [invalidateInFlight, mutate]);
+    return run("确认事实快照并重新生成报告", async (signal) => {
+      const submission = await requestJson<AnalysisSubmissionResponse>(
+        `/api/v1/analysis/sessions/${sessionId}/snapshot`,
+        { method: "POST", body: {}, timeoutMs: SUBMISSION_REQUEST_TIMEOUT_MS, signal },
+      );
+      setReport(submission.report);
+      return applyState(submission.state);
+    });
+  }, [applyState, invalidateInFlight, run]);
 
   const beginModification = useCallback(() => {
     const sessionId = sessionIdRef.current;
@@ -314,8 +276,8 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
 
   const generateReport = useCallback(async () => {
     const sessionId = sessionIdRef.current;
-    if (sessionId === null || status.kind !== "ready" || status.state.snapshot === null) {
-      throw new ApiFailure("server", "请先确认事实快照后再生成报告。", { status: 409 });
+    if (sessionId === null || status.kind !== "ready") {
+      throw new ApiFailure("server", "请先形成事实快照后再生成报告。", { status: 409 });
     }
     const requestId = crypto.randomUUID();
     const snapshot = status.state.snapshot;
@@ -413,11 +375,8 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       pendingOperation,
       start,
       refresh,
-      setFactStatus,
-      setFactExclusion,
       addFact,
       reviseFact,
-      advanceRound,
       confirmSnapshot,
       beginModification,
       discardModification,
@@ -433,11 +392,8 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       pendingOperation,
       start,
       refresh,
-      setFactStatus,
-      setFactExclusion,
       addFact,
       reviseFact,
-      advanceRound,
       confirmSnapshot,
       beginModification,
       discardModification,

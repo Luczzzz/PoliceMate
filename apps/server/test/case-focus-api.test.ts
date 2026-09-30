@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AnalysisReport, CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
+import type { AnalysisReport, AnalysisSubmissionResponse, CreateAnalysisRequest } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
@@ -63,67 +63,37 @@ async function runToReport(app: App, caseText: string): Promise<AnalysisReport> 
     payload: { caseText } satisfies CreateAnalysisRequest,
   });
   expect(created.statusCode).toBe(201);
-  const session = created.json();
+  const submission = created.json() as AnalysisSubmissionResponse;
+  const sessionId = submission.state.sessionId;
 
-  for (const fact of session.facts as Array<{ factId: string }>) {
-    await app.inject({
+  // 重点案情匹配只使用已确认事实：从报告进入补充或修改事实，逐项确认后
+  // 确认新快照，路由会重新解析重点案情并返回绑定新快照的报告。
+  const begin = await app.inject({
+    method: "POST",
+    url: `/api/v1/analysis/sessions/${sessionId}/modifications`,
+    headers,
+    payload: {},
+  });
+  expect(begin.statusCode).toBe(200);
+
+  for (const fact of submission.state.facts) {
+    const response = await app.inject({
       method: "POST",
-      url: `/api/v1/analysis/sessions/${session.sessionId}/facts/${fact.factId}/status`,
+      url: `/api/v1/analysis/sessions/${sessionId}/facts/${fact.factId}/status`,
       headers,
       payload: { status: "confirmed" },
     });
+    expect(response.statusCode).toBe(200);
   }
-
-  let state = (
-    await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${session.sessionId}/rounds`,
-      headers,
-      payload: { answers: [] },
-    })
-  ).json();
-  let guard = 0;
-  while (state.stage === "collecting_answers" && guard < 6) {
-    guard += 1;
-    state = (
-      await app.inject({
-        method: "POST",
-        url: `/api/v1/analysis/sessions/${session.sessionId}/rounds`,
-        headers,
-        payload: {
-          answers: (state.questions as Array<{ questionId: string }>).map((question) => ({
-            questionId: question.questionId,
-            kind: "value",
-            text: "已核实的情况说明。",
-          })),
-        },
-      })
-    ).json();
-  }
-  expect(state.stage).toBe("ready_to_analyze");
 
   const confirmed = await app.inject({
     method: "POST",
-    url: `/api/v1/analysis/sessions/${session.sessionId}/snapshot`,
+    url: `/api/v1/analysis/sessions/${sessionId}/snapshot`,
     headers,
     payload: {},
   });
   expect(confirmed.statusCode).toBe(200);
-  const snapshot = confirmed.json().snapshot;
-
-  const report = await app.inject({
-    method: "POST",
-    url: `/api/v1/analysis/sessions/${session.sessionId}/report`,
-    headers,
-    payload: {
-      contractVersion: "1.0",
-      requestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-      snapshotVersion: snapshot.snapshotVersion,
-      snapshotHash: snapshot.snapshotHash,
-    } satisfies GenerateReportRequest,
-  });
-  expect(report.statusCode).toBe(200);
-  return report.json() as AnalysisReport;
+  return (confirmed.json() as AnalysisSubmissionResponse).report;
 }
 
 describe("重点案情在统一分析流程中的接线", () => {

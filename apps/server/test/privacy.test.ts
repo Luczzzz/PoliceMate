@@ -71,13 +71,12 @@ describe("运行元数据不包含禁止内容", () => {
     });
     expect(session.statusCode).toBe(201);
 
-    const rounds = await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${session.json().sessionId}/rounds`,
+    const state = await app.inject({
+      method: "GET",
+      url: `/api/v1/analysis/sessions/${session.json().state.sessionId}`,
       headers,
-      payload: { answers: [] },
     });
-    expect(rounds.statusCode).toBe(200);
+    expect(state.statusCode).toBe(200);
 
     const serialized = JSON.stringify(telemetry.events);
     expect(serialized).not.toContain(CANARY);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
+import type { AnalysisSubmissionResponse, CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls, FIXTURE_TIMEOUT_DELAY_MS } from "../src/providers/fixture";
@@ -42,7 +42,7 @@ async function makeApp(overrides: Partial<AppConfig> = {}) {
 
 type App = Awaited<ReturnType<typeof buildApp>>;
 
-function createSession(app: App) {
+function submitCase(app: App) {
   return app.inject({
     method: "POST",
     url: "/api/v1/analysis/sessions",
@@ -51,67 +51,24 @@ function createSession(app: App) {
   });
 }
 
-async function runToSnapshot(app: App): Promise<{
-  sessionId: string;
-  snapshotVersion: number;
-  snapshotHash: string;
-}> {
-  const created = await createSession(app);
+async function submitAndGetSession(app: App): Promise<AnalysisSubmissionResponse> {
+  const created = await submitCase(app);
   expect(created.statusCode).toBe(201);
-  let current = created.json();
-
-  const started = await app.inject({
-    method: "POST",
-    url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
-    headers,
-    payload: { answers: [] },
-  });
-  current = started.json();
-
-  let guard = 0;
-  while (current.stage === "collecting_answers" && guard < 6) {
-    guard += 1;
-    const response = await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${current.sessionId}/rounds`,
-      headers,
-      payload: {
-        answers: current.questions.map((question: { questionId: string }) => ({
-          questionId: question.questionId,
-          kind: "value",
-          text: "已核实的情况说明。",
-        })),
-      },
-    });
-    current = response.json();
-  }
-  expect(current.stage).toBe("ready_to_analyze");
-
-  const confirm = await app.inject({
-    method: "POST",
-    url: `/api/v1/analysis/sessions/${current.sessionId}/snapshot`,
-    headers,
-    payload: {},
-  });
-  const body = confirm.json();
-  expect(body.stage).toBe("snapshot_confirmed");
-  return {
-    sessionId: body.sessionId,
-    snapshotVersion: body.snapshot.snapshotVersion,
-    snapshotHash: body.snapshot.snapshotHash,
-  };
+  return created.json() as AnalysisSubmissionResponse;
 }
 
-function generateReport(app: App, session: { sessionId: string; snapshotVersion: number; snapshotHash: string }) {
+function generateReport(app: App, submission: AnalysisSubmissionResponse) {
+  const snapshot = submission.state.snapshot;
+  if (snapshot === null) throw new Error("缺少事实快照。");
   return app.inject({
     method: "POST",
-    url: `/api/v1/analysis/sessions/${session.sessionId}/report`,
+    url: `/api/v1/analysis/sessions/${submission.state.sessionId}/report`,
     headers,
     payload: {
       contractVersion: "1.0",
       requestId: "33333333-3333-4333-8333-333333333333",
-      snapshotVersion: session.snapshotVersion,
-      snapshotHash: session.snapshotHash,
+      snapshotVersion: snapshot.snapshotVersion,
+      snapshotHash: snapshot.snapshotHash,
     } satisfies GenerateReportRequest,
   });
 }
@@ -128,14 +85,13 @@ describe("外部边界失败关闭与单次重试", () => {
     const { app, fixtures, telemetry } = await makeApp({ analysisTimeoutMs: 20 });
     fixtures.updateState({ extractionMode: "timeout" });
 
-    const response = await createSession(app);
+    const response = await submitCase(app);
     expect(response.statusCode).toBe(503);
     const body = response.json();
     expect(body.error.code).toBe("service_unavailable");
     expect(body.error.requestId).toBeTruthy();
 
-    const attempts = attemptsFor(telemetry, "analysis.extraction");
-    expect(attempts).toEqual([1, 2]);
+    expect(attemptsFor(telemetry, "analysis.extraction")).toEqual([1, 2]);
     await app.close();
   });
 
@@ -143,52 +99,55 @@ describe("外部边界失败关闭与单次重试", () => {
     for (const extractionMode of ["empty", "malformed"] as const) {
       const { app, fixtures } = await makeApp({ analysisTimeoutMs: 500 });
       fixtures.updateState({ extractionMode });
-      const response = await createSession(app);
+      const response = await submitCase(app);
       expect(response.statusCode).toBe(503);
       expect(response.json().error.code).toBe("service_unavailable");
       await app.close();
     }
   });
 
-  it("追问结构错误：重试一次后失败关闭", async () => {
-    const { app, fixtures } = await makeApp({ analysisTimeoutMs: 20 });
-    const created = await createSession(app);
-    fixtures.updateState({ questionMode: "malformed" });
-
-    const response = await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${created.json().sessionId}/rounds`,
-      headers,
-      payload: { answers: [] },
-    });
-    expect(response.statusCode).toBe(503);
-    await app.close();
-  });
-
   it("报告空结果、结构错误、来源不匹配、跨模块矛盾或超时：失败关闭", async () => {
     const modes = ["empty", "malformed", "unmatched_source", "contradiction", "timeout"] as const;
     for (const reportMode of modes) {
       const { app, fixtures, telemetry } = await makeApp({ reportTimeoutMs: 20 });
-      const session = await runToSnapshot(app);
+      const submission = await submitAndGetSession(app);
       fixtures.updateState({ reportMode });
 
-      const response = await generateReport(app, session);
+      const response = await generateReport(app, submission);
       expect(response.statusCode, `reportMode=${reportMode}`).toBe(503);
       const body = response.json();
       expect(body.error.code).toBe("service_unavailable");
       expect(body.error.requestId).toBeTruthy();
       expect(JSON.stringify(body)).not.toContain(SAMPLE_TEXT);
-      expect(attemptsFor(telemetry, "analysis.report")).toEqual([1, 2]);
+      expect(attemptsFor(telemetry, "analysis.report").slice(-2)).toEqual([1, 2]);
       await app.close();
     }
   });
 
+  it("报告失败后的迟到响应不得改变已确认快照：同一版本与哈希仍可重新生成", async () => {
+    const { app, fixtures } = await makeApp({ reportTimeoutMs: 20 });
+    const submission = await submitAndGetSession(app);
+    const snapshot = submission.state.snapshot;
+
+    fixtures.updateState({ reportMode: "timeout" });
+    const timedOut = await generateReport(app, submission);
+    expect(timedOut.statusCode).toBe(503);
+
+    fixtures.updateState({ reportMode: "complete" });
+    const retry = await generateReport(app, submission);
+    expect(retry.statusCode).toBe(200);
+    const body = retry.json();
+    expect(body.snapshotVersion).toBe(snapshot?.snapshotVersion);
+    expect(body.snapshotHash).toBe(snapshot?.snapshotHash);
+    await app.close();
+  });
+
   it("次要模块局部失败时保留其他模块并明确标记局部失败", async () => {
     const { app, fixtures } = await makeApp({ reportTimeoutMs: 500 });
-    const session = await runToSnapshot(app);
+    const submission = await submitAndGetSession(app);
     fixtures.updateState({ reportMode: "partial_failure" });
 
-    const response = await generateReport(app, session);
+    const response = await generateReport(app, submission);
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.status).toBe("partial_failure");
@@ -210,10 +169,9 @@ describe("外部边界失败关闭与单次重试", () => {
 
   it("正常路径不受重试策略影响", async () => {
     const { app } = await makeApp({ analysisTimeoutMs: 500, reportTimeoutMs: 500 });
-    const session = await runToSnapshot(app);
-    const response = await generateReport(app, session);
-    expect(response.statusCode).toBe(200);
-    expect(response.json().status).toBe("complete");
+    const response = await submitCase(app);
+    expect(response.statusCode).toBe(201);
+    expect(response.json().report.status).toBe("complete");
     await app.close();
   });
 

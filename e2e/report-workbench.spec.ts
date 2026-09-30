@@ -3,8 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 /**
  * 报告临时工作台、补充或修改事实、报告失效与文书任务候选跳转。
  *
- * 全部通过移动浏览器黑盒驱动 H5 → PoliceMate 后端；临时标记与筛选只存在于
- * 当前标签页内存，不写入事实快照、URL、存储或后端。
+ * 全部通过移动浏览器黑盒驱动 H5 → PoliceMate 后端；提交案情后直接得到
+ * 报告，临时标记与筛选只存在于当前标签页内存，不写入事实快照、URL、
+ * 存储或后端。
  */
 
 const TEXT = "3月2日晚上，张某在城南市场门口殴打李某。李某手部擦伤。";
@@ -13,70 +14,13 @@ test.beforeEach(async ({ request }) => {
   await request.post("/api/test/fixtures/reset");
 });
 
-async function startAndConfirmFacts(page: Page): Promise<void> {
+/** 提交案情后直接停留在已生成报告的页面。 */
+async function reachReport(page: Page): Promise<void> {
   await page.goto("/analysis");
   await page.getByTestId("case-text-input").fill(TEXT);
   await page.getByTestId("case-input-submit").click();
-  await page.waitForURL(/\/analysis\/facts$/);
-  const timeCard = page.locator('[data-testid="fact-list"] [data-category="time"]').first();
-  await timeCard.getByTestId(/fact-mark-.*-confirmed/).click();
-  await expect(timeCard).toHaveAttribute("data-status", "confirmed");
-}
-
-async function answerRound(page: Page): Promise<void> {
-  const before = await page.getByTestId("round-progress").innerText();
-  const questions = page.locator('[data-testid="question-list"] .question-card');
-  const count = await questions.count();
-  for (let index = 0; index < count; index += 1) {
-    const card = questions.nth(index);
-    await card.getByTestId(/-answer-value$/).click();
-    await card.locator("textarea").fill("已核实的情况说明。");
-  }
-  await expect(page.getByTestId("submit-round")).toBeEnabled();
-  await page.getByTestId("submit-round").click();
-  await Promise.race([
-    page.getByTestId("pre-analysis-page").waitFor({ state: "visible", timeout: 30_000 }),
-    page
-      .locator('[data-testid="round-progress"]', { hasNotText: before })
-      .waitFor({ state: "visible", timeout: 30_000 }),
-  ]);
-}
-
-async function answerAllRounds(page: Page): Promise<void> {
-  await page.getByTestId("start-questions").click();
-  await expect(page.getByTestId("decisive-questions-page")).toBeVisible();
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    if ((await page.getByTestId("pre-analysis-page").count()) > 0) return;
-    await answerRound(page);
-  }
-  await expect(page.getByTestId("pre-analysis-page")).toBeVisible();
-}
-
-async function confirmSnapshotAndGenerate(page: Page): Promise<void> {
-  page.once("dialog", (dialog) => void dialog.accept());
-  await page.getByTestId("confirm-snapshot").click();
-  await expect(page.getByTestId("snapshot-panel")).toBeVisible();
-  await page.getByTestId("go-report").click();
   await page.waitForURL(/\/analysis\/report$/);
-  await page.getByTestId("generate-report").click();
   await expect(page.getByTestId("analysis-report")).toBeVisible({ timeout: 20_000 });
-}
-
-/** 从报告进入修改后的再分析：回答问题并在分析前确认页重新确认快照。 */
-async function reanalyzeAfterModification(page: Page): Promise<void> {
-  if ((await page.getByTestId("decisive-questions-page").count()) > 0) {
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      if ((await page.getByTestId("pre-analysis-page").count()) > 0) return;
-      await answerRound(page);
-    }
-  }
-  await confirmSnapshotAndGenerate(page);
-}
-
-async function reachReport(page: Page): Promise<void> {
-  await startAndConfirmFacts(page);
-  await answerAllRounds(page);
-  await confirmSnapshotAndGenerate(page);
 }
 
 test.describe("报告临时工作台", () => {
@@ -158,9 +102,9 @@ test.describe("报告临时工作台", () => {
     await expect(page.getByTestId("workbench-reviewed-ev-01")).toHaveAttribute("aria-pressed", "true");
 
     // 产品内导航（不刷新页面）后返回报告，临时标记随当前有效报告保留。
-    await page.getByRole("link", { name: "返回分析前确认" }).click();
-    await page.waitForURL(/\/analysis\/review$/);
-    await page.getByTestId("go-report").click();
+    await page.getByRole("link", { name: "重新输入案情" }).click();
+    await expect(page.getByTestId("case-input")).toBeVisible();
+    await page.goBack();
     await page.waitForURL(/\/analysis\/report$/);
     await expect(page.getByTestId("analysis-report")).toBeVisible();
     await expect(page.getByTestId("workbench-reviewed-ev-01")).toHaveAttribute("aria-pressed", "true");
@@ -219,10 +163,9 @@ test.describe("补充或修改事实与报告失效", () => {
 
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByTestId("confirm-modification").click();
-    await page.waitForURL(/\/analysis\/(questions|review)$/);
+    await page.waitForURL(/\/analysis\/report$/);
     expect(factTestId).not.toBeNull();
-
-    await reanalyzeAfterModification(page);
+    await expect(page.getByTestId("analysis-report")).toBeVisible({ timeout: 20_000 });
 
     // 旧报告已失效：新报告绑定到新的事实快照。
     const newSnapshotLabel = await page.getByTestId("analysis-report").locator("dd").nth(1).innerText();

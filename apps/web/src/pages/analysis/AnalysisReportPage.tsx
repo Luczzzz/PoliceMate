@@ -259,8 +259,8 @@ export function AnalysisReportPage() {
     return (
       <div className="page page--reading">
         <FailurePanel failure={status.failure} onRetry={() => void refresh()} testId="analysis-failure" />
-        <Link className="button button--secondary" to="/analysis/review">
-          返回分析前确认
+        <Link className="button button--secondary" to="/analysis">
+          返回案情输入
         </Link>
       </div>
     );
@@ -272,8 +272,6 @@ export function AnalysisReportPage() {
     );
 
   const state = status.state;
-  const stageAllowsReport = state.stage === "snapshot_confirmed" || state.stage === "modifying_facts";
-  if (!stageAllowsReport && report === null) return <Navigate to="/analysis/review" replace />;
 
   const run = async () => {
     setLoading(true);
@@ -305,8 +303,8 @@ export function AnalysisReportPage() {
   return (
     <div className="page page--reading analysis-page">
       <header className="subpage-header">
-        <Link className="back-link" to="/analysis/review">
-          返回分析前确认
+        <Link className="back-link" to="/analysis">
+          重新输入案情
         </Link>
         <p className="page-lead">
           报告只绑定当前已确认事实快照。任何迟到、取消或版本不匹配的响应都不会覆盖当前页面。

@@ -22,7 +22,6 @@ import { resolveCaseFocus as resolveCaseFocusFromContent } from "../content/case
 import { toLegalSourceReference, selectEligibleExamples, selectTaskCandidates } from "../content/gating";
 import { createGovernedContentStore } from "../content/store";
 import { extractCaseFactsFixture } from "../analysis/fixture-extract";
-import { proposeDecisiveQuestionsFixture } from "../analysis/fixture-questions";
 import type {
   CaseAnalysisProvider,
   CaseExtractionRequest,
@@ -33,8 +32,6 @@ import type {
   GovernedContentProvider,
   GovernedContentRelease,
   Providers,
-  QuestionPoolRequest,
-  QuestionPoolResult,
   ReportGenerationResult,
   ServiceAvailability,
 } from "./types";
@@ -56,7 +53,6 @@ export interface FixturePatch extends ReportFailureControls {
   caseFocusesExpired?: boolean;
   legalSourcesExpired?: boolean;
   extractionMode?: UpstreamFailureMode;
-  questionMode?: UpstreamFailureMode;
 }
 
 /** 替身超时模式等待时长；必须明显长于测试注入的引擎超时上限。 */
@@ -77,13 +73,11 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
   let difyAvailable = true;
   let reportMode: NonNullable<ReportFailureControls["reportMode"]> = "complete";
   let extractionMode: UpstreamFailureMode = "normal";
-  let questionMode: UpstreamFailureMode = "normal";
 
   const applyPatch = (patch: FixturePatch) => {
     if (patch.difyAvailable !== undefined) difyAvailable = patch.difyAvailable;
     if (patch.reportMode !== undefined) reportMode = patch.reportMode;
     if (patch.extractionMode !== undefined) extractionMode = patch.extractionMode;
-    if (patch.questionMode !== undefined) questionMode = patch.questionMode;
     if (patch.exampleStatusAll !== undefined) store.setAllExampleStatus(patch.exampleStatusAll);
     if (patch.exampleStatus !== undefined) {
       store.setExampleStatus(patch.exampleStatus.exampleId, patch.exampleStatus.status);
@@ -115,7 +109,6 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       caseFocuses,
       legalSources: snapshot.legalSources.map((source) => ({ ...source })),
       extractionMode,
-      questionMode,
       reportMode,
     };
   };
@@ -131,8 +124,8 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
   };
 
   /**
-   * 案情分析边界替身：确定性提取与追问选题。
-   * 后端负责结构校验、状态机、上限控制与紧急提示，替身不决定任何产品状态。
+   * 案情分析边界替身：确定性提取与报告生成。
+   * 后端负责结构校验、状态机、快照与紧急提示，替身不决定任何产品状态。
    */
   const analysis: CaseAnalysisProvider = {
     async extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult> {
@@ -148,19 +141,12 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       }
       return extractCaseFactsFixture(request.caseText);
     },
-    async proposeDecisiveQuestions(request: QuestionPoolRequest): Promise<QuestionPoolResult> {
-      if (questionMode === "timeout") await delay(FIXTURE_TIMEOUT_DELAY_MS);
-      if (questionMode === "malformed") {
-        return { questions: [{ questionId: "" }] as unknown as QuestionPoolResult["questions"] };
-      }
-      if (questionMode === "empty") return { questions: [] };
-      return proposeDecisiveQuestionsFixture(request);
-    },
     async generateReport(request) {
       const sources = request.legalSources;
       const active = request.facts.filter((fact) => !fact.excluded);
-      const confirmedFacts = active.filter((fact) => fact.status === "confirmed");
-      const facts = confirmedFacts.map((fact) => fact.factId);
+      // 未经确认的候选事实也可以支撑初步意见（ADR-0008）；确认状态由
+      // 报告标签表达，替身不因此把报告降级为条件不足。
+      const facts = active.map((fact) => fact.factId);
       const basis = sources.find((source) => source.status === "current") ?? null;
       const trace = (condition: string, judgment: string) => ({
         factIds: facts.length > 0 ? [facts[0]] : [], condition, conditionStatus: "unknown" as const,
@@ -262,7 +248,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       if (mode === "malformed") {
         return { status: "complete", headline: "", modules: [] } as unknown as ReportGenerationResult;
       }
-      const insufficient = mode === "insufficient_facts" || confirmedFacts.length === 0;
+      const insufficient = mode === "insufficient_facts";
       const conflicting = mode === "conflicting" || active.some((fact) => fact.status === "disputed");
       const unavailable = mode === "basis_unavailable" || basis === null;
       const partial = mode === "partial_failure";
@@ -358,7 +344,6 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       difyAvailable = true;
       reportMode = "complete";
       extractionMode = "normal";
-      questionMode = "normal";
       store.reset();
       return describe();
     },

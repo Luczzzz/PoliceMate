@@ -17,7 +17,7 @@ A private auxiliary checklist created by an officer to track procedural work for
 _Avoid_: App内案件、电子案卷、业务台账
 
 **候选事实**:
-从用户原始表述中提取、但尚未由民警确认的一项案情陈述。候选事实可以进入确认界面和追问过程，但不能直接支撑初步定性意见。
+从用户原始表述中提取、但尚未由民警确认的一项案情陈述。候选事实可以直接进入首份分析，但依据它的每项结论必须标明“系统提取，未经确认”；民警确认后才成为事实选择。
 _Avoid_: 已查明事实、系统认定、自动确认
 
 **事实选择**:
@@ -33,7 +33,7 @@ _Avoid_: 系统采信事实、默认事实、已确认事实
 _Avoid_: 可直接覆盖的案情对象、分析历史、官方案卷版本
 
 **决定性事实缺口**:
-一个尚未确认、且其不同答案可能实质改变定性方向、受立案条件、证据优先级或重大风险判断的信息缺口。追问优先处理这类缺口，但允许民警回答未知、待核实或存在争议。
+一个尚未确认、且其不同答案可能实质改变定性方向、受立案条件、证据优先级或重大风险判断的信息缺口。默认不追问：首份分析把它呈现为分支和核验事项，并提示补充后可缩小结论；民警自愿补充后重新分析。
 _Avoid_: 所有空字段、必填项缺失、模型想知道的信息
 
 **连续案情**:
@@ -61,7 +61,7 @@ A traceable suggestion generated from the officer's 事实选择 that identifies
 _Avoid_: 法律结论、自动定性、处罚建议
 
 **初步定性意见**:
-An analytical opinion generated from confirmed 事实选择 and cited public legal sources about a possible offense or case category and its conditions. It is for officer review and verification, not an official case classification, filing decision, punishment recommendation, or legal determination.
+An analytical opinion generated from 事实选择 or 候选事实 (each basis labelled as confirmed or “系统提取，未经确认”) and cited public legal sources about a possible offense or case category and its conditions. It is for officer review and verification, not an official case classification, filing decision, punishment recommendation, or legal determination.
 _Avoid_: 案件定性结论、系统认定、最终定性
 
 **文书任务**:

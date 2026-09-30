@@ -20,17 +20,15 @@ test("报告时间按北京时间展示、金额使用人民币元且法源标�
   const generatedAt = await page.locator('dt:text-is("生成时间") + dd').innerText();
   expect(generatedAt).toContain("北京时间");
 
-  // 金额：保留原始表述与规范化范围，单位为人民币元。
+  // 金额：报告的事实限制保留规范化后的金额与人民币元单位。
   await page.goto("/analysis");
   await page.getByTestId("case-text-input").fill(VAGUE_TEXT);
   await page.getByTestId("case-input-submit").click();
-  await page.waitForURL(/\/analysis\/facts$/);
-  const amountCard = page.locator('[data-testid="fact-list"] [data-category="amount"]').first();
-  await expect(amountCard).toBeVisible();
-  const value = amountCard.locator('[data-testid^="fact-value-"]');
-  await expect(value).toContainText("原始值");
-  await expect(value).toContainText("元");
-  await expect(amountCard).toContainText("一千多元");
+  await page.waitForURL(/\/analysis\/report$/);
+  const report = page.getByTestId("analysis-report");
+  await expect(report).toBeVisible({ timeout: 20_000 });
+  await expect(report).toContainText("1000");
+  await expect(report).toContainText("元");
 
   // 法源地域：使用实际适用范围标签，而非“本地规定”。
   await page.goto("/documents");

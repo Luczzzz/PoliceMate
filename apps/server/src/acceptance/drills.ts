@@ -2,7 +2,6 @@ import {
   FACT_STATUS_LABELS,
   type CandidateFact,
   type CreateAnalysisRequest,
-  type GenerateReportRequest,
 } from "@policymate/contracts";
 import { buildApp } from "../app";
 import type { AppConfig } from "../config";
@@ -361,52 +360,11 @@ async function drillPrivacyCanary(): Promise<DrillResult> {
         caseText: `3月2日晚上，张某在城南市场门口殴打李某。${PRIVACY_CANARY}`,
       } satisfies CreateAnalysisRequest,
     });
-    const sessionId = created.json().sessionId as string;
-
-    const rounds = await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${sessionId}/rounds`,
-      headers,
-      payload: { answers: [] },
-    });
-    let current = rounds.json();
-    let guard = 0;
-    while (current.stage === "collecting_answers" && guard < 6) {
-      guard += 1;
-      current = (
-        await app.inject({
-          method: "POST",
-          url: `/api/v1/analysis/sessions/${sessionId}/rounds`,
-          headers,
-          payload: {
-            answers: current.questions.map((question: { questionId: string }) => ({
-              questionId: question.questionId,
-              kind: "value",
-              text: PRIVACY_CANARY,
-            })),
-          },
-        })
-      ).json();
-    }
-
-    const snapshotResponse = await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${sessionId}/snapshot`,
-      headers,
-      payload: {},
-    });
-    const snapshot = snapshotResponse.json().snapshot;
-
+    // 提交案情时一次请求内已完成提取、快照与报告；这里只检查元数据出口。
     await app.inject({
-      method: "POST",
-      url: `/api/v1/analysis/sessions/${sessionId}/report`,
+      method: "GET",
+      url: `/api/v1/analysis/sessions/${created.json().state.sessionId}`,
       headers,
-      payload: {
-        contractVersion: "1.0",
-        requestId: "44444444-4444-4444-8444-444444444444",
-        snapshotVersion: snapshot.snapshotVersion,
-        snapshotHash: snapshot.snapshotHash,
-      } satisfies GenerateReportRequest,
     });
 
     for (const url of [

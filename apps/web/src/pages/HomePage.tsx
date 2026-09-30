@@ -31,7 +31,7 @@ export function HomePage() {
         <p className="trial-label">受控试行版 · 程序辅助工具</p>
         <h1 className="page-title page-title--hero">把复杂案情，整理成可核验的研判线索</h1>
         <p className="page-lead page-lead--hero">
-          围绕事实确认、程序核查与公开法源，为一线民警提供清晰、可追溯的辅助参考。
+          围绕案情分析、程序核查与公开法源，为一线民警提供清晰、可追溯的辅助参考。
         </p>
       </header>
 
@@ -56,7 +56,7 @@ export function HomePage() {
             <EntryCard
               capability="caseAnalysis"
               title="案情分析"
-              description="输入脱敏案情，经事实确认与决定性追问后，生成带法源依据的结构化分析报告。"
+              description="输入脱敏案情，直接生成带法源依据的结构化分析报告，可逐项核验并在报告页补充或修改。"
               icon="analysis"
               available={state.data.entries.caseAnalysis.available}
               reason={state.data.entries.caseAnalysis.reason}

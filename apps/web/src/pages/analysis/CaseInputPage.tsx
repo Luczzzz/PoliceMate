@@ -48,7 +48,7 @@ export function CaseInputPage() {
     setFailure(null);
     try {
       await start(caseText);
-      navigate("/analysis/facts");
+      navigate("/analysis/report");
     } catch (error) {
       setFailure(
         error instanceof ApiFailure
@@ -64,9 +64,9 @@ export function CaseInputPage() {
     <CapabilityGate
       capability="caseAnalysis"
       title="案情分析 · 输入案情"
-      intro="输入脱敏后的自由案情，系统将提取候选事实，经你逐项确认后再进入决定性追问。"
+      intro="输入脱敏后的自由案情，系统将提取候选事实并直接生成分析报告。"
       icon="analysis"
-      command="案情输入 → 候选事实确认 → 决定性追问 → 分析前确认"
+      command="案情输入 → 分析报告"
     >
       <div className="case-input" data-testid="case-input">
         <section className="deidentification-notice" data-testid="deidentification-notice" role="note">
@@ -124,10 +124,10 @@ export function CaseInputPage() {
           disabled={overLimit || empty || submitting}
           data-testid="case-input-submit"
         >
-          {submitting ? "正在提取候选事实…" : "提交案情，提取候选事实"}
+          {submitting ? "正在提取事实并生成报告…" : "提交案情，生成分析报告"}
         </button>
         <p className="field__note">
-          提交后系统只做候选事实提取，不会默认确认任何事实；所有候选事实都需要你逐项确认。
+          提交后系统直接提取候选事实并形成事实快照、生成分析报告；未经民警确认的事实会在报告中标注，可在报告页补充或修改。
         </p>
       </div>
 

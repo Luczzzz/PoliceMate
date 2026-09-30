@@ -92,17 +92,19 @@ export interface ApiErrorBody {
   };
 }
 
-/* ---------- 案情分析：候选事实与决定性追问 ---------- */
+/* ---------- 案情分析：候选事实与事实快照 ---------- */
 
-/** 案情分析后端状态机。H5 只依据这些显式状态推进，不解析自然语言。 */
-export type AnalysisStage =
-  | "confirming_facts"
-  | "collecting_answers"
-  | "ready_to_analyze"
-  | "snapshot_confirmed"
-  | "modifying_facts";
+/**
+ * 案情分析后端状态机。提交案情后直接形成事实快照并生成报告，
+ * 不再有事实确认与追问的前置阶段；补充或修改事实时进入 `modifying_facts`。
+ * H5 只依据这些显式状态推进，不解析自然语言。
+ */
+export type AnalysisStage = "snapshot_confirmed" | "modifying_facts";
 
-/** 事实状态。只有 `confirmed` 可以直接支撑主结论。 */
+/**
+ * 事实状态。`confirmed` 表示民警已确认；候选事实也可支撑初步定性意见，
+ * 但依据必须标注“系统提取，未经确认”（ADR-0008）。
+ */
 export type FactStatus = "candidate" | "confirmed" | "denied" | "unknown" | "disputed";
 
 export const FACT_STATUS_LABELS: Record<FactStatus, string> = {
@@ -206,7 +208,7 @@ export interface CandidateFact {
   behaviorRefs: string[];
   status: FactStatus;
   statusLabel: string;
-  /** 来源轮次：0 = 初始提取；>0 = 第 n 轮追问补充；民警新增为 null。 */
+  /** 来源轮次：0 = 初始提取；民警新增为 null。 */
   sourceRound: number | null;
   /** 确认方式；未确认时为 `null`。 */
   confirmationMethod: "officer" | "officer_added" | null;
@@ -219,75 +221,6 @@ export interface CandidateFact {
   replacesFactId: string | null;
   /** 替代本事实的较新事实项 ID；本事实未被替代时为 `null`。 */
   supersededByFactId: string | null;
-}
-
-/** 决定性追问主题，对应锁定的选择优先级。 */
-export type QuestionTopic =
-  | "urgent_safety"
-  | "path_split"
-  | "core_classification"
-  | "filing_conditions"
-  | "evidence_preservation"
-  | "detail";
-
-export const QUESTION_TOPIC_LABELS: Record<QuestionTopic, string> = {
-  urgent_safety: "紧急安全核实",
-  path_split: "案件分流",
-  core_classification: "核心定性",
-  filing_conditions: "受立案条件",
-  evidence_preservation: "证据固定",
-  detail: "报告细节",
-};
-
-/**
- * 决定性追问。每题说明为什么需要确认，允许“不知道、尚未核实、存在争议”。
- * `kind: neutral_safety` 表示仅由未经确认的关键词触发的中性安全问题，
- * 不构成已认定的紧急风险。
- */
-export interface DecisiveQuestion {
-  questionId: string;
-  priority: 1 | 2 | 3 | 4 | 5 | 6;
-  topic: QuestionTopic;
-  topicLabel: string;
-  text: string;
-  whyItMatters: string;
-  kind: "standard" | "neutral_safety";
-  relatedFactIds: string[];
-  answerMaxLength: number;
-  /** 文本回答将形成的补充事实类别。 */
-  answerCategory: FactCategory;
-  /** 所属轮次（1 起）。 */
-  round: number;
-  /** 轮内展示顺序（1 起）。 */
-  orderInRound: number;
-}
-
-export type DecisiveAnswerKind = "value" | "unknown" | "not_verified" | "disputed";
-
-export const DECISIVE_ANSWER_KIND_LABELS: Record<DecisiveAnswerKind, string> = {
-  value: "补充说明",
-  unknown: "不知道",
-  not_verified: "尚未核实",
-  disputed: "存在争议",
-};
-
-export interface DecisiveAnswer {
-  questionId: string;
-  kind: DecisiveAnswerKind;
-  /** `kind: value` 时的自由文本，≤2,000 字符；其余为 `null`。 */
-  text: string | null;
-}
-
-export interface AnswerRecord {
-  questionId: string;
-  round: number;
-  questionText: string;
-  topic: QuestionTopic;
-  topicLabel: string;
-  kind: DecisiveAnswerKind;
-  kindLabel: string;
-  text: string | null;
-  answeredAt: string;
 }
 
 /** 报告前紧急核验提示。只由已确认的紧急风险事实触发。 */
@@ -304,16 +237,7 @@ export interface UrgentRiskPrompt {
   boundaryStatement: string;
 }
 
-/** 剩余决定性事实缺口。 */
-export interface AnalysisGap {
-  gapId: string;
-  topic: QuestionTopic;
-  topicLabel: string;
-  description: string;
-  sourceQuestionIds: string[];
-}
-
-/** 不可变事实快照。用户在分析前确认页主动确认后形成。 */
+/** 不可变事实快照。提交案情后自动形成，补充或修改事实时形成新版本。 */
 export interface FactSnapshot {
   snapshotVersion: number;
   snapshotHash: string;
@@ -552,41 +476,30 @@ export interface AnalysisSessionState {
   /** 当前案情字符数（非内容本身）。 */
   caseCharacterCount: number;
   facts: CandidateFact[];
-  /** 本轮待回答的决定性问题；无进行中轮次时为空数组。 */
-  questions: DecisiveQuestion[];
-  answers: AnswerRecord[];
-  roundsCompleted: number;
-  /** 体验上限：最多三轮、每轮五问、总计十二问。 */
-  roundLimit: number;
-  perRoundLimit: number;
-  totalQuestionLimit: number;
-  /** 追问是否已经结束（到达上限或没有剩余缺口）。 */
-  followUpEnded: boolean;
-  endReason: "limits_reached" | "no_gaps" | null;
-  gaps: AnalysisGap[];
   urgentPrompts: UrgentRiskPrompt[];
-  /** 预期限制说明（预期报告状态），由后端结构化计算。 */
-  expectedStatusNote: string | null;
   independentMatters: IndependentMatters;
-  snapshot: FactSnapshot | null;
+  /** 提交案情时自动形成；确认修改后形成新版本，始终存在。 */
+  snapshot: FactSnapshot;
   /** 当前是否有尚未应用的事实修改；有值时旧报告必须显示“修改尚未应用”。 */
   modification: PendingFactModification | null;
 }
 
+/**
+ * 提交案情或确认事实修改后的响应：一次请求同时返回当前会话状态
+ * 与绑定该事实快照的报告。
+ */
+export interface AnalysisSubmissionResponse {
+  contractVersion: string;
+  state: AnalysisSessionState;
+  report: AnalysisReport;
+}
+
 export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {
-  confirming_facts: "候选事实确认",
-  collecting_answers: "决定性追问",
-  ready_to_analyze: "分析前确认",
   snapshot_confirmed: "事实快照已确认",
   modifying_facts: "补充或修改事实",
 };
 
-/** 体验上限常量：最多三轮、每轮五问、总计十二问。 */
-export const ANALYSIS_ROUND_LIMIT = 3;
-export const ANALYSIS_PER_ROUND_LIMIT = 5;
-export const ANALYSIS_TOTAL_QUESTION_LIMIT = 12;
-
-/** 案情输入与追问答案的锁定上限。 */
+/** 案情输入、补充事实与替代事实的锁定上限。 */
 export const CASE_TEXT_MAX_CHARACTERS = 10_000;
 export const ANSWER_MAX_CHARACTERS = 2_000;
 
@@ -630,11 +543,6 @@ export interface AddFactRequest {
 export interface ReviseFactRequest {
   statement: string;
   resolution: "replace" | "dispute";
-}
-
-/** `POST …/rounds` 请求。开始追问时 `answers` 为空数组；提交本轮回答时必填。 */
-export interface AdvanceRoundRequest {
-  answers: DecisiveAnswer[];
 }
 
 /* ---------- 受治理文书范例 ---------- */
@@ -911,8 +819,6 @@ export interface FixtureControlRequest {
   legalSourcesExpired?: boolean;
   /** 测试控制：候选事实提取边界的失败模式。 */
   extractionMode?: UpstreamFailureMode;
-  /** 测试控制：决定性追问选题边界的失败模式。 */
-  questionMode?: UpstreamFailureMode;
 }
 
 /**
@@ -955,7 +861,6 @@ export interface FixtureControlResponse {
   caseFocuses: FixtureCaseFocusState[];
   legalSources: FixtureLegalSourceState[];
   extractionMode: UpstreamFailureMode;
-  questionMode: UpstreamFailureMode;
   reportMode: NonNullable<ReportFailureControls["reportMode"]>;
 }
 

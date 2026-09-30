@@ -36,7 +36,7 @@ export interface AppConfig {
   maxConcurrency?: number;
   /** 请求体大小上限（字节）。 */
   bodyLimitBytes?: number;
-  /** 事实提取与追问单次超时（规格：30 秒）。 */
+  /** 候选事实提取单次超时（规格：30 秒）。 */
   analysisTimeoutMs?: number;
   /** 完整报告生成超时（规格：90 秒）。 */
   reportTimeoutMs?: number;

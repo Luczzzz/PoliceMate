@@ -50,7 +50,7 @@ test.describe("长任务真实阶段与取消", () => {
     // 迟到响应不得写回，页面保持在输入页。
     await page.waitForTimeout(2800);
     expect(new URL(page.url()).pathname).toBe("/analysis");
-    await expect(page.getByTestId("fact-list")).toHaveCount(0);
+    await expect(page.getByTestId("analysis-report")).toHaveCount(0);
   });
 });
 

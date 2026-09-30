@@ -154,7 +154,9 @@ export function validateReportResult(result: ReportGenerationResult, session: An
       typeof result.workflowVersion !== "string" || result.workflowVersion === "") {
     throw new Error("报告头部结构无效。");
   }
-  const facts = new Set(session.facts.filter((fact) => !fact.excluded && fact.status === "confirmed").map((fact) => fact.factId));
+  // 未经民警确认的候选事实也可以支撑初步定性意见（ADR-0008）；
+  // 依据的确认状态由报告标签单独表达，这里只排除已排除出本次分析的事实。
+  const facts = new Set(session.facts.filter((fact) => !fact.excluded).map((fact) => fact.factId));
   const sources = new Map(legalSources.map((source) => [source.sourceId, source]));
   const seen = new Set<string>();
   for (const module of result.modules) {
@@ -179,7 +181,6 @@ export function validateReportResult(result: ReportGenerationResult, session: An
   validateDocumentTasks(result.documentTasks);
   const hasBasis = legalSources.some(validSource);
   if (result.status === "complete" && !hasBasis) throw new Error("主判断缺少当前有效法源。");
-  if (result.status === "complete" && session.gaps.length > 0) throw new Error("存在决定性事实缺口时不能形成完整主判断。");
   const critical = result.modules.filter((module) => ["preliminary_qualification", "filing_conditions", "legal_basis_trace"].includes(module.id));
   if (result.status === "complete" && critical.some((module) => module.status !== "present")) throw new Error("关键模块未通过校验，不能标记为完整报告。");
   if (result.status === "partial_failure" && !result.modules.some((module) => module.status === "generation_failed")) throw new Error("局部失败状态必须对应失败模块。");
@@ -211,8 +212,8 @@ export function buildReport(
     headline: result.headline,
     participantBehaviorSummary: result.participantBehaviorSummary,
     factLimitations: result.factLimitations,
-    snapshotVersion: session.snapshot?.snapshotVersion ?? 0,
-    snapshotHash: session.snapshot?.snapshotHash ?? "",
+    snapshotVersion: session.snapshot.snapshotVersion,
+    snapshotHash: session.snapshot.snapshotHash,
     contentReleaseId: releaseId || result.contentReleaseId,
     caseFocusId: focus.caseFocusId,
     caseFocusVersion: focus.caseFocusVersion,

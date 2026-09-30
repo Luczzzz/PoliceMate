@@ -1,10 +1,12 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type {
   AddFactRequest,
-  AdvanceRoundRequest,
+  AnalysisSubmissionResponse,
   ApiErrorBody,
   CreateAnalysisRequest,
   FactStatusUpdateRequest,
+  GenerateReportRequest,
+  LegalSourceReference,
   ReviseFactRequest,
 } from "@policymate/contracts";
 import { CONTRACT_VERSION } from "@policymate/contracts";
@@ -14,17 +16,18 @@ import type { ConcurrencyGate } from "../security";
 /**
  * 案情分析路由。
  *
- * 会话只存在于后端短暂运行内存；案情正文、事实值与追问答案不会写入数据库
- * 或日志。能力停用时失败关闭：不在首页入口、详情页和 API 三个层面之外
- * 提供任何旁路。
+ * 会话只存在于后端短暂运行内存；案情正文、事实值与报告不会写入数据库
+ * 或日志。提交案情后一次请求即形成事实快照并生成报告，不再有事实确认
+ * 与追问的前置阶段。能力停用时失败关闭：不在首页入口、报告页和 API
+ * 三个层面之外提供任何旁路。
  */
 export interface AnalysisRoutesOptions {
   engine: AnalysisEngine;
-  legalSources: () => Promise<import("@policymate/contracts").LegalSourceReference[]>;
+  legalSources: () => Promise<LegalSourceReference[]>;
   activeReleaseId: () => Promise<string>;
   analysisCapabilityEnabled: () => boolean;
   analysisBoundaryAvailable: () => Promise<{ available: boolean; reason: string | null }>;
-  /** 把已确认事实解析到受治理重点案情；未提供时不做重点案情法源限定。 */
+  /** 把事实解析到受治理重点案情；未提供时不做重点案情法源限定。 */
   caseFocusResolver?: CaseFocusResolver;
   /** 并发闸门：同一令牌在途分析请求不得超过上限。 */
   concurrencyGate: ConcurrencyGate;
@@ -109,14 +112,46 @@ export async function registerAnalysisRoutes(
     }
   };
 
-  // 创建会话并提取候选事实。
+  /**
+   * 生成绑定当前快照的报告。迟到或版本不匹配的请求失败关闭；
+   * 报告生成失败时整体失败关闭，不展示半成品。
+   */
+  const generateCurrentReport = async (
+    sessionId: string,
+    requestId: string,
+    snapshot: { snapshotVersion: number; snapshotHash: string },
+  ): Promise<import("@policymate/contracts").AnalysisReport> => {
+    const [legalSources, activeReleaseId] = await Promise.all([
+      options.legalSources(),
+      options.activeReleaseId(),
+    ]);
+    return engine.generateReport(
+      sessionId,
+      {
+        contractVersion: CONTRACT_VERSION,
+        requestId,
+        snapshotVersion: snapshot.snapshotVersion,
+        snapshotHash: snapshot.snapshotHash,
+      } satisfies GenerateReportRequest,
+      legalSources,
+      undefined,
+      activeReleaseId,
+      options.caseFocusResolver,
+    );
+  };
+
+  // 提交案情：提取候选事实、形成不可变事实快照并直接生成报告。
   app.post<{ Body: CreateAnalysisRequest }>(
     "/api/v1/analysis/sessions",
     async (request, reply) => {
       try {
         await assertCapability();
-        const state = await withConcurrency(request, () => engine.createSession(request.body));
-        return reply.code(201).send(state);
+        const response = await withConcurrency(request, async (): Promise<AnalysisSubmissionResponse> => {
+          const state = await engine.createSession(request.body);
+          const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot);
+          return { contractVersion: CONTRACT_VERSION, state, report };
+        });
+        return reply.code(201).send(response);
       } catch (error) {
         return handleError(error, request.id, reply);
       }
@@ -144,7 +179,7 @@ export async function registerAnalysisRoutes(
     },
   );
 
-  // 新增遗漏事实。
+  // 新增遗漏事实（仅在“补充或修改事实”阶段）。
   app.post<{ Params: { sessionId: string }; Body: AddFactRequest }>(
     "/api/v1/analysis/sessions/:sessionId/facts",
     async (request, reply) => {
@@ -156,7 +191,7 @@ export async function registerAnalysisRoutes(
     },
   );
 
-  // 逐项标记：确认 / 否认 / 未知 / 争议。
+  // 逐项标记：确认 / 否认 / 未知 / 争议（仅在“补充或修改事实”阶段）。
   app.post<{ Params: { sessionId: string; factId: string }; Body: FactStatusUpdateRequest }>(
     "/api/v1/analysis/sessions/:sessionId/facts/:factId/status",
     async (request, reply) => {
@@ -172,7 +207,7 @@ export async function registerAnalysisRoutes(
     },
   );
 
-  // 排除 / 重新纳入：删除只表示不纳入本次分析。
+  // 排除 / 重新纳入：删除只表示不纳入本次分析（仅在“补充或修改事实”阶段）。
   app.put<{ Params: { sessionId: string; factId: string }; Body: { excluded: boolean } }>(
     "/api/v1/analysis/sessions/:sessionId/facts/:factId/exclusion",
     async (request, reply) => {
@@ -190,40 +225,18 @@ export async function registerAnalysisRoutes(
     },
   );
 
-  // 开始追问 / 提交本轮回答并进入下一轮。
-  app.post<{ Params: { sessionId: string }; Body: AdvanceRoundRequest }>(
-    "/api/v1/analysis/sessions/:sessionId/rounds",
-    async (request, reply) => {
-      try {
-        await assertCapability();
-        return await withConcurrency(request, () =>
-          engine.advanceRound(request.params.sessionId, request.body),
-        );
-      } catch (error) {
-        return handleError(error, request.id, reply);
-      }
-    },
-  );
-
-  // 生成完整报告：必须携带请求 ID 与已确认事实快照版本，迟到/错版本请求失败关闭。
-  app.post<{ Params: { sessionId: string }; Body: import("@policymate/contracts").GenerateReportRequest }>(
+  // 报告生成：必须携带请求 ID 与事实快照版本，迟到/错版本请求失败关闭。
+  app.post<{ Params: { sessionId: string }; Body: GenerateReportRequest }>(
     "/api/v1/analysis/sessions/:sessionId/report",
     async (request, reply) => {
       try {
         await assertCapability();
-        const [legalSources, activeReleaseId] = await Promise.all([
-          options.legalSources(),
-          options.activeReleaseId(),
-        ]);
+        const body = request.body;
+        if (body === null || typeof body !== "object") {
+          return reply.code(400).send(errorBody(request.id, "报告请求缺少快照版本。", 400));
+        }
         return await withConcurrency(request, () =>
-          engine.generateReport(
-            request.params.sessionId,
-            request.body,
-            legalSources,
-            undefined,
-            activeReleaseId,
-            options.caseFocusResolver,
-          ),
+          generateCurrentReport(request.params.sessionId, body.requestId ?? request.id, body),
         );
       } catch (error) {
         return handleError(error, request.id, reply);
@@ -231,13 +244,18 @@ export async function registerAnalysisRoutes(
     },
   );
 
-  // 分析前确认：形成不可变事实快照；在“补充或修改事实”阶段确认修改并重算追问。
+  // 确认待应用的事实修改：形成新的事实快照，并直接返回绑定该快照的新报告。
   app.post<{ Params: { sessionId: string } }>(
     "/api/v1/analysis/sessions/:sessionId/snapshot",
     async (request, reply) => {
       try {
         await assertCapability();
-        return await withConcurrency(request, () => engine.confirmSnapshot(request.params.sessionId));
+        const response = await withConcurrency(request, async (): Promise<AnalysisSubmissionResponse> => {
+          const state = engine.confirmSnapshot(request.params.sessionId);
+          const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot);
+          return { contractVersion: CONTRACT_VERSION, state, report };
+        });
+        return reply.code(200).send(response);
       } catch (error) {
         return handleError(error, request.id, reply);
       }
@@ -257,7 +275,7 @@ export async function registerAnalysisRoutes(
     },
   );
 
-  // 放弃尚未确认的修改：恢复进入修改前的事实、回答与快照。
+  // 放弃尚未确认的修改：恢复进入修改前的事实与快照。
   app.delete<{ Params: { sessionId: string } }>(
     "/api/v1/analysis/sessions/:sessionId/modifications",
     async (request, reply) => {
