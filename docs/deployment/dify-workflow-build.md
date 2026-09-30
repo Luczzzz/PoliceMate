@@ -272,3 +272,54 @@ npm run dify:smoke
 | 报告缺少有效链路 | `traceLinks[].factIds` 必须引用本次 `facts` 中的未排除事实；`formal_basis` 必须逐字段复制 `legalSources` |
 | 模型不支持结构化输出 | 使用普通文本输出，依赖 `wrap` 节点严格解析；仍不接受围栏外的解释性文字 |
 | 报告很长或超时 | 检查模型上下文与 Dify 超时；PoliceMate 报告预算为 90 秒（含一次重试），提取为 30 秒 |
+
+## 13. 给服务器 AI 的复制粘贴指令
+
+把下面整段发给服务器上的 AI，并把 `<所有者批准的提交SHA>` 换成所有者批准部署（或至少
+允许读取）的提交；读取本文件时不要切换到该提交去运行服务，只读文件即可。
+
+```text
+你现在要在服务器上的 Dify 里搭建 PoliceMate 的案情分析工作流。严格遵守以下要求。
+
+【先读文档，不要凭印象搭建】
+1. git fetch origin，然后只读方式查看以下文件（不要部署、不要切换运行目录）：
+   git show <所有者批准的提交SHA>:docs/deployment/dify-workflow-build.md
+   git show <所有者批准的提交SHA>:docs/deployment/dify-integration.md
+   git show <所有者批准的提交SHA>:docs/deployment/dify-prompts/extract-system.md
+   git show <所有者批准的提交SHA>:docs/deployment/dify-prompts/report-system.md
+   git show <所有者批准的提交SHA>:apps/server/src/providers/schemas/dify-extract-result.json
+   git show <所有者批准的提交SHA>:apps/server/src/providers/schemas/dify-report-result.json
+2. 按 dify-workflow-build.md 第 2 至 10 节搭建：Workflow 类型应用、开始节点 4 个字符串变量
+   （operation、payload_json、contract_version、workflow_version）、unwrap 代码节点、
+   operation 条件分支、两个 LLM 节点（System Prompt 与结构化输出 Schema 逐字照抄指定文件）、
+   wrap 代码节点、结束节点输出 result。
+3. 节点代码、变量名、Prompt、Schema 一律照抄，不要自行改写字段名或"优化"提示词。
+
+【边界，不可违反】
+- 只用虚构案情测试。不得输入真实姓名、身份证号、手机号、住址或真实案件材料。
+- 不输出、不粘贴应用 Key 或任何密钥到聊天、日志或 GitHub；Key 只在服务器本地权限 600 的文件里。
+- 不为了"跑通"而放宽 Schema、关闭结构化校验、关闭鉴权或插件签名校验。
+- 不改 PoliceMate 仓库代码来迁就工作流；字段不匹配时改工作流。
+- 不把草稿当已发布版本，不伪造验收记录；未验证的项如实报告为未验证。
+- 模型供应商账号、Key 采购与数据留存政策由所有者确认；缺失时停下来向我索取，不要虚构。
+
+【验收，逐项给出证据】
+- 用虚构案情分别验证 extract 与 report 两个 operation，确认返回的 result 是完整封装，
+  且 contractVersion、promptVersion、requestId、workflowVersion、snapshotVersion、
+  snapshotHash、contentReleaseId 与输入一致。
+- 发布工作流、创建应用 Key，并在服务器权限 600 的环境文件中配置
+  PM_PROVIDER_MODE=dify、PM_ANALYSIS_ENABLED=on、PM_DIFY_BASE_URL=https://真实域名/v1、
+  PM_DIFY_API_KEY、PM_DIFY_WORKFLOW_VERSION（与工作流回传的版本串一致）。
+- 在所有者批准部署的 PoliceMate 提交上运行 npm run dify:schema 与 npm run dify:smoke，
+  报告非内容元数据结果（状态、模块数、缺口与链路数量）；该脚本不打印案情与密钥。
+- 按 dify-workflow-build.md 第 11.3 节逐条验证失败关闭行为（缺 Key、版本错配、上游失败、
+  非法结构、迟到响应），每条给出通过/失败与证据。
+- 按第 11.4 节留档：导出不含凭据的 DSL 到 docs/deployment/dify-workflow.dsl.yml，
+  在 dify-integration.md 记录应用 ID、工作流版本串、模型名称与版本、Prompt 版本
+  actionable-analysis-v1、测试日期与结果。
+
+【交付报告格式】
+只报告：应用 ID、工作流版本串、模型名称与版本、Dify tag/commit、验收逐项通过/失败与证据、
+DSL 与文档提交情况、未完成项与阻塞原因。不要粘贴案情正文、报告正文、密钥或原始上游响应。
+PoliceMate 的案情分析开关在所有者明确批准前保持关闭。
+```
