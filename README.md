@@ -47,6 +47,14 @@ scripts             环境辅助脚本
 - Node.js 24+
 - npm 11+
 
+## 腾讯云部署
+
+Ubuntu 22.04、4 核 4 GB 单机部署 PoliceMate 与 Dify，见
+[详细部署与服务器 AI 交接指南](docs/deployment/tencent-cloud-policymate-dify.md)。
+包括资源检查、Swap、Docker、systemd、Nginx/HTTPS、工作流 API 验证、备份与回滚。
+当前真实 Dify 适配器尚未实现，部署时保持案情分析关闭；后续代码接入与验收见
+[Dify 真实分析接入](docs/deployment/dify-integration.md)。
+
 ## 安装
 
 ```bash
