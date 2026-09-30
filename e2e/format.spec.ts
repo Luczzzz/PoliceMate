@@ -17,6 +17,7 @@ test.beforeEach(async ({ request }) => {
 test("报告时间按北京时间展示、金额使用人民币元且法源标注实际地域", async ({ page }) => {
   // 报告生成时间：北京时间且明确时区。
   await reachReport(page);
+  await page.getByTestId("report-metadata").locator("summary").click();
   const generatedAt = await page.locator('dt:text-is("生成时间") + dd').innerText();
   expect(generatedAt).toContain("北京时间");
 
@@ -27,6 +28,7 @@ test("报告时间按北京时间展示、金额使用人民币元且法源标�
   await page.waitForURL(/\/analysis\/report$/);
   const report = page.getByTestId("analysis-report");
   await expect(report).toBeVisible({ timeout: 20_000 });
+  await page.getByTestId("report-facts-detail").locator("summary").click();
   await expect(report).toContainText("1000");
   await expect(report).toContainText("元");
 

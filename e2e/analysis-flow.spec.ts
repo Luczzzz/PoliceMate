@@ -145,17 +145,21 @@ test.describe("提交案情直达报告", () => {
     await expect(switcher).toContainText("2 份分析");
     await expect(page.getByTestId("analysis-switch-0")).toHaveAttribute("aria-pressed", "true");
 
-    const firstSnapshot = await page.getByTestId("analysis-report").locator("dd").nth(1).innerText();
+    const metadata = page.getByTestId("report-metadata");
+    await metadata.locator("summary").click();
+    const firstSnapshot = await metadata.locator("dd").nth(1).innerText();
     await page.getByTestId("analysis-switch-1").click();
     await expect(page.getByTestId("analysis-switch-1")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("analysis-report")).toBeVisible();
-    const secondSnapshot = await page.getByTestId("analysis-report").locator("dd").nth(1).innerText();
+    await page.getByTestId("report-metadata").locator("summary").click();
+    const secondSnapshot = await page.getByTestId("report-metadata").locator("dd").nth(1).innerText();
     // 每份分析绑定各自独立的事实快照。
     expect(secondSnapshot).not.toBe(firstSnapshot);
 
     // 切回第一份分析恢复其报告与快照。
     await page.getByTestId("analysis-switch-0").click();
-    await expect(page.getByTestId("analysis-report").locator("dd").nth(1)).toHaveText(firstSnapshot);
+    await page.getByTestId("report-metadata").locator("summary").click();
+    await expect(page.getByTestId("report-metadata").locator("dd").nth(1)).toHaveText(firstSnapshot);
   });
 
   test("存在冲突说法时并列展示各说法并按各版本给出分支", async ({ page }) => {

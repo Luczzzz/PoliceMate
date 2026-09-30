@@ -8,6 +8,7 @@ import type {
 } from "@policymate/contracts";
 import { useWorkbench, type MarkFilter } from "../analysis/WorkbenchContext";
 import { ReportBasisLinks } from "./ReportBasisLinks";
+import { ReportModuleStatusLabel } from "./ReportModuleStatusLabel";
 
 /**
  * 报告临时工作台。
@@ -79,9 +80,10 @@ function ModuleHead({
   const collapsed = isCollapsed(collapsedKey);
   return (
     <header className="workbench-header">
-      <h2 className="workbench-header__title">
-        {module.label} <small>{module.status}</small>
-      </h2>
+      <div className="report-module__header">
+        <h2 className="workbench-header__title">{module.label}</h2>
+        <ReportModuleStatusLabel status={module.status} />
+      </div>
       <button
         type="button"
         className="button button--muted workbench-header__toggle"
@@ -263,9 +265,8 @@ export function EvidenceChecklistWorkbench({ module }: { module: ReportModule })
       data-workbench="evidence"
     >
       <ModuleHead module={module} collapsedKey="evidence" testIdSuffix="evidence" />
-      {module.summary ? <p>{module.summary}</p> : null}
+      {module.summary ? <p className="report-module__summary">{module.summary}</p> : null}
       {module.failureReason ? <p role="alert">{module.failureReason}</p> : null}
-      <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
       {isCollapsed("evidence") ? null : (
         <>
           <WorkbenchFilters
@@ -314,12 +315,14 @@ export function EvidenceChecklistWorkbench({ module }: { module: ReportModule })
                 <li className="workbench-item" key={item.itemId} data-testid={`workbench-item-${item.itemId}`}>
                   <p className="workbench-item__text">{item.text}</p>
                   <p className="workbench-item__meta">
-                    <span>{item.priorityLabel}</span>
+                    <span className={`evidence-priority evidence-priority--${item.priority}`}>{item.priorityLabel}</span>
                     <span>{item.holdingStatusLabel}</span>
-                    {item.purpose !== null ? <span>证明目的：{item.purpose}</span> : null}
-                    {item.sourceHint !== null ? <span>可能来源：{item.sourceHint}</span> : null}
-                    {item.preservationRisk !== null ? <span>保全风险：{item.preservationRisk}</span> : null}
                   </p>
+                  <dl className="workbench-item__details">
+                    {item.purpose !== null ? <div><dt>证明目的</dt><dd>{item.purpose}</dd></div> : null}
+                    {item.sourceHint !== null ? <div><dt>可能来源</dt><dd>{item.sourceHint}</dd></div> : null}
+                    {item.preservationRisk !== null ? <div><dt>保全风险</dt><dd>{item.preservationRisk}</dd></div> : null}
+                  </dl>
                   <WorkbenchMarkButtons
                     itemId={item.itemId}
                     markKey={evidenceKey(item.itemId)}
@@ -332,6 +335,7 @@ export function EvidenceChecklistWorkbench({ module }: { module: ReportModule })
           )}
         </>
       )}
+      <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
     </section>
   );
 }
@@ -366,9 +370,8 @@ export function InterviewPointsWorkbench({ module }: { module: ReportModule }) {
       data-workbench="interview"
     >
       <ModuleHead module={module} collapsedKey="interview" testIdSuffix="interview" />
-      {module.summary ? <p>{module.summary}</p> : null}
+      {module.summary ? <p className="report-module__summary">{module.summary}</p> : null}
       {module.failureReason ? <p role="alert">{module.failureReason}</p> : null}
-      <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
       {isCollapsed("interview") ? null : (
         <>
           <WorkbenchFilters
@@ -424,6 +427,7 @@ export function InterviewPointsWorkbench({ module }: { module: ReportModule }) {
           )}
         </>
       )}
+      <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
     </section>
   );
 }

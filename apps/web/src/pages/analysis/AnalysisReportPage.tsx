@@ -6,6 +6,7 @@ import type {
   ReportFactConflict,
   ReportGapBranch,
   ReportModule,
+  ReportModuleId,
   ReportDocumentTask,
   UrgentRiskPrompt,
 } from "@policymate/contracts";
@@ -20,9 +21,20 @@ import { ApiFailure } from "../../api/client";
 import { useAnalysisFlow } from "../../analysis/AnalysisSessionContext";
 import { ClearAnalysisButton } from "../../components/ClearAnalysisButton";
 import { FailurePanel } from "../../components/FailurePanel";
+import { Icon } from "../../components/Icon";
+import { ReportModuleStatusLabel } from "../../components/ReportModuleStatusLabel";
 import { ReportBasisLinks } from "../../components/ReportBasisLinks";
 import { EvidenceChecklistWorkbench, InterviewPointsWorkbench } from "../../components/ReportWorkbench";
 import { formatBeijingDateTime } from "../../util/datetime";
+
+const MODULE_READING_ORDER: ReportModuleId[] = [
+  "preliminary_qualification",
+  "filing_conditions",
+  "evidence_checklist",
+  "interview_points",
+  "enforcement_risks",
+  "legal_basis_trace",
+];
 
 const REPORT_BOUNDARY_STATEMENT =
   "本报告是程序辅助工具输出，不构成案件定性、受立案决定、处罚建议或法律结论；请结合现行规范、正式案卷和官方系统核验。";
@@ -45,6 +57,7 @@ function documentTaskState(task: ReportDocumentTask) {
 }
 
 function GenericModule({ module }: { module: ReportModule }) {
+  const items = module.items.filter((item) => item !== module.summary);
   return (
     <section
       id={`report-module-${module.id}`}
@@ -52,15 +65,18 @@ function GenericModule({ module }: { module: ReportModule }) {
       data-testid={`report-module-${module.id}`}
       data-workbench="none"
     >
-      <h2>
-        {module.label} <small>{module.status}</small>
-      </h2>
-      {module.summary ? <p>{module.summary}</p> : null}
-      <ul>
-        {module.items.map((item, index) => (
-          <li key={index}>{item}</li>
-        ))}
-      </ul>
+      <header className="report-module__header">
+        <h2>{module.label}</h2>
+        <ReportModuleStatusLabel status={module.status} />
+      </header>
+      {module.summary ? <p className="report-module__summary">{module.summary}</p> : null}
+      {items.length > 0 ? (
+        <ul className="report-module__items">
+          {items.map((item, index) => (
+            <li key={index}>{item}</li>
+          ))}
+        </ul>
+      ) : null}
       {module.traceLinks.length > 0 ? (
         <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
       ) : null}
@@ -202,7 +218,7 @@ function ConflictVersionCard({ version }: { version: ReportConflictVersion }) {
         </div>
       ) : (
         <p className="field__note" data-testid={`conflict-branch-note-${version.factId}`}>
-          该说法对应的程序分支见下方「决定性事实缺口与条件分支」。
+          该说法对应的程序分支见「决定性事实缺口与条件分支」。
         </p>
       )}
     </li>
@@ -241,11 +257,12 @@ function FactConflictSection({ conflicts }: { conflicts: ReportFactConflict[] })
 function ReportModuleIndex({ modules }: { modules: ReportModule[] }) {
   return (
     <nav className="report-index" aria-label="六模块索引" data-testid="report-module-index">
-      <h2>报告模块</h2>
+      <h2>报告目录</h2>
       <ul>
-        {modules.map((module) => (
+        {modules.map((module, index) => (
           <li key={module.id}>
             <a href={`#report-module-${module.id}`} data-testid={`report-index-${module.id}`}>
+              <span className="report-index__number" aria-hidden="true">{index + 1}</span>
               {module.label}
             </a>
           </li>
@@ -278,7 +295,7 @@ function GapBranchSection({
 }) {
   const actionsDisabled = disabled || answeringGapId !== null;
   return (
-    <section className="gap-branches" aria-labelledby="gap-branches-title" data-testid="gap-branches">
+    <section id="report-gaps" className="gap-branches" aria-labelledby="gap-branches-title" data-testid="gap-branches">
       <h2 id="gap-branches-title">决定性事实缺口与条件分支</h2>
       <p className="field__note">
         以下缺口尚未确认，报告仍会生成。每条分支给出条件与可能的程序路径；补齐信息后重新分析可以缩小结论范围，也可以先回答“未知”或“待核实”。
@@ -384,6 +401,9 @@ function ReportBody({
   onAnswerGap: (gapId: string, answer: GapAnswer) => void;
   gapError: string | null;
 }) {
+  const modules = MODULE_READING_ORDER.flatMap((id) =>
+    report.modules.filter((module) => module.id === id),
+  );
   return (
     <div className="report-body" data-testid="analysis-report">
       {urgentPrompts.length > 0 ? (
@@ -395,34 +415,42 @@ function ReportBody({
       ) : null}
 
       <header className="report-header">
-        <p className="status-badge" data-testid="report-status">
-          {report.statusLabel}
-        </p>
+        <div className="report-header__status-row">
+          <p className="status-badge" data-testid="report-status">
+            {report.statusLabel}
+          </p>
+          <span className="report-header__label">案情分析报告</span>
+        </div>
         <h1 className="page-title" data-testid="report-headline">{report.headline}</h1>
-        <dl className="detail-list">
-          <div>
-            <dt>生成时间</dt>
-            <dd>{formatBeijingDateTime(report.generatedAt)}</dd>
-          </div>
-          <div>
-            <dt>事实快照</dt>
-            <dd>
-              v{report.snapshotVersion} · {report.snapshotHash}
-            </dd>
-          </div>
-          <div>
-            <dt>内容发布批次</dt>
-            <dd>{report.contentReleaseId}</dd>
-          </div>
-          <div>
-            <dt>工作流版本</dt>
-            <dd>{report.workflowVersion}</dd>
-          </div>
-          <div>
-            <dt>契约版本</dt>
-            <dd>{report.contractVersion}</dd>
-          </div>
-        </dl>
+        <p className="report-header__lead">{REPORT_BOUNDARY_STATEMENT}</p>
+        <p className="report-header__time">{formatBeijingDateTime(report.generatedAt)}</p>
+        <details className="report-metadata" data-testid="report-metadata">
+          <summary>报告信息与事实快照</summary>
+          <dl className="detail-list">
+            <div>
+              <dt>生成时间</dt>
+              <dd>{formatBeijingDateTime(report.generatedAt)}</dd>
+            </div>
+            <div>
+              <dt>事实快照</dt>
+              <dd>
+                v{report.snapshotVersion} · {report.snapshotHash}
+              </dd>
+            </div>
+            <div>
+              <dt>内容发布批次</dt>
+              <dd>{report.contentReleaseId}</dd>
+            </div>
+            <div>
+              <dt>工作流版本</dt>
+              <dd>{report.workflowVersion}</dd>
+            </div>
+            <div>
+              <dt>契约版本</dt>
+              <dd>{report.contractVersion}</dd>
+            </div>
+          </dl>
+        </details>
       </header>
 
       {supersededReport !== null ? (
@@ -460,37 +488,45 @@ function ReportBody({
         </section>
       ) : null}
 
-      {report.conflicts.length > 0 ? <FactConflictSection conflicts={report.conflicts} /> : null}
+      <ReportModuleIndex modules={modules} />
 
-      {pendingModification ? (
-        <section className="modification-banner" role="status" data-testid="modification-pending">
-          <h2>修改尚未应用</h2>
-          <p>
-            你正在补充或修改事实。这些修改尚未形成新的事实快照，因此当前报告仍然有效；确认新快照后，本报告及其临时标记、筛选和折叠状态会立即失效。
+      <div className="report-actions" aria-label="报告操作">
+        {pendingModification ? (
+          <section className="modification-banner" role="status" data-testid="modification-pending">
+            <h2>修改尚未应用</h2>
+            <p>
+              你正在补充或修改事实。这些修改尚未形成新的事实快照，因此当前报告仍然有效；确认新快照后，本报告及其临时标记、筛选和折叠状态会立即失效。
+            </p>
+            <Link className="button button--primary" to="/analysis/modify" data-testid="continue-modification">
+              继续补充或修改事实
+            </Link>
+          </section>
+        ) : (
+          <div className="analysis-actions">
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={() => onModify()}
+              disabled={modifying}
+              data-testid="begin-modification"
+            >
+              {modifying ? "正在进入修改…" : "补充或修改事实"}
+            </button>
+            <ClearAnalysisButton testId="clear-analysis-report" />
+          </div>
+        )}
+        {modifyError !== null ? (
+          <p className="case-input__error" role="alert" data-testid="modify-error">
+            {modifyError}
           </p>
-          <Link className="button button--primary" to="/analysis/modify" data-testid="continue-modification">
-            继续补充或修改事实
-          </Link>
-        </section>
-      ) : (
-        <div className="analysis-actions">
-          <button
-            type="button"
-            className="button button--secondary"
-            onClick={() => onModify()}
-            disabled={modifying}
-            data-testid="begin-modification"
-          >
-            {modifying ? "正在进入修改…" : "补充或修改事实"}
-          </button>
-          <ClearAnalysisButton testId="clear-analysis-report" />
-        </div>
-      )}
-      {modifyError !== null ? (
-        <p className="case-input__error" role="alert" data-testid="modify-error">
-          {modifyError}
-        </p>
-      ) : null}
+        ) : null}
+      </div>
+
+      <section className="report-findings" aria-label="初步分析与受立案条件">
+        {modules.slice(0, 2).map((module) => (
+          <ReportModuleSection key={module.id} module={module} />
+        ))}
+      </section>
 
       {report.gapBranches.length > 0 ? (
         <GapBranchSection
@@ -503,40 +539,46 @@ function ReportBody({
         />
       ) : null}
 
-      {report.factLimitations.length > 0 ? (
-        <section className="expected-note">
-          <h2>事实限制</h2>
-          <ul>
-            {report.factLimitations.map((item, index) => (
-              <li key={index}>{item}</li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      {report.conflicts.length > 0 ? <FactConflictSection conflicts={report.conflicts} /> : null}
 
-      <section>
-        <h2>参与者 × 行为摘要</h2>
-        {report.participantBehaviorSummary.length === 0 ? (
-          <p>当前没有可结构化展示的参与者—行为组合。</p>
-        ) : (
-          <ul>
-            {report.participantBehaviorSummary.map((item, index) => (
-              <li key={index}>
-                <strong>
-                  {item.participant} × {item.behavior}
-                </strong>
-                ：{item.note}
-              </li>
-            ))}
-          </ul>
-        )}
+      <section className="report-context" aria-labelledby="report-context-title">
+        <h2 id="report-context-title">案情与事实限制</h2>
+        <details className="report-context__details" data-testid="report-facts-detail">
+          <summary>参与者与行为 · 事实限制 {report.factLimitations.length} 项</summary>
+          <div className="report-context__grid">
+            <section className="report-context__block">
+              <h3>参与者 × 行为</h3>
+              {report.participantBehaviorSummary.length === 0 ? (
+                <p>当前没有可结构化展示的参与者—行为组合。</p>
+              ) : (
+                <ul>
+                  {report.participantBehaviorSummary.map((item, index) => (
+                    <li key={index}>
+                      <strong>{item.participant} × {item.behavior}</strong>：{item.note}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            {report.factLimitations.length > 0 ? (
+              <section className="report-context__block">
+                <h3>事实限制</h3>
+                <ul>
+                  {report.factLimitations.map((item, index) => (
+                    <li key={index}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </div>
+        </details>
       </section>
 
-      <ReportModuleIndex modules={report.modules} />
-
-      {report.modules.map((module) => (
-        <ReportModuleSection key={module.id} module={module} />
-      ))}
+      <div className="report-modules">
+        {modules.slice(2).map((module) => (
+          <ReportModuleSection key={module.id} module={module} />
+        ))}
+      </div>
 
       <section className="document-tasks" aria-labelledby="document-tasks-title" data-testid="document-tasks">
         <h2 id="document-tasks-title">文书任务</h2>
@@ -554,7 +596,9 @@ function ReportBody({
         )}
       </section>
 
-      <p className="field__note">{REPORT_BOUNDARY_STATEMENT}</p>
+      <footer className="report-footer">
+        <p>{REPORT_BOUNDARY_STATEMENT}</p>
+      </footer>
     </div>
   );
 }
@@ -648,18 +692,17 @@ export function AnalysisReportPage() {
   };
 
   return (
-    <div className="page page--reading analysis-page">
-      <header className="subpage-header">
+    <div className="page page--reading analysis-page report-page">
+      <header className="report-page__toolbar">
         <Link className="back-link" to="/analysis">
+          <Icon name="arrowLeft" size={18} />
           重新输入案情
         </Link>
-        <p className="page-lead">
-          报告只绑定当前已确认事实快照。任何迟到、取消或版本不匹配的响应都不会覆盖当前页面。
-        </p>
       </header>
       <AnalysisSwitcher />
       {report ? (
         <ReportBody
+          key={`${report.sessionId}:${report.snapshotVersion}:${report.snapshotHash}`}
           report={report}
           urgentPrompts={state.urgentPrompts}
           pendingModification={state.modification !== null}

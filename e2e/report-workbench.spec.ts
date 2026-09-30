@@ -144,7 +144,8 @@ test.describe("补充或修改事实与报告失效", () => {
 
   test("替代或争议事实必须由民警显式选择，确认新快照后旧报告失效且状态不迁移", async ({ page }) => {
     await reachReport(page);
-    const oldSnapshotLabel = await page.getByTestId("analysis-report").locator("dd").nth(1).innerText();
+    await page.getByTestId("report-metadata").locator("summary").click();
+    const oldSnapshotLabel = await page.getByTestId("report-metadata").locator("dd").nth(1).innerText();
     await page.getByTestId("workbench-reviewed-ev-01").click();
     await page.getByTestId("workbench-focus-ev-01").click();
     await page.getByTestId("workbench-filter-priority-high-evidence").click();
@@ -168,7 +169,8 @@ test.describe("补充或修改事实与报告失效", () => {
     await expect(page.getByTestId("analysis-report")).toBeVisible({ timeout: 20_000 });
 
     // 旧报告已失效：新报告绑定到新的事实快照。
-    const newSnapshotLabel = await page.getByTestId("analysis-report").locator("dd").nth(1).innerText();
+    await page.getByTestId("report-metadata").locator("summary").click();
+    const newSnapshotLabel = await page.getByTestId("report-metadata").locator("dd").nth(1).innerText();
     expect(newSnapshotLabel).not.toBe(oldSnapshotLabel);
     // 新报告不得按项目 ID、文本或相似度迁移旧临时标记。
     await expect(page.getByTestId("workbench-reviewed-ev-01")).toHaveAttribute("aria-pressed", "false");
@@ -221,8 +223,9 @@ test.describe("决定性缺口分支与补充后重新分析", () => {
     await expect(injuryBranch).toContainText("若");
     await expect(injuryBranch).toContainText("依据");
     await expect(page.getByTestId("gap-branch-gap-injury")).toContainText("缩小结论范围");
+    await page.getByTestId("report-metadata").locator("summary").click();
     const snapshotBeforeAnswer = await page
-      .getByTestId("analysis-report")
+      .getByTestId("report-metadata")
       .locator("dd")
       .nth(1)
       .innerText();
@@ -232,7 +235,7 @@ test.describe("决定性缺口分支与补充后重新分析", () => {
     await expect(page.getByTestId("gap-answer-label-gap-injury")).toContainText("未知");
     await expect(page.getByTestId("gap-branch-gap-injury")).toBeVisible();
     const snapshotAfterAnswer = await page
-      .getByTestId("analysis-report")
+      .getByTestId("report-metadata")
       .locator("dd")
       .nth(1)
       .innerText();
@@ -252,8 +255,9 @@ test.describe("决定性缺口分支与补充后重新分析", () => {
 
     // 该缺口解决，新快照不同于旧快照，旧报告标为已失效。
     await expect(page.getByTestId("gap-branch-gap-injury")).toHaveCount(0);
+    await page.getByTestId("report-metadata").locator("summary").click();
     const snapshotAfterSupplement = await page
-      .getByTestId("analysis-report")
+      .getByTestId("report-metadata")
       .locator("dd")
       .nth(1)
       .innerText();

@@ -1,4 +1,19 @@
-import type { ReportTraceLink } from "@policymate/contracts";
+import type { LegalSourceStatus, ReportTraceLink } from "@policymate/contracts";
+
+const SOURCE_STATUS_LABELS: Record<LegalSourceStatus, string> = {
+  current: "现行有效",
+  future: "尚未生效",
+  superseded: "已被替代",
+  repealed: "已废止",
+  uncertain: "效力待核实",
+};
+
+const CONDITION_LABELS: Record<ReportTraceLink["conditionStatus"], string> = {
+  satisfied: "条件满足",
+  not_satisfied: "条件不满足",
+  unknown: "尚待核实",
+  conflicting: "存在争议",
+};
 
 /**
  * 报告可解释链路与依据事实明细。
@@ -16,8 +31,8 @@ export function ReportBasisLinks({
 }) {
   if (traceLinks.length === 0) return null;
   return (
-    <details>
-      <summary>查看可解释链路（{traceLinks.length}）</summary>
+    <details className="report-basis">
+      <summary>事实与法律依据（{traceLinks.length} 条链路）</summary>
       {traceLinks.map((trace, traceIndex) => (
         <div key={traceIndex} className="trace-link">
           {trace.factReferences.length > 0 ? (
@@ -44,14 +59,14 @@ export function ReportBasisLinks({
           ) : (
             <p>事实：{trace.factIds.join("、")}</p>
           )}
-          <p>
-            条件：{trace.condition} → {trace.conditionStatus}
-          </p>
-          <p>判断：{trace.judgment}</p>
+          <dl className="trace-link__details">
+            <div><dt>适用条件</dt><dd>{trace.condition} · {CONDITION_LABELS[trace.conditionStatus]}</dd></div>
+            <div><dt>核验判断</dt><dd>{trace.judgment}</dd></div>
+          </dl>
           {trace.basis ? (
             <p>
               依据：{trace.basis.title} {trace.basis.article}（{trace.basis.issuingAuthority}，
-              {trace.basis.status}）
+              {SOURCE_STATUS_LABELS[trace.basis.status]}）
             </p>
           ) : null}
         </div>
