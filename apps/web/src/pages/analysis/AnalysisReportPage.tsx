@@ -1,10 +1,15 @@
 import { useState } from "react";
 import type { AnalysisReport, ReportModule, ReportDocumentTask } from "@policymate/contracts";
+import {
+  REPORT_BASIS_CONFIRMATION_LABELS,
+  reportHasUnconfirmedBasis,
+} from "@policymate/contracts";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { ApiFailure } from "../../api/client";
 import { useAnalysisFlow } from "../../analysis/AnalysisSessionContext";
 import { ClearAnalysisButton } from "../../components/ClearAnalysisButton";
 import { FailurePanel } from "../../components/FailurePanel";
+import { ReportBasisLinks } from "../../components/ReportBasisLinks";
 import { EvidenceChecklistWorkbench, InterviewPointsWorkbench } from "../../components/ReportWorkbench";
 import { formatBeijingDateTime } from "../../util/datetime";
 
@@ -42,23 +47,7 @@ function GenericModule({ module }: { module: ReportModule }) {
         ))}
       </ul>
       {module.traceLinks.length > 0 ? (
-        <details>
-          <summary>查看可解释链路（{module.traceLinks.length}）</summary>
-          {module.traceLinks.map((trace, index) => (
-            <div key={index} className="trace-link">
-              <p>
-                事实：{trace.factIds.join("、")} → 条件：{trace.condition} → {trace.conditionStatus}
-              </p>
-              <p>判断：{trace.judgment}</p>
-              {trace.basis ? (
-                <p>
-                  依据：{trace.basis.title} {trace.basis.article}（{trace.basis.issuingAuthority}，
-                  {trace.basis.status}）
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </details>
+        <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
       ) : null}
       {module.failureReason ? <p role="alert">{module.failureReason}</p> : null}
     </section>
@@ -159,6 +148,19 @@ function ReportBody({
           </div>
         </dl>
       </header>
+
+      {reportHasUnconfirmedBasis(report) ? (
+        <section
+          className="unconfirmed-basis-notice"
+          role="status"
+          data-testid="unconfirmed-basis-notice"
+        >
+          <h2>存在{REPORT_BASIS_CONFIRMATION_LABELS.system_extracted_unconfirmed}的依据</h2>
+          <p>
+            本报告部分依据为系统从案情中提取、尚未经民警确认。相关结论仅供核验方向，请先对照原始表述核对，确认后再据此判断。
+          </p>
+        </section>
+      ) : null}
 
       {pendingModification ? (
         <section className="modification-banner" role="status" data-testid="modification-pending">

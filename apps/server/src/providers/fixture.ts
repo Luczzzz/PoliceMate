@@ -149,7 +149,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       const facts = active.map((fact) => fact.factId);
       const basis = sources.find((source) => source.status === "current") ?? null;
       const trace = (condition: string, judgment: string) => ({
-        factIds: facts.length > 0 ? [facts[0]] : [], condition, conditionStatus: "unknown" as const,
+        factIds: facts.length > 0 ? [facts[0]] : [], factReferences: [], condition, conditionStatus: "unknown" as const,
         judgment, basis: basis === null ? null : { ...basis, article: basis.articles[0]?.location ?? "", minimalText: basis.articles[0]?.minimalText ?? "" }, basisKind: "formal_basis" as const,
       });
       const module = (id: import("@policymate/contracts").ReportModuleId, status: import("@policymate/contracts").ReportModuleStatus, items: string[], traces = (status === "present" && facts.length > 0 && basis !== null) ? [trace("待核实条件", "仅供民警核验")] : [], extra: { evidenceItems?: ReportEvidenceChecklistItem[]; interviewItems?: ReportInterviewPointItem[] } = {}) => ({

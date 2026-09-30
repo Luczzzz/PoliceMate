@@ -2044,7 +2044,8 @@ svg {
 
 /* ---------- 事实修改 ---------- */
 
-.modification-banner {
+.modification-banner,
+.unconfirmed-basis-notice {
   padding: 0.9rem 1rem;
   border: 1px solid #b54708;
   border-left: 4px solid #b54708;
@@ -2052,13 +2053,15 @@ svg {
   background: #fffaeb;
 }
 
-.modification-banner h2 {
+.modification-banner h2,
+.unconfirmed-basis-notice h2 {
   margin: 0 0 0.4rem;
   font-size: 1rem;
   color: #b54708;
 }
 
-.modification-banner p {
+.modification-banner p,
+.unconfirmed-basis-notice p {
   margin: 0 0 0.6rem;
   color: var(--body);
   font-size: 0.8125rem;
@@ -2255,4 +2258,52 @@ svg {
   margin: 0;
   color: var(--mute);
   font-size: 0.75rem;
+}
+
+/* ---------- 报告依据确认状态 ---------- */
+
+.basis-list {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.basis-fact {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--surface-soft);
+}
+
+.basis-fact__confirmation {
+  justify-self: start;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: #fffaeb;
+  color: #b54708;
+}
+
+.basis-fact[data-confirmation="officer_confirmed"] .basis-fact__confirmation {
+  background: #ecfdf3;
+  color: #067647;
+}
+
+.basis-fact__category {
+  font-size: 0.75rem;
+  color: var(--mute);
+}
+
+.basis-fact__statement {
+  font-size: 0.875rem;
+  color: var(--ink);
+}
+
+.basis-fact__original {
+  font-size: 0.75rem;
+  color: var(--body);
 }

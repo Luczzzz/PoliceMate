@@ -32,6 +32,7 @@ import type {
 import type { TelemetrySink } from "../telemetry";
 import {
   applyConservativeDowngrade,
+  attachReportFactReferences,
   buildReport,
   validateReportResult,
   type ConservativeDowngradeStatus,
@@ -557,8 +558,10 @@ export class AnalysisEngine {
       this.reportTimeoutMs,
       async () => {
         const generated = await this.deps.generateReport!(providerRequest);
-        validateReportResult(generated, state, effectiveLegalSources);
-        return generated;
+        // 提供者只返回事实 ID；确认状态与依据明细必须由后端从未被排除的事实补齐。
+        const enriched = attachReportFactReferences(generated, session.facts);
+        validateReportResult(enriched, state, effectiveLegalSources);
+        return enriched;
       },
     );
     const effectiveResult =

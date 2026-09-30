@@ -7,6 +7,7 @@ import type {
   ReportModule,
 } from "@policymate/contracts";
 import { useWorkbench, type MarkFilter } from "../analysis/WorkbenchContext";
+import { ReportBasisLinks } from "./ReportBasisLinks";
 
 /**
  * 报告临时工作台。
@@ -264,6 +265,7 @@ export function EvidenceChecklistWorkbench({ module }: { module: ReportModule })
       <ModuleHead module={module} collapsedKey="evidence" testIdSuffix="evidence" />
       {module.summary ? <p>{module.summary}</p> : null}
       {module.failureReason ? <p role="alert">{module.failureReason}</p> : null}
+      <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
       {isCollapsed("evidence") ? null : (
         <>
           <WorkbenchFilters
@@ -366,6 +368,7 @@ export function InterviewPointsWorkbench({ module }: { module: ReportModule }) {
       <ModuleHead module={module} collapsedKey="interview" testIdSuffix="interview" />
       {module.summary ? <p>{module.summary}</p> : null}
       {module.failureReason ? <p role="alert">{module.failureReason}</p> : null}
+      <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
       {isCollapsed("interview") ? null : (
         <>
           <WorkbenchFilters

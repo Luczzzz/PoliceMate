@@ -5,8 +5,10 @@ import type {
   EvidenceHoldingStatus,
   EvidencePriority,
   LegalSourceReference,
+  ReportBasisConfirmation,
   ReportDocumentTask,
   ReportEvidenceChecklistItem,
+  ReportFactReference,
   ReportInterviewPointItem,
   ReportModule,
   ReportModuleId,
@@ -17,6 +19,7 @@ import {
   CONTRACT_VERSION,
   EVIDENCE_HOLDING_STATUS_LABELS,
   EVIDENCE_PRIORITY_LABELS,
+  REPORT_BASIS_CONFIRMATION_LABELS,
   REPORT_DOCUMENT_TASK_BOUNDARY,
   REPORT_MODULE_LABELS,
   REPORT_STATUS_LABELS,
@@ -53,8 +56,73 @@ function matchesCanonicalBasis(
     basis.officialUrl === source.officialUrl;
 }
 
-function validTrace(trace: ReportTraceLink, facts: ReadonlySet<string>, sources: ReadonlyMap<string, LegalSourceReference>): boolean {
-  if (trace.factIds.length === 0 || trace.factIds.some((id) => !facts.has(id))) return false;
+/** 报告依据的确认状态：只有民警已确认的事实才标为已确认（ADR-0008 第 2 点）。 */
+export function basisConfirmation(status: CandidateFact["status"]): ReportBasisConfirmation {
+  return status === "confirmed" ? "officer_confirmed" : "system_extracted_unconfirmed";
+}
+
+/** 把一个快照事实转换为报告依据明细；确认状态由后端统一判定。 */
+export function toReportFactReference(fact: CandidateFact): ReportFactReference {
+  const confirmation = basisConfirmation(fact.status);
+  return {
+    factId: fact.factId,
+    category: fact.category,
+    categoryLabel: fact.categoryLabel,
+    statement: fact.statement,
+    originalWording: fact.originalWording,
+    value: fact.value === null ? null : { ...fact.value },
+    status: fact.status,
+    confirmation,
+    confirmationLabel: REPORT_BASIS_CONFIRMATION_LABELS[confirmation],
+  };
+}
+
+/**
+ * 用当前快照事实补齐报告依据明细。
+ *
+ * 提供者只能返回事实 ID；确认状态、类别、结构化值与原始表述一律由后端从
+ * 未被排除的事实解析，避免外部边界自行声称“已确认”。
+ */
+export function attachReportFactReferences(
+  result: ReportGenerationResult,
+  facts: readonly CandidateFact[],
+): ReportGenerationResult {
+  const byId = new Map(
+    facts.filter((fact) => !fact.excluded).map((fact) => [fact.factId, fact] as const),
+  );
+  return {
+    ...result,
+    modules: result.modules.map((module) => ({
+      ...module,
+      traceLinks: module.traceLinks.map((trace) => ({
+        ...trace,
+        factReferences: trace.factIds
+          .map((factId) => byId.get(factId))
+          .filter((fact): fact is CandidateFact => fact !== undefined)
+          .map(toReportFactReference),
+      })),
+    })),
+  };
+}
+
+/** 依据明细必须与 `factIds` 一一对应，且与快照事实完全一致。 */
+function referencesMatchFacts(
+  trace: ReportTraceLink,
+  facts: ReadonlyMap<string, CandidateFact>,
+): boolean {
+  if (trace.factReferences.length !== trace.factIds.length) return false;
+  for (let index = 0; index < trace.factIds.length; index += 1) {
+    const fact = facts.get(trace.factIds[index]);
+    const reference = trace.factReferences[index];
+    if (fact === undefined || reference === undefined) return false;
+    if (JSON.stringify(toReportFactReference(fact)) !== JSON.stringify(reference)) return false;
+  }
+  return true;
+}
+
+function validTrace(trace: ReportTraceLink, facts: ReadonlyMap<string, CandidateFact>, sources: ReadonlyMap<string, LegalSourceReference>): boolean {
+  if (!Array.isArray(trace.factIds) || trace.factIds.length === 0 || trace.factIds.some((id) => !facts.has(id))) return false;
+  if (!Array.isArray(trace.factReferences) || !referencesMatchFacts(trace, facts)) return false;
   if (!trace.condition || !trace.judgment) return false;
   if (!["satisfied", "not_satisfied", "unknown", "conflicting"].includes(trace.conditionStatus)) return false;
   if (trace.basisKind === "formal_basis") {
@@ -67,8 +135,7 @@ function validTrace(trace: ReportTraceLink, facts: ReadonlySet<string>, sources:
   return true;
 }
 
-const EVIDENCE_PRIORITIES = new Set<string>(Object.keys(EVIDENCE_PRIORITY_LABELS));
-const EVIDENCE_HOLDING_STATUSES = new Set<string>(Object.keys(EVIDENCE_HOLDING_STATUS_LABELS));
+const EVIDENCE_PRIORITIES = new Set<string>(Object.keys(EVIDENCE_PRIORITY_LABELS));const EVIDENCE_HOLDING_STATUSES = new Set<string>(Object.keys(EVIDENCE_HOLDING_STATUS_LABELS));
 const STAGE_LABELS = new Map(HANDLING_STAGE_CATALOG.map((stage) => [stage.id, stage.label]));
 
 function validateEvidenceItems(items: ReportEvidenceChecklistItem[]): void {
@@ -156,7 +223,11 @@ export function validateReportResult(result: ReportGenerationResult, session: An
   }
   // 未经民警确认的候选事实也可以支撑初步定性意见（ADR-0008）；
   // 依据的确认状态由报告标签单独表达，这里只排除已排除出本次分析的事实。
-  const facts = new Set(session.facts.filter((fact) => !fact.excluded).map((fact) => fact.factId));
+  const facts = new Map(
+    session.facts
+      .filter((fact) => !fact.excluded)
+      .map((fact) => [fact.factId, fact] as const),
+  );
   const sources = new Map(legalSources.map((source) => [source.sourceId, source]));
   const seen = new Set<string>();
   for (const module of result.modules) {

@@ -86,6 +86,26 @@ test.describe("提交案情直达报告", () => {
     }
   });
 
+  test("报告展示每条依据的确认状态，并在存在未经确认依据时顶部提示", async ({ page }) => {
+    await submitCase(page, NORMAL_TEXT);
+
+    // 顶部显著提示未经确认依据。
+    const notice = page.getByTestId("unconfirmed-basis-notice");
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText("未经确认");
+
+    // 每条依据都带确认状态标签（不只是第一条）。
+    const qualification = page.getByTestId("report-module-preliminary_qualification");
+    await qualification.locator("summary").click();
+    const labels = qualification.locator('[data-testid^="basis-confirmation-"]');
+    await expect(labels).not.toHaveCount(0);
+    const texts = await labels.allTextContents();
+    expect(texts.length).toBeGreaterThan(0);
+    for (const text of texts) {
+      expect(text).toBe("系统提取，未经确认");
+    }
+  });
+
   test("模糊事实仍被提取并形成报告，余额与范围不阻塞报告生成", async ({ page }) => {
     await submitCase(page, VAGUE_TEXT);
     await expect(page.getByTestId("analysis-report")).toBeVisible();

@@ -291,10 +291,35 @@ export const REPORT_MODULE_LABELS: Record<ReportModuleId, string> = {
   legal_basis_trace: "法律依据与可解释链路",
 };
 
+/**
+ * 报告依据的确认状态（ADR-0008 第 2 点）。
+ *
+ * 未确认事实可以支撑初步定性意见，但每条依据必须可见地标注来源；
+ * 只有民警在后续补充中确认过的事实才是 `officer_confirmed`。
+ */
+export type ReportBasisConfirmation = "officer_confirmed" | "system_extracted_unconfirmed";
+
+export const REPORT_BASIS_CONFIRMATION_LABELS: Record<ReportBasisConfirmation, string> = {
+  officer_confirmed: "民警已确认",
+  system_extracted_unconfirmed: "系统提取，未经确认",
+};
+
+/**
+ * 报告中的一条依据事实。
+ *
+ * 携带稳定 ID、类别、结构化值与原始表述，便于民警核对系统有没有理解错；
+ * `confirmation`/`confirmationLabel` 是报告必须展示的确认状态。
+ */
 export interface ReportFactReference {
   factId: string;
+  category: FactCategory;
+  categoryLabel: string;
   statement: string;
+  originalWording: string;
+  value: FactValue | null;
   status: FactStatus;
+  confirmation: ReportBasisConfirmation;
+  confirmationLabel: string;
 }
 
 export interface ReportLegalBasis {
@@ -315,6 +340,8 @@ export interface ReportLegalBasis {
 
 export interface ReportTraceLink {
   factIds: string[];
+  /** 依据事实的结构化明细，与 `factIds` 一一对应；确认状态由后端补齐。 */
+  factReferences: ReportFactReference[];
   condition: string;
   conditionStatus: "satisfied" | "not_satisfied" | "unknown" | "conflicting";
   judgment: string;
@@ -427,6 +454,22 @@ export interface AnalysisReport {
   workflowVersion: string;
   modules: ReportModule[];
   documentTasks: ReportDocumentTask[];
+}
+
+/**
+ * 报告是否存在未经民警确认的依据事实。
+ *
+ * 报告页顶部必须在结果为 `true` 时给出显著提示；确认状态只看
+ * `ReportFactReference.confirmation`，不解析自然语言。
+ */
+export function reportHasUnconfirmedBasis(report: AnalysisReport): boolean {
+  return report.modules.some((module) =>
+    module.traceLinks.some((trace) =>
+      trace.factReferences.some(
+        (reference) => reference.confirmation === "system_extracted_unconfirmed",
+      ),
+    ),
+  );
 }
 
 export interface GenerateReportRequest {

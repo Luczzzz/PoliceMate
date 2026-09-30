@@ -6,6 +6,7 @@ import type {
   CreateAnalysisRequest,
   GenerateReportRequest,
 } from "@policymate/contracts";
+import { reportHasUnconfirmedBasis } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { AnalysisEngine, SESSION_IDLE_TTL_MS } from "../src/analysis/engine";
@@ -513,6 +514,99 @@ describe("报告生成边界", () => {
     expect(response.statusCode).toBe(200);
     const report = response.json() as AnalysisReport;
     expect(report.snapshotHash).toBe(snapshot.snapshotHash);
+    await app.close();
+  });
+});
+
+describe("报告依据标注确认状态", () => {
+  it("每条依据都带确认状态字段；初次报告的全部依据均标为未经确认", async () => {
+    const { app } = await makeApp();
+    const { report } = await submitCase(app, SAMPLE_TEXT);
+
+    const traces = report.modules.flatMap((module) => module.traceLinks);
+    const references = traces.flatMap((trace) => trace.factReferences);
+    expect(references.length).toBeGreaterThan(0);
+    for (const reference of references) {
+      expect(reference.factId).not.toBe("");
+      expect(reference.category).not.toBe("");
+      expect(reference.categoryLabel).not.toBe("");
+      expect(reference.statement).not.toBe("");
+      expect(reference.originalWording).not.toBe("");
+      expect(reference.confirmation).toBe("system_extracted_unconfirmed");
+      expect(reference.confirmationLabel).toBe("系统提取，未经确认");
+    }
+    // 依据明细与事实 ID 一一对应。
+    for (const trace of traces) {
+      expect(trace.factReferences.map((reference) => reference.factId)).toEqual(trace.factIds);
+    }
+    expect(reportHasUnconfirmedBasis(report)).toBe(true);
+    await app.close();
+  });
+
+  it("初步定性意见的依据同样带标签，且不出现官方定性或处罚表述", async () => {
+    const { app } = await makeApp();
+    const { report } = await submitCase(app, SAMPLE_TEXT);
+
+    const qualification = report.modules.find(
+      (module) => module.id === "preliminary_qualification",
+    );
+    const references = qualification?.traceLinks.flatMap((trace) => trace.factReferences) ?? [];
+    expect(references.length).toBeGreaterThan(0);
+    for (const reference of references) {
+      expect(reference.confirmationLabel).toMatch(/民警已确认|系统提取，未经确认/);
+    }
+    const text = [
+      report.headline,
+      qualification?.summary ?? "",
+      ...(qualification?.items ?? []),
+      ...(qualification?.traceLinks.flatMap((trace) => [trace.condition, trace.judgment]) ?? []),
+    ].join("\n");
+    expect(text).not.toMatch(/已构成|应当(?:处以|给予|作出)?处罚|追究(?:刑事|行政)责任|定罪/);
+    await app.close();
+  });
+
+  it("民警在后续补充中确认过的事实在新报告里标为已确认", async () => {
+    const { app } = await makeApp();
+    const first = await submitCase(app, SAMPLE_TEXT);
+
+    const begin = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/modifications`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(begin.statusCode).toBe(200);
+
+    for (const fact of first.state.facts.filter((item) => !item.excluded)) {
+      const changed = await app.inject({
+        method: "POST",
+        url: `/api/v1/analysis/sessions/${first.state.sessionId}/facts/${fact.factId}/status`,
+        headers: contractHeaders,
+        payload: { status: "confirmed" },
+      });
+      expect(changed.statusCode).toBe(200);
+    }
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: `/api/v1/analysis/sessions/${first.state.sessionId}/snapshot`,
+      headers: contractHeaders,
+      payload: {},
+    });
+    expect(confirmed.statusCode).toBe(200);
+    const next = confirmed.json() as AnalysisSubmissionResponse;
+    expect(next.state.snapshot?.snapshotVersion).toBe(2);
+
+    const references = next.report.modules
+      .flatMap((module) => module.traceLinks)
+      .flatMap((trace) => trace.factReferences);
+    expect(references.length).toBeGreaterThan(0);
+    for (const reference of references) {
+      expect(reference.status).toBe("confirmed");
+      expect(reference.confirmation).toBe("officer_confirmed");
+      expect(reference.confirmationLabel).toBe("民警已确认");
+    }
+    expect(reportHasUnconfirmedBasis(next.report)).toBe(false);
     await app.close();
   });
 });
