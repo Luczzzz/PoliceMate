@@ -3,7 +3,7 @@
   "result": {
     "contractVersion": "1.0",
     "releaseId": "release-trial-0001",
-    "generatedAt": "2026-09-29T00:00:00.000Z",
+    "generatedAt": "2026-09-30T13:10:06.588Z",
     "ok": false,
     "blocked": true,
     "checks": [
@@ -46,13 +46,13 @@
     "scenarios": [
       {
         "id": "AC-01",
-        "title": "输入脱敏的典型重点案情并确认完整事实后生成结构完整、可追溯的初步意见报告",
+        "title": "提交脱敏的典型重点案情后直接生成结构完整、可追溯的初步意见报告",
         "evidenceCount": 7
       },
       {
         "id": "AC-02",
-        "title": "缺少决定性事实时在上限内追问并生成条件不足报告",
-        "evidenceCount": 3
+        "title": "缺少决定性事实时直接生成条件不足报告，不阻断报告生成",
+        "evidenceCount": 2
       },
       {
         "id": "AC-03",
@@ -196,17 +196,17 @@
       },
       {
         "id": "AC-31",
-        "title": "已确认事实触发人身危险、医疗、未成年人保护或证据灭失风险时报告前显示核验提示",
-        "evidenceCount": 2
+        "title": "系统提取的风险标记直接触发置顶核验提示，无需民警确认且不下结论",
+        "evidenceCount": 1
       },
       {
         "id": "AC-32",
-        "title": "仅有未经确认的危险关键词时只提出不中断流程的安全核实问题",
-        "evidenceCount": 2
+        "title": "无风险标记的案情不出现紧急提示",
+        "evidenceCount": 1
       },
       {
         "id": "AC-33",
-        "title": "输入模糊日期或金额时保留原始值、范围和精确程度，仅在法律边界需要时追问",
+        "title": "输入模糊日期或金额时保留原始值、范围和精确程度",
         "evidenceCount": 3
       },
       {

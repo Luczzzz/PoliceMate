@@ -10,7 +10,7 @@ import type { AcceptanceScenario } from "./types";
 export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
   {
     id: "AC-01",
-    title: "输入脱敏的典型重点案情并确认完整事实后生成结构完整、可追溯的初步意见报告",
+    title: "提交脱敏的典型重点案情后直接生成结构完整、可追溯的初步意见报告",
     specSections: ["6", "7", "10"],
     automated: [
       { file: "apps/server/test/case-focus-scenarios.test.ts", title: "%s 生成完整且可追溯的六模块报告" },
