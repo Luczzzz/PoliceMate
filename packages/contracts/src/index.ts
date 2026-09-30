@@ -223,6 +223,11 @@ export interface CandidateFact {
   supersededByFactId: string | null;
   /** 本事实明确补齐的决定性缺口 ID；系统初始提取未绑定缺口时为空数组。 */
   resolvesGapIds: string[];
+  /**
+   * 争议事实分组标识。同一事实存在不同说法时，各版本共享同一分组，
+   * 报告必须并列展示全部版本，不得静默选定其中之一；非争议事实为 `null`。
+   */
+  disputeGroupId: string | null;
 }
 
 /**
@@ -400,6 +405,35 @@ export interface ReportGapBranch extends GapBranch {
   officerAnswerLabel: string | null;
 }
 
+/**
+ * 争议事实的固定边界说明：全部说法并列保留，系统未作单一认定。
+ */
+export const REPORT_CONFLICT_BOUNDARY =
+  "以下为本次分析中互相冲突的说法，系统全部并列保留，未选定任一版本，也不代表任何版本已查明；请分别核验后再作判断。";
+
+/**
+ * 争议事实的一个版本。
+ *
+ * 除携带与该版本对应的依据明细外，还给出该版本成立时适用的条件分支
+ * （来自未解决的决定性缺口）；无法对应分支时为 `null`。
+ */
+export interface ReportConflictVersion extends ReportFactReference {
+  branch: GapBranchPath | null;
+}
+
+/**
+ * 同一事实的一组互相冲突的说法。全部版本必须并列展示，系统不得只保留一个。
+ */
+export interface ReportFactConflict {
+  conflictId: string;
+  description: string;
+  factCategory: FactCategory;
+  factCategoryLabel: string;
+  versions: ReportConflictVersion[];
+  /** 固定边界说明，必须等于 `REPORT_CONFLICT_BOUNDARY`。 */
+  boundaryStatement: string;
+}
+
 export interface ReportTraceLink {
   factIds: string[];
   /** 依据事实的结构化明细，与 `factIds` 一一对应；确认状态由后端补齐。 */
@@ -517,6 +551,8 @@ export interface AnalysisReport {
   modules: ReportModule[];
   /** 未解决的决定性事实缺口及其条件分支；全部解决时为空数组。 */
   gapBranches: ReportGapBranch[];
+  /** 同一事实的不同说法；全部并列保留，系统不选定任一版本。无争议时为空数组。 */
+  conflicts: ReportFactConflict[];
   documentTasks: ReportDocumentTask[];
 }
 
@@ -567,7 +603,11 @@ export const REPORT_STATUS_LABELS: Record<ReportStatus, string> = {
   partial_failure: "部分模块失败—仅展示已校验内容",
 };
 
-/** 独立事项检测结果。系统提示拆分分析，不把独立事项合并为一个连续案情。 */
+/**
+ * 独立事项检测结果。检测到互不相关的事项时，后端自动拆分为多份分析，
+ * 每份分析各自形成独立会话标识、独立事实快照与独立报告；本字段描述
+ * 当前这份分析是否来自多事项输入。
+ */
 export interface IndependentMatters {
   detected: boolean;
   note: string | null;
@@ -582,6 +622,12 @@ export interface AnalysisSessionState {
   stageLabel: string;
   /** 当前案情字符数（非内容本身）。 */
   caseCharacterCount: number;
+  /** 本次提交内该分析的序号（从 1 开始）；单一连续案情时为 1。 */
+  analysisIndex: number;
+  /** 该分析的展示名称，如「事项一」；用于多份分析的切换。 */
+  analysisLabel: string;
+  /** 本次提交按互不相关事项拆出的分析总数；单一连续案情时为 1。 */
+  analysisCount: number;
   facts: CandidateFact[];
   urgentPrompts: UrgentRiskPrompt[];
   independentMatters: IndependentMatters;
@@ -599,6 +645,23 @@ export interface AnalysisSubmissionResponse {
   contractVersion: string;
   state: AnalysisSessionState;
   report: AnalysisReport;
+}
+
+/** 一份分析：独立会话状态与绑定其事实快照的报告。 */
+export interface AnalysisSubmissionItem {
+  state: AnalysisSessionState;
+  report: AnalysisReport;
+}
+
+/**
+ * `POST /api/v1/analysis/sessions` 响应。
+ *
+ * 输入包含互不相关的事项时，后端按确定性规则自动拆分为多份分析：每份分析
+ * 有独立的会话标识、独立事实快照与独立报告，前端据此切换展示。
+ */
+export interface AnalysisIntakeResponse {
+  contractVersion: string;
+  analyses: AnalysisSubmissionItem[];
 }
 
 export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  AnalysisIntakeResponse,
   AnalysisReport,
   AnalysisSubmissionResponse,
   CandidateFact,
@@ -51,7 +52,10 @@ async function submitCase(app: App, caseText: string): Promise<AnalysisSubmissio
     payload: { caseText } satisfies CreateAnalysisRequest,
   });
   expect(response.statusCode).toBe(201);
-  return response.json() as AnalysisSubmissionResponse;
+  const body = response.json() as AnalysisIntakeResponse;
+  const first = body.analyses[0];
+  if (first === undefined) throw new Error("提交案情未返回分析。");
+  return { contractVersion: body.contractVersion, state: first.state, report: first.report };
 }
 
 const SAMPLE_TEXT = "3月2日晚上，张某在城南市场门口殴打李某。李某手部擦伤。";
@@ -189,8 +193,13 @@ describe("POST /api/v1/analysis/sessions", () => {
     const brokenAnalysis = {
       async extractCaseFacts() {
         return {
-          facts: [{ factId: "" } as unknown as CandidateFact],
-          independentMatters: { detected: false, note: null },
+          matters: [
+            {
+              matterId: "matter-1",
+              label: "事项一",
+              facts: [{ factId: "" } as unknown as CandidateFact],
+            },
+          ],
         };
       },
     };
@@ -303,7 +312,7 @@ describe("会话读取、清除与空闲失效", () => {
     const fixtures = createFixtureControls();
     const engine = new AnalysisEngine(fixtures.analysis);
     const t0 = new Date("2026-01-01T00:00:00.000Z");
-    const state = await engine.createSession({ caseText: SAMPLE_TEXT }, t0);
+    const [state] = await engine.createSessions({ caseText: SAMPLE_TEXT }, t0);
 
     expect(engine.getSession(state.sessionId, t0).sessionId).toBe(state.sessionId);
 

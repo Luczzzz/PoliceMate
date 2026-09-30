@@ -73,7 +73,7 @@ describe("运行元数据不包含禁止内容", () => {
 
     const state = await app.inject({
       method: "GET",
-      url: `/api/v1/analysis/sessions/${session.json().state.sessionId}`,
+      url: `/api/v1/analysis/sessions/${session.json().analyses[0].state.sessionId}`,
       headers,
     });
     expect(state.statusCode).toBe(200);

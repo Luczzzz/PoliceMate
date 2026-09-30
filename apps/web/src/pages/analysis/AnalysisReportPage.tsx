@@ -2,12 +2,15 @@ import { useState } from "react";
 import type {
   AnalysisReport,
   GapAnswer,
+  ReportConflictVersion,
+  ReportFactConflict,
   ReportGapBranch,
   ReportModule,
   ReportDocumentTask,
   UrgentRiskPrompt,
 } from "@policymate/contracts";
 import {
+  FACT_STATUS_LABELS,
   GAP_ANSWER_LABELS,
   REPORT_BASIS_CONFIRMATION_LABELS,
   reportHasUnconfirmedBasis,
@@ -126,6 +129,107 @@ function UrgentPromptCard({ prompt }: { prompt: UrgentRiskPrompt }) {
         </ul>
       </div>
       <p className="urgent-prompt__boundary">{prompt.boundaryStatement}</p>
+    </section>
+  );
+}
+
+/**
+ * 多份分析的切换入口。
+ *
+ * 输入包含互不相关的事项时，后端自动拆成多份分析；这里只切换当前展示的
+ * 分析，不合并结论，也不在前端重新拆分。
+ */
+function AnalysisSwitcher() {
+  const { analyses, selectedAnalysisIndex, selectAnalysis } = useAnalysisFlow();
+  if (analyses.length < 2) return null;
+  return (
+    <nav className="analysis-switcher" data-testid="analysis-switcher" aria-label="多份分析切换">
+      <h2 className="analysis-switcher__title">本次输入拆分为 {analyses.length} 份分析</h2>
+      <p className="field__note">
+        输入包含互不相关的事项，系统已自动拆分。每份分析有独立的事实快照与报告，请分别研判，不会合并为一个结论。
+      </p>
+      <ul className="analysis-switcher__list">
+        {analyses.map((analysis, index) => (
+          <li key={analysis.state.sessionId}>
+            <button
+              type="button"
+              className={
+                index === selectedAnalysisIndex ? "button button--primary" : "button button--muted"
+              }
+              aria-pressed={index === selectedAnalysisIndex}
+              onClick={() => selectAnalysis(index)}
+              data-testid={`analysis-switch-${index}`}
+            >
+              {analysis.state.analysisLabel}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/**
+ * 争议事实：并列展示全部版本，并按各版本给出分支。
+ *
+ * 系统不得静默选定任一版本；每条分支只来自未解决的决定性缺口。
+ */
+function ConflictVersionCard({ version }: { version: ReportConflictVersion }) {
+  return (
+    <li className="conflict-version" data-testid={`conflict-version-${version.factId}`}>
+      <p className="conflict-version__statement">{version.statement}</p>
+      <p className="field__note">
+        原文：{version.originalWording} · {version.confirmationLabel} · {FACT_STATUS_LABELS[version.status]}
+      </p>
+      {version.branch !== null ? (
+        <div
+          className="conflict-version__branch"
+          data-testid={`conflict-branch-${version.factId}`}
+        >
+          <p className="conflict-version__condition">
+            若此说法成立（{version.branch.diversionLabel}）
+          </p>
+          <ul>
+            {version.branch.proceduralPath.map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+          {version.branch.basis !== null ? (
+            <p className="field__note">
+              依据：{version.branch.basis.title} {version.branch.basis.article}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function FactConflictSection({ conflicts }: { conflicts: ReportFactConflict[] }) {
+  return (
+    <section
+      className="fact-conflicts"
+      aria-labelledby="fact-conflicts-title"
+      data-testid="fact-conflicts"
+    >
+      <h2 id="fact-conflicts-title">争议事实（全部说法并列保留）</h2>
+      {conflicts.map((conflict) => (
+        <article
+          className="fact-conflict"
+          key={conflict.conflictId}
+          data-testid={`fact-conflict-${conflict.conflictId}`}
+        >
+          <h3>
+            {conflict.factCategoryLabel}：{conflict.description}
+          </h3>
+          <ul className="conflict-version-list">
+            {conflict.versions.map((version) => (
+              <ConflictVersionCard key={version.factId} version={version} />
+            ))}
+          </ul>
+          <p className="field__note">{conflict.boundaryStatement}</p>
+        </article>
+      ))}
     </section>
   );
 }
@@ -352,6 +456,8 @@ function ReportBody({
         </section>
       ) : null}
 
+      {report.conflicts.length > 0 ? <FactConflictSection conflicts={report.conflicts} /> : null}
+
       {pendingModification ? (
         <section className="modification-banner" role="status" data-testid="modification-pending">
           <h2>修改尚未应用</h2>
@@ -547,6 +653,7 @@ export function AnalysisReportPage() {
           报告只绑定当前已确认事实快照。任何迟到、取消或版本不匹配的响应都不会覆盖当前页面。
         </p>
       </header>
+      <AnalysisSwitcher />
       {report ? (
         <ReportBody
           report={report}

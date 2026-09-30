@@ -9,7 +9,6 @@ import type {
   DocumentTaskCandidate,
   GapBranch,
   HandlingStageCatalogEntry,
-  IndependentMatters,
   ReportDocumentTask,
   UrgentRiskCategory,
   FactSnapshot,
@@ -47,12 +46,22 @@ export interface CaseExtractionRequest {
 }
 
 /**
- * 提取结果：确定性候选事实列表与独立事项提示。
+ * 一份连续案情的提取结果。输入含互不相关事项时边界返回多个分组，
+ * 每个分组形成一份独立分析（独立会话标识与独立事实快照）。
+ * 同一事实的不同说法共享 `disputeGroupId`，读取方必须并列展示、不得择一。
+ */
+export interface CaseExtractionMatter {
+  matterId: string;
+  label: string;
+  facts: CandidateFact[];
+}
+
+/**
+ * 提取结果：按连续案情拆出的一个或多个事项分组。
  * 替身实现必须稳定；后端会在结构校验失败时整体失败关闭。
  */
 export interface CaseExtractionResult {
-  facts: CandidateFact[];
-  independentMatters: IndependentMatters;
+  matters: CaseExtractionMatter[];
 }
 
 /** 报告生成请求。 */

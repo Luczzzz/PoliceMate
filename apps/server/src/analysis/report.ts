@@ -2,12 +2,15 @@ import type {
   AnalysisReport,
   AnalysisSessionState,
   CandidateFact,
+  CaseFocusDiversion,
   EvidenceHoldingStatus,
   EvidencePriority,
   LegalSourceReference,
   ReportBasisConfirmation,
+  ReportConflictVersion,
   ReportDocumentTask,
   ReportEvidenceChecklistItem,
+  ReportFactConflict,
   ReportFactReference,
   ReportGapBranch,
   ReportInterviewPointItem,
@@ -20,7 +23,9 @@ import {
   CONTRACT_VERSION,
   EVIDENCE_HOLDING_STATUS_LABELS,
   EVIDENCE_PRIORITY_LABELS,
+  FACT_CATEGORY_LABELS,
   REPORT_BASIS_CONFIRMATION_LABELS,
+  REPORT_CONFLICT_BOUNDARY,
   REPORT_DOCUMENT_TASK_BOUNDARY,
   REPORT_MODULE_LABELS,
   REPORT_STATUS_LABELS,
@@ -104,6 +109,71 @@ export function attachReportFactReferences(
       })),
     })),
   };
+}
+
+/** 争议事实说明：优先给出针对该类别的固定说法，否则回退到通用说明。 */
+const CONFLICT_DESCRIPTIONS: Partial<Record<CandidateFact["category"], string>> = {
+  result: "对同一事实的结果或后果存在不同说法，尚不能按单一版本确认。",
+  amount: "对同一事实的金额存在不同说法，尚不能按单一版本确认。",
+  count: "对同一事实的次数或数量存在不同说法，尚不能按单一版本确认。",
+  time: "对同一事实的时间存在不同说法，尚不能按单一版本确认。",
+  place: "对同一事实的地点存在不同说法，尚不能按单一版本确认。",
+  behavior: "对同一行为过程存在不同说法，尚不能按单一版本确认。",
+};
+
+/**
+ * 把一个争议版本的原始表述映射到分流方向。
+ *
+ * 只用于把“不同说法”对应到已有的条件分支，不产生任何结论：
+ * 伤情程度表述对应刑事/行政方向，其他表述无法对应分支时返回 `null`。
+ */
+function diversionForConflictVersion(fact: CandidateFact): CaseFocusDiversion | null {
+  const raw = fact.value?.raw ?? fact.statement;
+  if (/轻微伤|擦伤|挫伤|未达轻伤/.test(raw)) return "administrative";
+  if (/轻伤|重伤/.test(raw)) return "criminal";
+  return null;
+}
+
+/**
+ * 从当前快照中整理争议事实，并按未解决缺口并列给出各版本的分支。
+ *
+ * - 只收集未被排除且带争议分组标识的事实；
+ * - 同一分组的事实按稳定顺序全部保留，不做去重、不选定版本；
+ * - 若存在与争议类别相同的未解决缺口，则把各版本映射到对应分流分支。
+ */
+export function buildFactConflicts(
+  facts: readonly CandidateFact[],
+  gapBranches: readonly ReportGapBranch[],
+): ReportFactConflict[] {
+  const grouped = new Map<string, CandidateFact[]>();
+  for (const fact of facts) {
+    if (fact.excluded || fact.disputeGroupId === null) continue;
+    const bucket = grouped.get(fact.disputeGroupId) ?? [];
+    bucket.push(fact);
+    grouped.set(fact.disputeGroupId, bucket);
+  }
+
+  return [...grouped.entries()].map(([conflictId, versions]) => {
+    const category = versions[0]?.category ?? "other";
+    const gap = gapBranches.find((branch) => branch.factCategory === category) ?? null;
+    const conflictVersions: ReportConflictVersion[] = versions.map((fact) => {
+      const diversion = diversionForConflictVersion(fact);
+      const branch =
+        gap === null || diversion === null
+          ? null
+          : gap.branches.find((candidate) => candidate.diversion === diversion) ?? null;
+      return { ...toReportFactReference(fact), branch };
+    });
+    return {
+      conflictId,
+      description:
+        CONFLICT_DESCRIPTIONS[category] ?? `对同一${FACT_CATEGORY_LABELS[category]}存在不同说法，尚不能按单一版本确认。`,
+      factCategory: category,
+      factCategoryLabel: FACT_CATEGORY_LABELS[category],
+      versions: conflictVersions,
+      boundaryStatement: REPORT_CONFLICT_BOUNDARY,
+    };
+  });
 }
 
 /** 依据明细必须与 `factIds` 一一对应，且与快照事实完全一致。 */
@@ -274,6 +344,7 @@ export function buildReport(
     caseFocusVersion: null,
   },
   gapBranches: ReportGapBranch[] = [],
+  conflicts: ReportFactConflict[] = [],
 ): AnalysisReport {
   return {
     contractVersion: CONTRACT_VERSION,
@@ -293,6 +364,7 @@ export function buildReport(
     workflowVersion: result.workflowVersion,
     modules: result.modules,
     gapBranches,
+    conflicts,
     documentTasks: result.documentTasks,
   };
 }

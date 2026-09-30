@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  AnalysisIntakeResponse,
   AnalysisSubmissionResponse,
   CreateAnalysisRequest,
   GenerateReportRequest,
@@ -65,11 +66,13 @@ async function submitCase(app: App): Promise<SnapshotSession> {
     payload: { caseText: SAMPLE_TEXT } satisfies CreateAnalysisRequest,
   });
   expect(created.statusCode).toBe(201);
-  const body = created.json() as AnalysisSubmissionResponse;
-  const snapshot = body.state.snapshot;
+  const body = created.json() as AnalysisIntakeResponse;
+  const first = body.analyses[0];
+  if (first === undefined) throw new Error("提交案情未返回分析。");
+  const snapshot = first.state.snapshot;
   if (snapshot === null) throw new Error("缺少事实快照。");
   return {
-    sessionId: body.state.sessionId,
+    sessionId: first.state.sessionId,
     snapshotVersion: snapshot.snapshotVersion,
     snapshotHash: snapshot.snapshotHash,
   };

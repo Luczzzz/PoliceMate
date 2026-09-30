@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  AnalysisIntakeResponse,
   AnalysisReport,
   AnalysisSessionState,
   AnalysisSubmissionResponse,
@@ -22,9 +23,11 @@ import { ApiFailure, requestJson } from "../api/client";
 /**
  * 案情分析会话状态。
  *
- * 会话标识、报告与临时工作台状态只存在于当前浏览器标签页的内存中：
- * 不写入 URL、localStorage/sessionStorage，也不形成可恢复历史。
- * 刷新或关闭标签页后，本次分析即不可恢复（符合产品规格的生命周期）。
+ * 一次提交可能因输入包含互不相关的事项而拆成多份分析；每份分析有独立会话
+ * 标识、独立事实快照与独立报告，前端在当前标签页内切换。会话标识、报告与
+ * 临时工作台状态只存在于当前浏览器标签页的内存中：不写入 URL、
+ * localStorage/sessionStorage，也不形成可恢复历史。刷新或关闭标签页后，
+ * 本次分析即不可恢复（符合产品规格的生命周期）。
  */
 export type AnalysisFlowStatus =
   | { kind: "idle" }
@@ -32,11 +35,18 @@ export type AnalysisFlowStatus =
   | { kind: "ready"; state: AnalysisSessionState }
   | { kind: "failed"; failure: ApiFailure };
 
+/** 会话内保存的一份分析：独立状态与绑定其快照的报告。 */
+export interface StoredAnalysis {
+  state: AnalysisSessionState;
+  /** 报告失效（快照被替换或会话被清除）时为 `null`。 */
+  report: AnalysisReport | null;
+}
+
 /** 会话空闲上限：与产品规格一致（30 分钟不可恢复）。 */
 export const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 /**
- * 提交案情一次请求内完成提取与报告生成：提取最多 30 秒、报告最多 90 秒
- * （均含一次自动重试），客户端留出传输余量。
+ * 提交案情一次请求内完成提取、拆分与报告生成：提取最多 30 秒、每份报告
+ * 最多 90 秒（均含一次自动重试），客户端留出传输余量。
  */
 export const SUBMISSION_REQUEST_TIMEOUT_MS = 125 * 1000;
 /** 单独重新生成报告最多等待 90 秒（含一次自动重试）；客户端留出传输余量。 */
@@ -53,8 +63,14 @@ interface AnalysisFlowContextValue {
   sessionId: string | null;
   /** 服务端会话已消失（过期/清除）；页面应回到输入页并提示。 */
   sessionGone: boolean;
-  /** 当前有效的六模块报告；仅在绑定的事实快照仍有效时保留。 */
+  /** 当前选中分析的有效六模块报告；仅在绑定的事实快照仍有效时保留。 */
   report: AnalysisReport | null;
+  /** 本次提交拆出的全部分析；单一连续案情时长度为 1。 */
+  analyses: StoredAnalysis[];
+  /** 当前选中的分析序号（从 0 开始）。 */
+  selectedAnalysisIndex: number;
+  /** 在多份分析之间切换。 */
+  selectAnalysis: (index: number) => void;
   /** 因新快照而失效的旧报告标识；有值时报告页必须显示失效说明。 */
   supersededReport: { snapshotVersion: number; snapshotHash: string } | null;
   dismissSupersededReport: () => void;
@@ -90,30 +106,70 @@ interface AnalysisFlowContextValue {
 
 const AnalysisFlowContext = createContext<AnalysisFlowContextValue | null>(null);
 
+type FlowPhase = "idle" | "busy" | "ready" | "failed";
+
 function extractSessionGone(failure: ApiFailure): boolean {
   return failure.status === 404;
 }
 
 export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
-  const [status, setStatus] = useState<AnalysisFlowStatus>({ kind: "idle" });
+  const [phase, setPhase] = useState<FlowPhase>("idle");
+  const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const [analyses, setAnalyses] = useState<StoredAnalysis[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [sessionGone, setSessionGone] = useState(false);
-  const [report, setReport] = useState<AnalysisReport | null>(null);
   const [supersededReport, setSupersededReport] = useState<
     { snapshotVersion: number; snapshotHash: string } | null
   >(null);
   const [hasSession, setHasSession] = useState(false);
   const [pendingOperation, setPendingOperation] = useState<PendingOperation | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const selectedIndexRef = useRef(0);
   const busyRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   /** 在途请求代次：清除、取消或新快照后递增，迟到响应不得写回。 */
   const epochRef = useRef(0);
 
+  const status = useMemo<AnalysisFlowStatus>(() => {
+    if (phase === "busy") return { kind: "busy" };
+    if (phase === "failed") {
+      return {
+        kind: "failed",
+        failure: failure ?? new ApiFailure("server", "服务暂时不可用，请稍后重试。"),
+      };
+    }
+    const current = analyses[selectedIndex];
+    if (phase === "ready" && current !== undefined) {
+      return { kind: "ready", state: current.state };
+    }
+    return { kind: "idle" };
+  }, [phase, failure, analyses, selectedIndex]);
+
+  const report = analyses[selectedIndex]?.report ?? null;
+  const sessionId = analyses[selectedIndex]?.state.sessionId ?? null;
+
+  /** 用后端返回的会话状态更新对应的分析（按会话标识定位，避免切走后写错）。 */
   const applyState = useCallback((state: AnalysisSessionState) => {
-    sessionIdRef.current = state.sessionId;
+    // 不在这里改 sessionIdRef：它始终跟随当前选中的分析，由 start / selectAnalysis 维护。
     setHasSession(true);
-    setStatus({ kind: "ready", state });
+    setAnalyses((prev) => {
+      const index = prev.findIndex((item) => item.state.sessionId === state.sessionId);
+      const target = index === -1 ? selectedIndexRef.current : index;
+      return prev.map((item, i) => (i === target ? { ...item, state } : item));
+    });
     return state;
+  }, []);
+
+  /** 只更新对应分析的报告（按会话标识定位，不改变会话状态）。 */
+  const applyReport = useCallback((next: AnalysisReport | null) => {
+    setAnalyses((prev) => {
+      const index =
+        next === null
+          ? -1
+          : prev.findIndex((item) => item.state.sessionId === next.sessionId);
+      const target = index === -1 ? selectedIndexRef.current : index;
+      return prev.map((item, i) => (i === target ? { ...item, report: next } : item));
+    });
   }, []);
 
   /** 取消当前在途请求，并使所有迟到响应失效。 */
@@ -135,12 +191,13 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       abortRef.current = controller;
       setPendingOperation({ label, startedAt: Date.now() });
-      setStatus((prev) => (prev.kind === "ready" ? prev : { kind: "busy" }));
+      setPhase((prev) => (prev === "ready" ? prev : "busy"));
       try {
         const result = await action(controller.signal);
         if (epochRef.current !== epoch) {
           throw new ApiFailure("cancelled", "请求已取消。");
         }
+        setPhase("ready");
         return result;
       } catch (error) {
         const failure =
@@ -154,10 +211,11 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
         if (extractSessionGone(failure)) {
           sessionIdRef.current = null;
           setHasSession(false);
-          setStatus({ kind: "idle" });
           setSessionGone(true);
+          setPhase("idle");
         } else {
-          setStatus({ kind: "failed", failure });
+          setFailure(failure);
+          setPhase("failed");
         }
         throw failure;
       } finally {
@@ -178,33 +236,60 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
    * 快照，快照哈希改变，旧报告立即失效，不得按 ID、文本或相似度迁移。
    */
   useEffect(() => {
-    if (report === null || status.kind !== "ready") return;
-    const state = status.state;
-    const snapshot = state.snapshot;
-    const stageAllowsReport = state.stage === "snapshot_confirmed" || state.stage === "modifying_facts";
-    const valid = stageAllowsReport && snapshot.snapshotHash === report.snapshotHash;
-    if (!valid) setReport(null);
-  }, [report, status]);
+    setAnalyses((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        if (item.report === null) return item;
+        const stageAllowsReport =
+          item.state.stage === "snapshot_confirmed" || item.state.stage === "modifying_facts";
+        const valid = stageAllowsReport && item.state.snapshot.snapshotHash === item.report.snapshotHash;
+        if (valid) return item;
+        changed = true;
+        return { ...item, report: null };
+      });
+      return changed ? next : prev;
+    });
+  }, [analyses]);
+
+  const selectAnalysis = useCallback(
+    (index: number) => {
+      if (index < 0 || index >= analyses.length) return;
+      selectedIndexRef.current = index;
+      setSelectedIndex(index);
+      sessionIdRef.current = analyses[index]?.state.sessionId ?? null;
+      setSupersededReport(null);
+    },
+    [analyses],
+  );
 
   const start = useCallback(
     (caseText: string) =>
-      run("提取候选事实并生成报告", async (signal) => {
+      run("提取候选事实、拆分事项并生成报告", async (signal) => {
         setSessionGone(false);
-        setReport(null);
         setSupersededReport(null);
-        const submission = await requestJson<AnalysisSubmissionResponse>(
-          "/api/v1/analysis/sessions",
-          {
-            method: "POST",
-            body: { caseText },
-            timeoutMs: SUBMISSION_REQUEST_TIMEOUT_MS,
-            signal,
-          },
-        );
-        setReport(submission.report);
-        return applyState(submission.state);
+        setAnalyses([]);
+        selectedIndexRef.current = 0;
+        setSelectedIndex(0);
+        const intake = await requestJson<AnalysisIntakeResponse>("/api/v1/analysis/sessions", {
+          method: "POST",
+          body: { caseText },
+          timeoutMs: SUBMISSION_REQUEST_TIMEOUT_MS,
+          signal,
+        });
+        const stored: StoredAnalysis[] = intake.analyses.map((analysis) => ({
+          state: analysis.state,
+          report: analysis.report,
+        }));
+        if (stored.length === 0) {
+          throw new ApiFailure("server", "提交案情后未返回任何分析，请稍后重试。");
+        }
+        setAnalyses(stored);
+        const firstState = stored[0].state;
+        sessionIdRef.current = firstState.sessionId;
+        setHasSession(true);
+        return firstState;
       }),
-    [applyState, run],
+    [run],
   );
 
   const refresh = useCallback(async () => {
@@ -279,7 +364,8 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
 
   const confirmSnapshot = useCallback(() => {
     const sessionId = sessionIdRef.current;
-    const previousReport = report;
+    const selectedAtStart = selectedIndexRef.current;
+    const previousReport = analyses[selectedAtStart]?.report ?? null;
     // 形成新快照会废弃依赖旧快照的在途工作与迟到响应。
     invalidateInFlight();
     return run("确认事实快照并重新生成报告", async (signal) => {
@@ -288,19 +374,21 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
         { method: "POST", body: {}, timeoutMs: SUBMISSION_REQUEST_TIMEOUT_MS, signal },
       );
       // 旧报告立即失效：只保留新报告，并记录旧快照标识供页面提示。
+      // 若期间已切走，不在另一份分析上显示旧报告失效提示。
       if (
         previousReport !== null &&
-        previousReport.snapshotHash !== submission.report.snapshotHash
+        previousReport.snapshotHash !== submission.report.snapshotHash &&
+        selectedIndexRef.current === selectedAtStart
       ) {
         setSupersededReport({
           snapshotVersion: previousReport.snapshotVersion,
           snapshotHash: previousReport.snapshotHash,
         });
       }
-      setReport(submission.report);
+      applyReport(submission.report);
       return applyState(submission.state);
     });
-  }, [applyState, invalidateInFlight, report, run]);
+  }, [analyses, applyReport, applyState, invalidateInFlight, run]);
 
   /**
    * 对决定性缺口回答“未知”或“待核实”。
@@ -316,12 +404,12 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
           `/api/v1/analysis/sessions/${sessionId}/gaps/${gapId}/answer`,
           { method: "POST", body: { answer }, timeoutMs: REPORT_REQUEST_TIMEOUT_MS, signal },
         );
-        setReport(submission.report);
+        applyReport(submission.report);
         applyState(submission.state);
         return submission.report;
       });
     },
-    [applyState, run],
+    [applyReport, applyState, run],
   );
 
   const beginModification = useCallback(() => {
@@ -345,11 +433,12 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
 
   const generateReport = useCallback(async () => {
     const sessionId = sessionIdRef.current;
-    if (sessionId === null || status.kind !== "ready") {
+    const current = analyses[selectedIndexRef.current];
+    if (sessionId === null || current === undefined) {
       throw new ApiFailure("server", "请先形成事实快照后再生成报告。", { status: 409 });
     }
     const requestId = crypto.randomUUID();
-    const snapshot = status.state.snapshot;
+    const snapshot = current.state.snapshot;
     return run("生成并校验完整报告", async (signal) => {
       const created = await requestJson<AnalysisReport>(
         `/api/v1/analysis/sessions/${sessionId}/report`,
@@ -368,33 +457,37 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
       if (created.requestId !== requestId || created.snapshotHash !== snapshot.snapshotHash) {
         throw new ApiFailure("contract", "报告响应与当前事实快照不匹配，已丢弃。", { status: 409 });
       }
-      setReport(created);
+      applyReport(created);
       return created;
     });
-  }, [run, status]);
+  }, [analyses, applyReport, run]);
 
   const cancel = useCallback(() => {
     invalidateInFlight();
-    setStatus((prev) => (prev.kind === "busy" ? { kind: "idle" } : prev));
+    setPhase((prev) => (prev === "busy" ? "idle" : prev));
   }, [invalidateInFlight]);
 
   const clear = useCallback(async () => {
-    const sessionId = sessionIdRef.current;
+    const sessionIds = analyses.map((item) => item.state.sessionId);
     invalidateInFlight();
     sessionIdRef.current = null;
+    selectedIndexRef.current = 0;
+    setSelectedIndex(0);
+    setAnalyses([]);
     setHasSession(false);
-    setStatus({ kind: "idle" });
+    setPhase("idle");
+    setFailure(null);
     setSessionGone(false);
-    setReport(null);
     setSupersededReport(null);
-    if (sessionId !== null) {
+    // 清除本次提交拆出的全部分析；失败不阻断本地重置（服务端会话会随空闲过期）。
+    for (const sessionId of sessionIds) {
       try {
         await requestJson(`/api/v1/analysis/sessions/${sessionId}`, { method: "DELETE" });
       } catch {
-        // 清除失败不阻断本地重置：服务端会话会随空闲过期失效。
+        // 清除失败不阻断本地重置。
       }
     }
-  }, [invalidateInFlight]);
+  }, [analyses, invalidateInFlight]);
 
   const dismissSessionGone = useCallback(() => setSessionGone(false), []);
   const dismissSupersededReport = useCallback(() => setSupersededReport(null), []);
@@ -440,9 +533,12 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AnalysisFlowContextValue>(
     () => ({
       status,
-      sessionId: sessionIdRef.current,
+      sessionId,
       sessionGone,
       report,
+      analyses,
+      selectedAnalysisIndex: selectedIndex,
+      selectAnalysis,
       supersededReport,
       dismissSupersededReport,
       pendingOperation,
@@ -462,8 +558,12 @@ export function AnalysisFlowProvider({ children }: { children: ReactNode }) {
     }),
     [
       status,
+      sessionId,
       sessionGone,
       report,
+      analyses,
+      selectedIndex,
+      selectAnalysis,
       supersededReport,
       dismissSupersededReport,
       pendingOperation,

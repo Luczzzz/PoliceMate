@@ -106,17 +106,85 @@ describe("fixture 提取：紧急风险标记与独立事项", () => {
     expect(behavior?.riskCategory).toBe("personal_safety");
   });
 
-  it("另外连接的两起独立事件触发拆分提示", () => {
+  it("互不相关的事项被确定性拆分：不同人员、地点、时间拆成两份", () => {
     const result = extractCaseFactsFixture(
       "3月2日，张某在城南市场殴打李某。另外，3月8日王某报案称电动车在火车站门口被盗。",
     );
     expect(result.independentMatters.detected).toBe(true);
     expect(result.independentMatters.note).toContain("拆分");
+    expect(result.matters).toHaveLength(2);
+    expect(result.matters[0].label).toBe("事项一");
+    expect(result.matters[1].label).toBe("事项二");
+    // 事项一只包含殴打相关事实，事项二只包含电动车被盗相关事实。
+    expect(
+      result.matters[0].facts.some((fact) => fact.category === "behavior" && fact.value?.raw === "殴打推搡"),
+    ).toBe(true);
+    expect(
+      result.matters[1].facts.some((fact) => fact.category === "behavior" && fact.value?.raw === "盗窃"),
+    ).toBe(true);
+    // 人物别名按各事项独立编号，不跨事项串联。
+    expect(
+      result.matters[0].facts
+        .filter((fact) => fact.category === "participant")
+        .map((fact) => fact.originalWording),
+    ).toEqual(["张某", "李某"]);
+    expect(
+      result.matters[1].facts
+        .filter((fact) => fact.category === "participant")
+        .map((fact) => fact.originalWording),
+    ).toEqual(["王某"]);
   });
 
-  it("连续案情不触发拆分提示", () => {
+  it("连续案情不被误拆：共享人员的事件保留在同一事项", () => {
     const result = extractCaseFactsFixture("3月2日，张某在城南市场殴打李某。当天张某又辱骂李某。");
     expect(result.independentMatters.detected).toBe(false);
+    expect(result.matters).toHaveLength(1);
+    expect(result.matters[0].facts.filter((fact) => fact.category === "behavior").length).toBe(2);
+  });
+
+  it("共享地点的两起事件保留在同一事项", () => {
+    const result = extractCaseFactsFixture(
+      "3月2日，张某在城南市场门口殴打李某。当天王某在城南市场门口盗窃他人手机。",
+    );
+    expect(result.independentMatters.detected).toBe(false);
+    expect(result.matters).toHaveLength(1);
+  });
+
+  it("开场背景句不锚定新事项，不产生误拆", () => {
+    const result = extractCaseFactsFixture("今天天气不错。张某殴打李某。");
+    expect(result.matters).toHaveLength(1);
+    expect(result.independentMatters.detected).toBe(false);
+  });
+
+  it("出现“另外”等表述时即使共享人员也按独立事项拆分", () => {
+    const result = extractCaseFactsFixture("3月2日，张某殴打李某。另外，3月8日张某又盗窃王某手机。");
+    expect(result.matters).toHaveLength(2);
+    expect(result.independentMatters.detected).toBe(true);
+  });
+});
+
+describe("fixture 提取：争议事实分组", () => {
+  it("同一事实的不同说法共享争议分组，全部保留且不静默选定", () => {
+    const result = extractCaseFactsFixture(
+      "3月2日晚上，张某在城南市场门口殴打李某。李某称自己被打成轻伤，张某称李某只是轻微伤，双方说法不一。",
+    );
+    expect(result.matters).toHaveLength(1);
+    const results = result.facts.filter((fact) => fact.category === "result");
+    expect(results.map((fact) => fact.value?.raw)).toEqual(["轻伤", "轻微伤"]);
+    for (const fact of results) {
+      expect(fact.status).toBe("disputed");
+      expect(fact.statusLabel).toBe("存在争议");
+      expect(fact.disputeGroupId).not.toBeNull();
+    }
+    expect(new Set(results.map((fact) => fact.disputeGroupId)).size).toBe(1);
+  });
+
+  it("单一说法不标记为争议", () => {
+    const result = extractCaseFactsFixture("3月2日晚上，张某殴打李某。李某手部擦伤。");
+    for (const fact of result.facts) {
+      expect(fact.status).toBe("candidate");
+      expect(fact.disputeGroupId).toBeNull();
+    }
   });
 });
 

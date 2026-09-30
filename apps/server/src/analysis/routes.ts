@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type {
   AddFactRequest,
+  AnalysisIntakeResponse,
   AnalysisSubmissionResponse,
   AnswerGapRequest,
   ApiErrorBody,
@@ -141,16 +142,22 @@ export async function registerAnalysisRoutes(
     );
   };
 
-  // 提交案情：提取候选事实、形成不可变事实快照并直接生成报告。
+  // 提交案情：提取候选事实，按互不相关事项自动拆分为多份分析；每份分析在
+  // 同一响应内形成独立事实快照与报告。
   app.post<{ Body: CreateAnalysisRequest }>(
     "/api/v1/analysis/sessions",
     async (request, reply) => {
       try {
         await assertCapability();
-        const response = await withConcurrency(request, async (): Promise<AnalysisSubmissionResponse> => {
-          const state = await engine.createSession(request.body);
-          const report = await generateCurrentReport(state.sessionId, request.id, state.snapshot);
-          return { contractVersion: CONTRACT_VERSION, state, report };
+        const response = await withConcurrency(request, async (): Promise<AnalysisIntakeResponse> => {
+          const states = await engine.createSessions(request.body);
+          const analyses = await Promise.all(
+            states.map(async (state) => ({
+              state,
+              report: await generateCurrentReport(state.sessionId, request.id, state.snapshot),
+            })),
+          );
+          return { contractVersion: CONTRACT_VERSION, analyses };
         });
         return reply.code(201).send(response);
       } catch (error) {

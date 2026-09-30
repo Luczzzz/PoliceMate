@@ -131,15 +131,20 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     async extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult> {
       if (extractionMode === "timeout") await delay(FIXTURE_TIMEOUT_DELAY_MS);
       if (extractionMode === "empty") {
-        return { facts: [], independentMatters: { detected: false, note: null } };
+        return { matters: [] };
       }
       if (extractionMode === "malformed") {
         return {
-          facts: [{ factId: "" }] as unknown as CaseExtractionResult["facts"],
-          independentMatters: { detected: false, note: null },
+          matters: [
+            {
+              matterId: "matter-1",
+              label: "事项一",
+              facts: [{ factId: "" }] as unknown as CaseExtractionResult["matters"][number]["facts"],
+            },
+          ],
         };
       }
-      return extractCaseFactsFixture(request.caseText);
+      return { matters: extractCaseFactsFixture(request.caseText).matters };
     },
     async generateReport(request) {
       const sources = request.legalSources;

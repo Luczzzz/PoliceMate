@@ -360,10 +360,11 @@ async function drillPrivacyCanary(): Promise<DrillResult> {
         caseText: `3月2日晚上，张某在城南市场门口殴打李某。${PRIVACY_CANARY}`,
       } satisfies CreateAnalysisRequest,
     });
-    // 提交案情时一次请求内已完成提取、快照与报告；这里只检查元数据出口。
+    // 提交案情时一次请求内已完成提取、拆分、快照与报告；这里只检查元数据出口。
+    const createdBody = created.json();
     await app.inject({
       method: "GET",
-      url: `/api/v1/analysis/sessions/${created.json().state.sessionId}`,
+      url: `/api/v1/analysis/sessions/${createdBody.analyses[0].state.sessionId}`,
       headers,
     });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AnalysisSubmissionResponse, CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
+import type { AnalysisIntakeResponse, AnalysisSubmissionResponse, CreateAnalysisRequest, GenerateReportRequest } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls, FIXTURE_TIMEOUT_DELAY_MS } from "../src/providers/fixture";
@@ -54,7 +54,10 @@ function submitCase(app: App) {
 async function submitAndGetSession(app: App): Promise<AnalysisSubmissionResponse> {
   const created = await submitCase(app);
   expect(created.statusCode).toBe(201);
-  return created.json() as AnalysisSubmissionResponse;
+  const body = created.json() as AnalysisIntakeResponse;
+  const first = body.analyses[0];
+  if (first === undefined) throw new Error("提交案情未返回分析。");
+  return { contractVersion: body.contractVersion, state: first.state, report: first.report };
 }
 
 function generateReport(app: App, submission: AnalysisSubmissionResponse) {
@@ -171,7 +174,7 @@ describe("外部边界失败关闭与单次重试", () => {
     const { app } = await makeApp({ analysisTimeoutMs: 500, reportTimeoutMs: 500 });
     const response = await submitCase(app);
     expect(response.statusCode).toBe(201);
-    expect(response.json().report.status).toBe("complete");
+    expect(response.json().analyses[0].report.status).toBe("complete");
     await app.close();
   });
 

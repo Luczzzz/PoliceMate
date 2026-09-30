@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AnalysisReport, AnalysisSubmissionResponse, CreateAnalysisRequest } from "@policymate/contracts";
+import type { AnalysisIntakeResponse, AnalysisReport, AnalysisSubmissionResponse, CreateAnalysisRequest } from "@policymate/contracts";
 import { buildApp } from "../src/app";
 import type { AppConfig } from "../src/config";
 import { createFixtureControls } from "../src/providers/fixture";
@@ -63,7 +63,14 @@ async function runToReport(app: App, caseText: string): Promise<AnalysisReport> 
     payload: { caseText } satisfies CreateAnalysisRequest,
   });
   expect(created.statusCode).toBe(201);
-  const submission = created.json() as AnalysisSubmissionResponse;
+  const intake = created.json() as AnalysisIntakeResponse;
+  const first = intake.analyses[0];
+  if (first === undefined) throw new Error("提交案情未返回分析。");
+  const submission: AnalysisSubmissionResponse = {
+    contractVersion: intake.contractVersion,
+    state: first.state,
+    report: first.report,
+  };
   const sessionId = submission.state.sessionId;
 
   // 重点案情匹配只使用已确认事实：从报告进入补充或修改事实，逐项确认后

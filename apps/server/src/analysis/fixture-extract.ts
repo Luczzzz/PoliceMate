@@ -1,6 +1,7 @@
 import type {
   CandidateFact,
   FactCategory,
+  FactStatus,
   FactValue,
   IndependentMatters,
   PrecisionLevel,
@@ -11,6 +12,7 @@ import {
   FACT_STATUS_LABELS,
   PRECISION_LABELS,
 } from "@policymate/contracts";
+import type { CaseExtractionMatter } from "../providers/types";
 
 /**
  * 案情提取的确定性替身（Dify 边界）。
@@ -18,6 +20,10 @@ import {
  * 真实接入时由 Dify 工作流返回同构结构；后端负责结构校验，提取质量与本
  * 规则集无关。规则集只覆盖常见表述，无法匹配的部分不会生成事实，
  * 也不会静默截断或改写原文。
+ *
+ * 本替身还负责 ADR-0008 第 5 点的确定性拆分：把互不相关的事项拆成多个
+ * 连续案情分组（每份分析一个分组），并把同一事实的不同说法标记为争议，
+ * 由报告并列展示、不静默选定。
  */
 
 const MAX_FACTS = 40;
@@ -64,6 +70,8 @@ interface FactDraft {
   eventRef: string | null;
   behaviorRef: string | null;
   riskCategory: UrgentRiskCategory | null;
+  status: FactStatus;
+  disputeGroupId: string | null;
 }
 
 const CN_NUMERALS: Record<string, number> = {
@@ -374,7 +382,7 @@ const BEHAVIOR_RISK_FALLBACK: Record<string, UrgentRiskCategory> = {
   家庭暴力: "domestic_violence",
 };
 
-const RESULT_PATTERN = /轻微伤|轻伤|重伤|擦伤|挫伤|受伤|流血|昏迷|不省人事/;
+const RESULT_PATTERN = /轻微伤|轻伤|重伤|擦伤|挫伤|受伤|流血|昏迷|不省人事/g;
 const OBJECT_PATTERN = /手机|电动车|摩托车|电瓶|自行车|现金|钱包|项链|手镯|笔记本电脑|平板电脑/;
 
 const PERSON_PATTERN =
@@ -426,44 +434,120 @@ function behaviorLabel(index: number): string {
   return `行为${CN_EVENT_LABELS[index] ?? String(index + 1)}`;
 }
 
-/** 检测彼此独立的事项：不同事件之间没有共同人员、地点或时间。 */
-function detectIndependentMatters(
-  eventRecords: Array<{ participants: string[]; place: string | null; timeRaw: string | null }>,
-  hasConjunction: boolean,
-): IndependentMatters {
-  if (eventRecords.length < 2) return { detected: false, note: null };
+/* ---------- 互不相关事项的确定性拆分 ---------- */
 
-  const sharesInfo = eventRecords.some((a, i) =>
-    eventRecords.slice(i + 1).some((b) => {
-      const sharedPerson = a.participants.some((alias) => b.participants.includes(alias));
-      const sharedPlace = a.place !== null && a.place === b.place;
-      const sharedTime = a.timeRaw !== null && a.timeRaw === b.timeRaw;
-      return sharedPerson || sharedPlace || sharedTime;
-    }),
-  );
+interface LinkInfo {
+  participants: string[];
+  places: string[];
+  times: string[];
+  hasEvent: boolean;
+}
 
-  if (!(hasConjunction || !sharesInfo)) return { detected: false, note: null };
+function linkInfoOf(sentence: string): LinkInfo {
+  const participants = [...sentence.matchAll(PERSON_PATTERN)].map((match) => match[0]);
+  const place = matchPlace(sentence);
+  const time = matchTime(sentence);
   return {
-    detected: true,
-    note: "输入内容可能包含彼此独立的事项（不同事件之间没有共同的人员、地点或时间，或出现了“另外/此外”等表述）。建议拆分为多次分析，每次只覆盖一个连续案情；本产品不会把独立事项合并为一个结论。",
+    participants: [...new Set(participants)],
+    places: place === null ? [] : [place],
+    times: time === null ? [] : [time.raw],
+    hasEvent: sentenceBehavior(sentence) !== null,
   };
 }
 
-export interface ExtractFixtureResult {
-  facts: CandidateFact[];
-  independentMatters: IndependentMatters;
+function intersects(a: readonly string[], b: readonly string[]): boolean {
+  return a.some((value) => b.includes(value));
+}
+
+function sharesLink(a: LinkInfo, b: LinkInfo): boolean {
+  return (
+    intersects(a.participants, b.participants) ||
+    intersects(a.places, b.places) ||
+    intersects(a.times, b.times)
+  );
+}
+
+function mergeLink(a: LinkInfo, b: LinkInfo): LinkInfo {
+  return {
+    participants: [...new Set([...a.participants, ...b.participants])],
+    places: [...new Set([...a.places, ...b.places])],
+    times: [...new Set([...a.times, ...b.times])],
+    hasEvent: a.hasEvent || b.hasEvent,
+  };
 }
 
 /**
- * 确定性案情提取。输入是纯文本；输出是带稳定 ID、类别、结构化值、原始表述、
- * 事件/参与者/行为关系、来源轮次与精确程度的候选事实。
+ * 按确定性规则把句子拆成互不相关的连续案情分组。
+ *
+ * 一个带行为的事件只要与当前分组没有任何共同人员、地点或时间，就另起一组；
+ * 没有行为的句子（结果、时间、地点、参与人等）跟随当前分组。这样既能把
+ * 互不相关的事项拆开，也不会把有共同人员、地点或时间的连续案情误拆
+ * （ADR-0008 第 5 点）。
  */
-export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult {
-  const registry = new AliasRegistry();
-  const sentences = splitSentences(caseText);
+function partitionSentences(sentences: Sentence[]): Sentence[][] {
+  const groups: Sentence[][] = [];
+  let current: Sentence[] = [];
+  let currentInfo: LinkInfo | null = null;
+  for (const sentence of sentences) {
+    const info = linkInfoOf(sentence.text);
+    if (currentInfo === null) {
+      current = [sentence];
+      currentInfo = info;
+      continue;
+    }
+    // 只有当前分组已经包含事件时，才用“是否共享人员/地点/时间”判断新事件
+    // 是否属于另一个事项；开场背景句（如“今天天气不错”）不锚定新分组。
+    if (currentInfo.hasEvent && info.hasEvent && !sharesLink(currentInfo, info)) {
+      groups.push(current);
+      current = [sentence];
+      currentInfo = info;
+    } else {
+      current.push(sentence);
+      currentInfo = mergeLink(currentInfo, info);
+    }
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
+/** 伤情程度线索：用于识别同一事实的不同说法。 */
+const SEVERITY_RULES: Array<{ pattern: RegExp; severity: string }> = [
+  { pattern: /轻微伤|擦伤|挫伤/, severity: "minor" },
+  { pattern: /轻伤|重伤/, severity: "light_or_above" },
+];
+
+/**
+ * 检测同一事实的不同说法：同一连续案情内出现互相冲突的伤情程度表述时，
+ * 把相关结果事实标为争议并共享争议分组。报告必须并列展示全部版本，
+ * 不得静默选定其中之一（ADR-0008 第 5 点）。
+ */
+function markResultConflicts(drafts: FactDraft[], matterIndex: number): void {
+  const bySeverity = new Map<string, FactDraft[]>();
+  for (const draft of drafts) {
+    if (draft.category !== "result" || draft.value === null) continue;
+    const rule = SEVERITY_RULES.find((candidate) => candidate.pattern.test(draft.value!.raw));
+    if (rule === undefined) continue;
+    const bucket = bySeverity.get(rule.severity) ?? [];
+    bucket.push(draft);
+    bySeverity.set(rule.severity, bucket);
+  }
+  if (bySeverity.size < 2) return;
+  const disputeGroupId = `conflict-matter-${matterIndex}-result`;
+  for (const bucket of bySeverity.values()) {
+    for (const draft of bucket) {
+      draft.status = "disputed";
+      draft.disputeGroupId = disputeGroupId;
+    }
+  }
+}
+
+/** 对一组连续案情句子做确定性提取，返回尚未分配 ID 的事实草稿。 */
+function extractMatterDrafts(
+  sentences: Sentence[],
+  registry: AliasRegistry,
+  matterIndex: number,
+): FactDraft[] {
   const drafts: FactDraft[] = [];
-  const eventRecords: Array<{ participants: string[]; place: string | null; timeRaw: string | null }> = [];
-  const hasConjunction = /另外|此外|另一起|还有一起/.test(caseText);
 
   let eventCounter = 0;
   let behaviorCounter = 0;
@@ -478,14 +562,6 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
     const eventRef = behavior === null ? null : eventLabel(eventCounter++);
     const behaviorRef = behavior === null ? null : behaviorLabel(behaviorCounter++);
 
-    if (eventRef !== null) {
-      eventRecords.push({
-        participants: participantRefs,
-        place,
-        timeRaw: time === null ? null : time.raw,
-      });
-    }
-
     const push = (
       draft: Pick<FactDraft, "category" | "statement" | "originalWording" | "value" | "riskCategory">,
     ) => {
@@ -495,6 +571,8 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
         participantRefs,
         eventRef,
         behaviorRef: draft.category === "behavior" ? behaviorRef : null,
+        status: "candidate",
+        disputeGroupId: null,
       });
     };
 
@@ -605,13 +683,17 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
       });
     }
 
-    const result = sentence.text.match(RESULT_PATTERN);
-    if (result !== null) {
+    // 同一句可能同时出现互相冲突的伤情表述（如两方各执一说），
+    // 逐个保留为独立结果事实，由争议检测并列展示、不静默择一。
+    const resultMatches = [
+      ...new Set([...sentence.text.matchAll(RESULT_PATTERN)].map((match) => match[0])),
+    ];
+    for (const result of resultMatches) {
       push({
         category: "result",
-        statement: `出现「${result[0]}」等后果表述`,
+        statement: `出现「${result}」等后果表述`,
         originalWording: sentence.text,
-        value: valueOf(result[0], "exact", result[0], result[0], null),
+        value: valueOf(result, "exact", result, result, null),
         riskCategory: /重伤|流血|昏迷|不省人事|送医|急救/.test(sentence.text) ? "medical" : null,
       });
     }
@@ -642,33 +724,98 @@ export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult 
       eventRef: null,
       behaviorRef: null,
       riskCategory: null,
+      status: "candidate",
+      disputeGroupId: null,
     });
   }
 
-  const facts = drafts.map((draft, index) => ({
-    factId: `fact-${String(index + 1).padStart(3, "0")}`,
-    category: draft.category,
-    categoryLabel: FACT_CATEGORY_LABELS[draft.category],
-    statement: draft.statement,
-    originalWording: draft.originalWording,
-    value: draft.value,
-    eventRefs: draft.eventRef === null ? [] : [draft.eventRef],
-    participantRefs: draft.participantRefs,
-    behaviorRefs: draft.behaviorRef === null ? [] : [draft.behaviorRef],
-    status: "candidate" as const,
-    statusLabel: FACT_STATUS_LABELS.candidate,
-    sourceRound: 0 as const,
-    confirmationMethod: null,
-    confirmedAt: null,
-    riskCategory: draft.riskCategory,
-    excluded: false,
-    replacesFactId: null,
-    supersededByFactId: null,
-    resolvesGapIds: [],
-  }));
+  markResultConflicts(drafts, matterIndex);
+  return drafts;
+}
 
+export interface ExtractFixtureResult {
+  /** 跨事项的全部候选事实，便于调用方按事实查看提取结果。 */
+  facts: CandidateFact[];
+  /** 按互不相关事项拆出的连续案情分组；每份分析对应一个分组。 */
+  matters: CaseExtractionMatter[];
+  /** 整段输入是否检测到互不相关事项并因此拆分。 */
+  independentMatters: IndependentMatters;
+}
+
+/**
+ * 确定性案情提取。输入是纯文本；输出是按连续案情拆分的候选事实分组。
+ *
+ * 每份事实都带稳定 ID、类别、结构化值、原始表述、事件/参与者/行为关系、
+ * 来源轮次与精确程度；同一事实的不同说法共享 `disputeGroupId` 并标为
+ * `disputed`，由报告并列展示，系统不静默选定。
+ */
+export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult {
+  // 先按“另外/此外”等连接词切段：这类表述本身即表示新事项开始，
+  // 即使与上一段共享人员、地点或时间也分开（ADR-0003 第 8 条、ADR-0008 第 5 点）。
+  const segments = caseText
+    .split(/(?:另外|此外|另一起|还有一起)[，,、]?/)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== "");
+  const groups = segments.flatMap((segment) => partitionSentences(splitSentences(segment)));
+
+  // 没有任何可提取事实的句子分组不构成一份分析（例如开头只有背景描述），
+  // 直接丢弃，避免产生空事项导致整体失败关闭。
+  const matterDrafts = groups
+    .map((group, index) => ({
+      matterId: `matter-${index + 1}`,
+      label: `事项${CN_EVENT_LABELS[index] ?? String(index + 1)}`,
+      drafts: extractMatterDrafts(group, new AliasRegistry(), index + 1),
+    }))
+    .filter((matter) => matter.drafts.length > 0)
+    // 丢弃空分组后重新编号，保证名称连续、可预期。
+    .map((matter, index) => ({
+      matterId: `matter-${index + 1}`,
+      label: `事项${CN_EVENT_LABELS[index] ?? String(index + 1)}`,
+      drafts: matter.drafts,
+    }));
+
+  const facts: CandidateFact[] = [];
+  const matters: CaseExtractionMatter[] = [];
+  let factIndex = 0;
+  for (const matter of matterDrafts) {
+    const matterFacts = matter.drafts.map((draft) => {
+      factIndex += 1;
+      return {
+        factId: `fact-${String(factIndex).padStart(3, "0")}`,
+        category: draft.category,
+        categoryLabel: FACT_CATEGORY_LABELS[draft.category],
+        statement: draft.statement,
+        originalWording: draft.originalWording,
+        value: draft.value,
+        eventRefs: draft.eventRef === null ? [] : [draft.eventRef],
+        participantRefs: draft.participantRefs,
+        behaviorRefs: draft.behaviorRef === null ? [] : [draft.behaviorRef],
+        status: draft.status,
+        statusLabel: FACT_STATUS_LABELS[draft.status],
+        sourceRound: 0 as const,
+        confirmationMethod: null,
+        confirmedAt: null,
+        riskCategory: draft.riskCategory,
+        excluded: false,
+        replacesFactId: null,
+        supersededByFactId: null,
+        resolvesGapIds: [],
+        disputeGroupId: draft.disputeGroupId,
+      };
+    });
+    facts.push(...matterFacts);
+    matters.push({ matterId: matter.matterId, label: matter.label, facts: matterFacts });
+  }
+
+  const detected = matters.length > 1;
   return {
     facts,
-    independentMatters: detectIndependentMatters(eventRecords, hasConjunction),
+    matters,
+    independentMatters: {
+      detected,
+      note: detected
+        ? `输入内容包含 ${matters.length} 起互不相关的事项，已自动拆分为 ${matters.length} 份分析，每份只覆盖一个连续案情。`
+        : null,
+    },
   };
 }

@@ -64,7 +64,7 @@ export async function runScenario(
   options: ScenarioOptions = {},
 ): Promise<ScenarioOutcome> {
   const { fixtures, engine } = harness;
-  const created = await engine.createSession({ caseText }, SCENARIO_NOW);
+  const [created] = await engine.createSessions({ caseText }, SCENARIO_NOW);
 
   // 场景需要已确认事实参与内容匹配：从报告进入补充或修改事实，逐项标记后
   // 确认新快照，等价于民警在报告后主动核对事实。

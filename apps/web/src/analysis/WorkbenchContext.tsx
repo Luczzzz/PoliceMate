@@ -77,7 +77,10 @@ function toggleValue(values: string[], value: string): string[] {
 
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const { report } = useAnalysisFlow();
-  const identity = report?.requestId ?? null;
+  // 报告标识包含会话与快照：多份分析之间切换时临时状态必须重置，
+  // 同一份报告有效时保持稳定。
+  const identity =
+    report === null ? null : `${report.sessionId}:${report.snapshotVersion}:${report.snapshotHash}`;
   const [store, setStore] = useState<WorkbenchStore>(() => emptyStore(identity));
 
   // 报告标识变化（新报告或报告失效）时立即重置全部临时工作台状态。

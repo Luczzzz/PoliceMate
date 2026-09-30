@@ -37,6 +37,7 @@ import type { TelemetrySink } from "../telemetry";
 import {
   applyConservativeDowngrade,
   attachReportFactReferences,
+  buildFactConflicts,
   buildReport,
   validateReportResult,
   type ConservativeDowngradeStatus,
@@ -120,8 +121,11 @@ interface AnalysisSession {
   lastActiveAt: number;
   stage: AnalysisStage;
   caseCharacterCount: number;
+  /** 本次提交内的分析序号（从 1 开始）、展示名称与拆分总数。 */
+  matterIndex: number;
+  matterLabel: string;
+  matterCount: number;
   facts: CandidateFact[];
-  independentMatters: AnalysisSessionState["independentMatters"];
   snapshot: FactSnapshot;
   /** 快照确认时的完整可变状态备份，用于放弃未确认的修改。 */
   snapshotBackup: SnapshotBackup;
@@ -215,41 +219,59 @@ export function validateStatementText(raw: unknown, label: string, maxCharacters
 
 /** 对外部边界返回的候选事实做结构校验；不符合契约时整体失败关闭。 */
 export function validateExtractionResult(result: CaseExtractionResult): void {
-  if (!isRecord(result) || !Array.isArray(result.facts)) {
-    throw new AnalysisContractError("提取结果缺少事实列表。");
+  if (!isRecord(result) || !Array.isArray(result.matters) || result.matters.length === 0) {
+    throw new AnalysisContractError("提取结果缺少事项分组。");
   }
   const seen = new Set<string>();
-  if (result.facts.length === 0) {
-    throw new AnalysisContractError("提取结果为空，未形成任何候选事实。");
-  }
-  for (const fact of result.facts) {
-    if (!isRecord(fact)) throw new AnalysisContractError("候选事实格式无效。");
-    const factId = fact.factId;
-    if (typeof factId !== "string" || factId === "") throw new AnalysisContractError("候选事实缺少稳定 ID。");
-    if (seen.has(factId)) throw new AnalysisContractError("候选事实 ID 重复。");
-    seen.add(factId);
-    if (typeof fact.category !== "string") throw new AnalysisContractError("候选事实缺少类别。");
-    if (typeof fact.originalWording !== "string" || fact.originalWording.trim() === "") {
-      throw new AnalysisContractError("候选事实缺少原始表述。");
+  const seenMatterIds = new Set<string>();
+  for (const matter of result.matters) {
+    if (!isRecord(matter)) throw new AnalysisContractError("事项分组格式无效。");
+    const matterId = matter.matterId;
+    if (typeof matterId !== "string" || matterId === "") {
+      throw new AnalysisContractError("事项分组缺少稳定 ID。");
     }
-    if (fact.status !== "candidate") {
-      throw new AnalysisContractError("提取结果不得预置已确认状态。");
+    if (seenMatterIds.has(matterId)) throw new AnalysisContractError("事项分组 ID 重复。");
+    seenMatterIds.add(matterId);
+    if (typeof matter.label !== "string" || matter.label.trim() === "") {
+      throw new AnalysisContractError("事项分组缺少展示名称。");
     }
-    if (fact.riskCategory !== null && typeof fact.riskCategory !== "string") {
-      throw new AnalysisContractError("候选事实紧急风险标记无效。");
+    if (!Array.isArray(matter.facts) || matter.facts.length === 0) {
+      throw new AnalysisContractError("事项分组没有候选事实。");
     }
-    // 缺口绑定只能由民警在补充流程中显式建立，外部提取边界不得自行声明。
-    if (!Array.isArray(fact.resolvesGapIds) || fact.resolvesGapIds.length > 0) {
-      throw new AnalysisContractError("提取结果不得预置决定性缺口绑定。");
+    for (const fact of matter.facts) {
+      if (!isRecord(fact)) throw new AnalysisContractError("候选事实格式无效。");
+      const factId = fact.factId;
+      if (typeof factId !== "string" || factId === "") throw new AnalysisContractError("候选事实缺少稳定 ID。");
+      if (seen.has(factId)) throw new AnalysisContractError("候选事实 ID 重复。");
+      seen.add(factId);
+      if (typeof fact.category !== "string") throw new AnalysisContractError("候选事实缺少类别。");
+      if (typeof fact.originalWording !== "string" || fact.originalWording.trim() === "") {
+        throw new AnalysisContractError("候选事实缺少原始表述。");
+      }
+      // 未确认事实可以支撑初步意见，但提取边界不得预置“已确认”；
+      // `disputed` 用于保留同一事实的不同说法，不允许其它非初始状态。
+      if (fact.status !== "candidate" && fact.status !== "disputed") {
+        throw new AnalysisContractError("提取结果不得预置已确认状态。");
+      }
+      if (fact.riskCategory !== null && typeof fact.riskCategory !== "string") {
+        throw new AnalysisContractError("候选事实紧急风险标记无效。");
+      }
+      if (fact.disputeGroupId !== null && typeof fact.disputeGroupId !== "string") {
+        throw new AnalysisContractError("候选事实争议分组标识无效。");
+      }
+      // 缺口绑定只能由民警在补充流程中显式建立，外部提取边界不得自行声明。
+      if (!Array.isArray(fact.resolvesGapIds) || fact.resolvesGapIds.length > 0) {
+        throw new AnalysisContractError("提取结果不得预置决定性缺口绑定。");
+      }
     }
-  }
-  const matters = result.independentMatters;
-  if (!isRecord(matters) || typeof matters.detected !== "boolean") {
-    throw new AnalysisContractError("独立事项检测结果无效。");
   }
 }
 
 function toSessionState(session: AnalysisSession, now: Date): AnalysisSessionState {
+  const splitNote =
+    session.matterCount > 1
+      ? `本次输入包含互不相关的事项，已自动拆分为 ${session.matterCount} 份分析；本份为「${session.matterLabel}」，只覆盖其中一个连续案情。`
+      : null;
   return {
     contractVersion: "1.0",
     generatedAt: now.toISOString(),
@@ -257,9 +279,12 @@ function toSessionState(session: AnalysisSession, now: Date): AnalysisSessionSta
     stage: session.stage,
     stageLabel: ANALYSIS_STAGE_LABELS[session.stage],
     caseCharacterCount: session.caseCharacterCount,
+    analysisIndex: session.matterIndex,
+    analysisLabel: session.matterLabel,
+    analysisCount: session.matterCount,
     facts: session.facts.map((fact) => ({ ...fact })),
     urgentPrompts: buildUrgentPrompts(session.facts, now),
-    independentMatters: { ...session.independentMatters },
+    independentMatters: { detected: session.matterCount > 1, note: splitNote },
     snapshot: { ...session.snapshot },
     modification:
       session.modification === null
@@ -446,10 +471,11 @@ export class AnalysisEngine {
   }
 
   /**
-   * 提交案情：提取候选事实、直接形成不可变事实快照。
-   * 不再经过候选事实确认与决定性追问，报告由路由在同一请求内生成。
+   * 提交案情：提取候选事实，按互不相关事项自动拆分为多份分析；每份分析形成
+   * 独立会话标识与独立不可变事实快照。不再经过候选事实确认与决定性追问，
+   * 报告由路由在每个会话上生成。
    */
-  async createSession(request: CreateAnalysisRequest, now = new Date()): Promise<AnalysisSessionState> {
+  async createSessions(request: CreateAnalysisRequest, now = new Date()): Promise<AnalysisSessionState[]> {
     const caseText = validateCaseText(request?.caseText);
     this.pruneExpired(now.getTime());
 
@@ -463,38 +489,44 @@ export class AnalysisEngine {
         return result;
       },
     );
+    const totalFacts = extraction.matters.reduce((sum, matter) => sum + matter.facts.length, 0);
     this.telemetry?.record({
       requestId: randomUUID(),
       timestamp: new Date().toISOString(),
       kind: "analysis.extraction",
       outcome: "ok",
       inputCharacters: countCharacters(caseText),
-      outputItems: extraction.facts.length,
+      outputItems: totalFacts,
       attempts: 1,
     });
 
-    const sessionId = randomUUID();
-    const facts = extraction.facts.map((fact) => ({ ...fact }));
-    const snapshot: FactSnapshot = {
-      snapshotVersion: 1,
-      snapshotHash: snapshotHash(sessionId, facts),
-      confirmedAt: now.toISOString(),
-    };
-    const session: AnalysisSession = {
-      sessionId,
-      createdAt: now.getTime(),
-      lastActiveAt: now.getTime(),
-      stage: "snapshot_confirmed",
-      caseCharacterCount: countCharacters(caseText),
-      facts,
-      independentMatters: extraction.independentMatters,
-      snapshot,
-      snapshotBackup: this.captureSnapshotBackup({ facts, snapshot }),
-      modification: null,
-      gapAnswers: new Map(),
-    };
-    this.sessions.set(session.sessionId, session);
-    return toSessionState(session, now);
+    const matterCount = extraction.matters.length;
+    return extraction.matters.map((matter, index) => {
+      const sessionId = randomUUID();
+      const facts = matter.facts.map((fact) => ({ ...fact }));
+      const snapshot: FactSnapshot = {
+        snapshotVersion: 1,
+        snapshotHash: snapshotHash(sessionId, facts),
+        confirmedAt: now.toISOString(),
+      };
+      const session: AnalysisSession = {
+        sessionId,
+        createdAt: now.getTime(),
+        lastActiveAt: now.getTime(),
+        stage: "snapshot_confirmed",
+        caseCharacterCount: countCharacters(caseText),
+        matterIndex: index + 1,
+        matterLabel: matter.label,
+        matterCount,
+        facts,
+        snapshot,
+        snapshotBackup: this.captureSnapshotBackup({ facts, snapshot }),
+        modification: null,
+        gapAnswers: new Map(),
+      };
+      this.sessions.set(session.sessionId, session);
+      return toSessionState(session, now);
+    });
   }
 
   getSession(sessionId: string, now = new Date()): AnalysisSessionState {
@@ -618,7 +650,16 @@ export class AnalysisEngine {
         .map((source) => source.sourceId),
       attempts: 1,
     });
-    return buildReport(state, request.requestId, now.toISOString(), effectiveResult, releaseId, reportFocus, gapBranches);
+    return buildReport(
+      state,
+      request.requestId,
+      now.toISOString(),
+      effectiveResult,
+      releaseId,
+      reportFocus,
+      gapBranches,
+      buildFactConflicts(session.facts, gapBranches),
+    );
   }
 
   clearSession(sessionId: string, now = new Date()): void {
@@ -706,6 +747,7 @@ export class AnalysisEngine {
       replacesFactId: null,
       supersededByFactId: null,
       resolvesGapIds: rawGapId === undefined ? [] : [rawGapId],
+      disputeGroupId: null,
     };
     session.facts.push(fact);
     return toSessionState(session, now);
@@ -806,6 +848,9 @@ export class AnalysisEngine {
     const statement = validateStatementText(request?.statement, "替代事实内容", ANSWER_MAX_CHARACTERS);
     const factIdNew = `fact-revision-${String(session.facts.length + 1).padStart(3, "0")}-${randomUUID().slice(0, 8)}`;
     const status: FactStatus = resolution === "replace" ? "confirmed" : "disputed";
+    // 记为争议事实时给两个版本分配同一争议分组，报告必须并列展示。
+    const disputeGroupId =
+      resolution === "dispute" ? target.disputeGroupId ?? `conflict-${factIdNew}` : null;
 
     if (resolution === "replace") {
       target.excluded = true;
@@ -817,6 +862,7 @@ export class AnalysisEngine {
       target.statusLabel = FACT_STATUS_LABELS.disputed;
       target.confirmedAt = now.toISOString();
       target.confirmationMethod = target.confirmationMethod ?? "officer";
+      target.disputeGroupId = disputeGroupId;
     }
 
     session.facts.push({
@@ -839,6 +885,7 @@ export class AnalysisEngine {
       replacesFactId: factId,
       supersededByFactId: null,
       resolvesGapIds: [...target.resolvesGapIds],
+      disputeGroupId,
     });
     return toSessionState(session, now);
   }

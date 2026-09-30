@@ -136,10 +136,44 @@ test.describe("提交案情直达报告", () => {
     await expect(page.getByTestId("analysis-report")).toBeVisible();
   });
 
-  test("检测到彼此独立的事项时报告仍正常生成", async ({ page }) => {
+  test("检测到彼此独立的事项时自动拆成多份分析并可切换", async ({ page }) => {
     await submitCase(page, INDEPENDENT_TEXT);
-    // 多事项自动拆分由后续切片实现；本切片只保证不阻断报告生成。
+
+    // 输入含互不相关的事项：自动拆分为多份分析并提供切换入口。
+    const switcher = page.getByTestId("analysis-switcher");
+    await expect(switcher).toBeVisible();
+    await expect(switcher).toContainText("2 份分析");
+    await expect(page.getByTestId("analysis-switch-0")).toHaveAttribute("aria-pressed", "true");
+
+    const firstSnapshot = await page.getByTestId("analysis-report").locator("dd").nth(1).innerText();
+    await page.getByTestId("analysis-switch-1").click();
+    await expect(page.getByTestId("analysis-switch-1")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("analysis-report")).toBeVisible();
+    const secondSnapshot = await page.getByTestId("analysis-report").locator("dd").nth(1).innerText();
+    // 每份分析绑定各自独立的事实快照。
+    expect(secondSnapshot).not.toBe(firstSnapshot);
+
+    // 切回第一份分析恢复其报告与快照。
+    await page.getByTestId("analysis-switch-0").click();
+    await expect(page.getByTestId("analysis-report").locator("dd").nth(1)).toHaveText(firstSnapshot);
+  });
+
+  test("存在冲突说法时并列展示各说法并按各版本给出分支", async ({ page }) => {
+    await submitCase(
+      page,
+      "3月2日晚上，张某在城南市场门口殴打李某。李某称自己被打成轻伤，张某称李某只是轻微伤，双方说法不一。",
+    );
+
+    const section = page.getByTestId("fact-conflicts");
+    await expect(section).toBeVisible();
+    await expect(section).toContainText("轻伤");
+    await expect(section).toContainText("轻微伤");
+    await expect(section).toContainText("并列保留");
+    await expect(section).toContainText("未选定任一版本");
+
+    // 两个版本并列展示，且各自给出一条分支。
+    await expect(section.locator('[data-testid^="conflict-version-"]')).toHaveCount(2);
+    await expect(section.locator('[data-testid^="conflict-branch-"]')).toHaveCount(2);
   });
 });
 
