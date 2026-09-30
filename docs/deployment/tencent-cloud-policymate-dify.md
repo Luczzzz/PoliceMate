@@ -1,7 +1,13 @@
 # 腾讯云同机部署 PoliceMate 与 Dify
 
-适用环境：Ubuntu Server 22.04 LTS 64 位，4 核 CPU，4 GB 内存，单台腾讯云服务器。
+适用环境：Ubuntu Server 22.04 或 24.04 LTS 64 位，4 核 CPU，4 GB 内存，单台腾讯云服务器。
 本文供服务器上的 AI 按阶段执行，不是可整段粘贴的一键脚本。执行者先阅读全文，每阶段达到验收条件再继续。需要管理员操作的步骤明确交给服务器所有者。
+
+不要假定发行版版本：先从 `/etc/os-release` 读取实际代号，再据此选择软件源。本文已验证的代号是
+`jammy`（22.04）与 `noble`（24.04）；服务器实际版本与文档标题不一致时，以服务器实际版本为准。
+
+本文面向**中国大陆**腾讯云实例，软件源与镜像拉取按国内网络现实处理。境外或已配置可用代理的
+服务器可改用官方源，但换源前必须校验密钥指纹（见第 2 节）。
 
 ## 0. 部署目标与边界
 
@@ -77,7 +83,17 @@ export DIFY_DOMAIN='dify.example.com'
 export CERTBOT_EMAIL='实际邮箱'
 export PM_COMMIT='所有者批准的完整提交SHA'
 export DIFY_TAG='1.17.1'
+# 从实际系统读取代号，不要硬编码 jammy
+. /etc/os-release
+case "${UBUNTU_CODENAME:-}" in
+  jammy|noble) export UBUNTU_CODENAME ;;
+  *) printf '未验证的 Ubuntu 代号：%s（按发行版文档调整软件源后继续）\n' "${UBUNTU_CODENAME:-未知}" ;;
+esac
+printf '检测到 %s %s（%s）\n' "${NAME:-}" "${VERSION_ID:-}" "${UBUNTU_CODENAME:-未知}"
 ```
+
+`UBUNTU_CODENAME` 为空时先确认是否为 Ubuntu，再按发行版说明确定代号；不要在未知代号上
+直接套用 `jammy` 源地址。
 
 **版本说明**：`1.17.1` 是编写本文时从官方 Releases 核对的版本，不是永久推荐。执行前查看目标版本的安全公告、最低资源与升级说明；如果换 tag，重新核对 `.env.example`、Compose 服务、端口和密钥变量。不要混用 `main` 分支配置和旧镜像。
 
@@ -113,16 +129,51 @@ free -h
 
 已有 Swap 不重复创建；`fallocate` 不适用时按文件系统文档处理。不要重格式化已有 Swap 文件。
 
-### Docker（使用官方 apt 仓库）
-
-已有 Docker 时先检查版本及容器，不卸载或替换正在使用的安装。首次安装：
+腾讯云 Ubuntu 镜像默认带约 2 GB 的 `/swap.img`。Dify 空载常驻接近 4 GB 内存，
+2 GB Swap 偏紧，建议把总量补到约 4 GB。已有 Swap 但总量不足时，追加独立文件而不是扩容原文件：
 
 ```bash
-install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-chmod a+r /etc/apt/keyrings/docker.asc
+TOTAL_SWAP_MB=$(awk '/^SwapTotal:/{print int($2/1024)}' /proc/meminfo)
+if [ "$TOTAL_SWAP_MB" -lt 3000 ] && [ ! -e /swapfile ]; then
+  fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+  grep -qE '^/swapfile[[:space:]]' /etc/fstab || printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
+fi
+swapon --show
+free -h
+```
+
+若 `/swap.img` 已在 `/etc/fstab` 中，保持其现状；不要删除或缩小它。
+
+### Docker（国内源，并校验密钥指纹）
+
+已有 Docker 时先检查版本及容器，不卸载或替换正在使用的安装。
+
+`download.docker.com` 在中国大陆常被重置连接，出现 `curl: (35) Recv failure: Connection reset by peer`
+或长时间超时。因此优先使用腾讯云镜像源：内网 `mirrors.tencentyun.com` 不消耗公网流量，
+不可达时回退公网 `mirrors.cloud.tencent.com`。腾讯云镜像的 GPG 密钥与 Docker 官方密钥
+逐字节相同（SHA256 `1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570`，
+指纹 `9DC858229FC7DD38854AE2D88D81803C0EBFCD88`）；下面的指纹校验就是换用镜像的
+前提，指纹不符立即停止并以官方源排查，不要跳过校验。
+
+```bash
+. /etc/os-release
+: "${UBUNTU_CODENAME:?未能识别 Ubuntu 代号}"
 ARCH=$(dpkg --print-architecture)
-printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu jammy stable\n' "$ARCH" > /etc/apt/sources.list.d/docker.list
+install -m 0755 -d /etc/apt/keyrings
+
+DOCKER_MIRROR='https://mirrors.tencentyun.com/docker-ce/linux/ubuntu'
+if ! curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 \
+     "$DOCKER_MIRROR/gpg" -o /etc/apt/keyrings/docker.asc; then
+  DOCKER_MIRROR='https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu'
+  curl -fsSL --retry 3 --retry-connrefused --connect-timeout 10 \
+    "$DOCKER_MIRROR/gpg" -o /etc/apt/keyrings/docker.asc
+fi
+chmod a+r /etc/apt/keyrings/docker.asc
+gpg --show-keys --with-colons /etc/apt/keyrings/docker.asc \
+  | awk -F: '/^fpr:/{print $10}' \
+  | grep -qx '9DC858229FC7DD38854AE2D88D81803C0EBFCD88'
+printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] %s %s stable\n' \
+  "$ARCH" "$DOCKER_MIRROR" "$UBUNTU_CODENAME" > /etc/apt/sources.list.d/docker.list
 apt-get update
 apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 systemctl enable --now docker
@@ -130,7 +181,51 @@ docker version
 docker compose version
 ```
 
-本文的 `!override` 需要 **Compose 2.24.4 或更高版本**。Docker 权限等同高权限管理能力，不要为了方便给无关账号加入 docker 组。网络下载失败时检查 DNS、代理和官方源连通性，不要使用来源不明的镜像或脚本。
+重新运行时脚本会重新下载密钥并覆盖 `docker.asc`，不会保留损坏的副本；
+`apt-get update` 若报签名或 404 错误，说明镜像未同步该代号，回退公网镜像或官方源，
+不要用 `[trusted=yes]` 绕过签名。
+
+无法通过任何 Docker 仓库安装时，Ubuntu 24.04 自带的 `docker.io` 与 `docker-compose-v2`
+（noble-updates 为 2.40.3，满足 `!override` 所需 2.24.4+）可作为兜底，但版本与本文验证的
+组合不同，必须重新核对 Compose 行为后再继续：
+
+```bash
+apt-get install -y docker.io docker-compose-v2
+docker --version
+docker compose version   # 必须 >= 2.24.4
+```
+
+本文的 `!override` 需要 **Compose 2.24.4 或更高版本**。Docker 权限等同高权限管理能力，
+不要为了方便给无关账号加入 docker 组。所有源都不可达时，先报告网络诊断结果并向所有者索取
+代理配置，不要使用来源不明的安装脚本或静态二进制。
+
+### 镜像拉取加速（Dify 必需）
+
+源能装 Docker 不等于能拉镜像：`docker compose pull` 默认访问 Docker Hub，大陆常有超时或限速。
+配置腾讯云内网加速器（仅内网可达，因此只适用于腾讯云 CVM）：
+
+```bash
+install -d -m 0755 /etc/docker
+if [ -s /etc/docker/daemon.json ]; then cp -a /etc/docker/daemon.json "/etc/docker/daemon.json.bak-$(date -u +%Y%m%dT%H%M%SZ)"; fi
+cat > /etc/docker/daemon.json <<'JSON'
+{
+  "registry-mirrors": ["https://mirror.ccs.tencentyun.com"],
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "3" }
+}
+JSON
+python3 -c 'import json;json.load(open("/etc/docker/daemon.json"))'
+systemctl restart docker
+docker info --format '{{json .RegistryConfig.Mirrors}}'
+```
+
+`daemon.json` 必须是合法 JSON，否则 Docker 拒绝启动。已有 `daemon.json` 时先合并已有键，
+不要丢弃原有配置；`log-driver` 设为默认值只是显式覆盖后续可能的改动，不影响已有容器。
+
+加速器**只代理 Docker Hub**。Dify 默认配置的 Weaviate 镜像来自 `cr.weaviate.io`，不受加速影响，
+大陆可能无法拉取。首次部署务实的做法是把向量库换成同样受 Dify 官方支持的 Qdrant：
+它的镜像 `langgenius/qdrant` 在 Docker Hub 上，可被加速器覆盖。切换方式见第 4 节；
+向量库在首次部署时更换没有数据迁移问题，不要在生产已有数据后再这样切换。
 
 ### Node.js 24
 
@@ -273,6 +368,8 @@ APP_WEB_URL=https://dify.example.com
 FILES_URL=https://dify.example.com
 NEXT_PUBLIC_SOCKET_URL=wss://dify.example.com
 NGINX_HTTPS_ENABLED=false
+# 向量库：如 Weaviate 镜像无法拉取，改为 qdrant（见下方“向量库镜像可达性”）
+VECTOR_STORE=weaviate
 SERVER_WORKER_AMOUNT=1
 CELERY_WORKER_AMOUNT=1
 CELERY_AUTO_SCALE=false
@@ -283,7 +380,46 @@ DEBUG=false
 FLASK_DEBUG=false
 ```
 
-HTTPS 在宿主机终止，Dify 内部 HTTP 不等于浏览器或 PoliceMate 可以用明文访问。`SERVICE_API_URL` 是主机地址；PoliceMate 的 API 基地址后续才加 `/v1`。保留本 tag 默认数据库、向量库和 profile，先不自行裁剪服务；4 GB 启动后无法稳定运行时升级内存，不随意关掉依赖。
+HTTPS 在宿主机终止，Dify 内部 HTTP 不等于浏览器或 PoliceMate 可以用明文访问。`SERVICE_API_URL` 是主机地址；PoliceMate 的 API 基地址后续才加 `/v1`。保留本 tag 默认数据库和 profile，先不自行裁剪服务；4 GB 启动后无法稳定运行时升级内存，不随意关掉依赖。
+
+### 向量库镜像可达性
+
+Dify 默认使用 Weaviate，其镜像来自 `cr.weaviate.io`；腾讯云加速器只代理 Docker Hub，
+对该仓库无效。启动前先单独试拉一次，不要等到 `compose up` 才失败：
+
+```bash
+cd /opt/dify/docker
+docker pull cr.weaviate.io/semitechnologies/weaviate:$(awk -F: '/weaviate:/{print $3; exit}' docker-compose.yaml)
+```
+
+拉取成功则保持 `VECTOR_STORE=weaviate`，无需其他改动。失败时改用 Dify 同样官方支持的
+Qdrant：其镜像在 Docker Hub 上，可被加速器覆盖，且切换后除向量数据外行为一致。
+首次部署尚无向量数据，此时切换是安全的；已有数据时不要这样换库。
+
+Qdrant 需要三个字段，缺一不可。`QDRANT_URL` 在 Dify 里默认是 `None`，必须显式给出
+且使用 Compose 服务名，不能写 `localhost`：
+
+```bash
+cd /opt/dify/docker
+node --input-type=module <<'JS'
+import { readFileSync, writeFileSync } from 'node:fs';
+let text = readFileSync('.env', 'utf8');
+if (!/^VECTOR_STORE=/m.test(text)) throw new Error('VECTOR_STORE missing');
+text = text.replace(/^VECTOR_STORE=.*$/m, 'VECTOR_STORE=qdrant');
+for (const [key, value] of Object.entries({ QDRANT_URL: 'http://qdrant:6333' })) {
+  const pattern = new RegExp(`^${key}=.*$`, 'gm');
+  if ([...text.matchAll(pattern)].length === 0) text += `${key}=${value}\n`;
+  else if ([...text.matchAll(pattern)].length === 1) text = text.replace(pattern, `${key}=${value}`);
+  else throw new Error(`Duplicate key: ${key}`);
+}
+writeFileSync('.env', text, { mode: 0o600 });
+console.log('VECTOR_STORE=qdrant configured.');
+JS
+```
+
+`QDRANT_API_KEY` 由下方的密钥脚本一并生成。切换后在启动校验里确认生效：
+`docker compose config --format json` 的 `COMPOSE_PROFILES` 应包含 `qdrant` 而不含 `weaviate`，
+且 `qdrant` 服务处于启用状态。不要把两个向量库存 profile 同时打开。
 
 ### 首次启动前生成密钥
 
@@ -302,6 +438,17 @@ const secret = () => randomBytes(32).toString('hex');
 const redis = secret();
 const sandbox = secret();
 const weaviate = secret();
+// 必须已存在且唯一的字段；缺失说明模板与本文不匹配，应核对版本而不是继续。
+const mustExist = [
+  'SECRET_KEY', 'DB_PASSWORD', 'REDIS_PASSWORD', 'CELERY_BROKER_URL',
+  'CODE_EXECUTION_API_KEY', 'SANDBOX_API_KEY', 'PLUGIN_DAEMON_KEY',
+  'PLUGIN_DIFY_INNER_API_KEY', 'WEAVIATE_API_KEY',
+  'WEAVIATE_AUTHENTICATION_APIKEY_ALLOWED_KEYS',
+  'WEAVIATE_AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED',
+  'DIFY_AGENT_API_TOKEN', 'DIFY_AGENT_SERVER_SECRET_KEY',
+  'DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN',
+];
+// 模板未提供的字段（如 Qdrant）：缺失时追加，不因模板不同而失败。
 const values = {
   SECRET_KEY: secret(), DB_PASSWORD: secret(), REDIS_PASSWORD: redis,
   CELERY_BROKER_URL: `redis://:${redis}@redis:6379/1`,
@@ -311,11 +458,19 @@ const values = {
   WEAVIATE_AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'false',
   DIFY_AGENT_API_TOKEN: secret(), DIFY_AGENT_SERVER_SECRET_KEY: secret(),
   DIFY_AGENT_LOCAL_SANDBOX_AUTH_TOKEN: secret(),
+  QDRANT_API_KEY: secret(), QDRANT_URL: 'http://qdrant:6333',
 };
 for (const [key, value] of Object.entries(values)) {
   const pattern = new RegExp(`^${key}=.*$`, 'gm');
-  if ([...text.matchAll(pattern)].length !== 1) throw new Error(`Missing or duplicate key: ${key}`);
-  text = text.replace(pattern, `${key}=${value}`);
+  const found = [...text.matchAll(pattern)].length;
+  if (found > 1) throw new Error(`Duplicate key: ${key}`);
+  if (found === 1) {
+    text = text.replace(pattern, `${key}=${value}`);
+  } else if (mustExist.includes(key)) {
+    throw new Error(`Missing key: ${key}`);
+  } else {
+    text += `${text.endsWith('\n') ? '' : '\n'}${key}=${value}\n`;
+  }
 }
 writeFileSync('.env', text, { mode: 0o600 });
 writeFileSync('.policymate-secrets-initialized', 'Initial secrets generated; do not rotate by rerunning.\n', { flag: 'wx', mode: 0o600 });
@@ -621,7 +776,11 @@ Docker 启用后按 Compose 默认 restart 策略恢复容器。维护窗口内�
 | Nginx 502 | 检查本机 upstream、systemd/Compose 状态，再检查代理配置 |
 | 容器反复退出 | `docker stats --no-stream`、`free -h`、`journalctl -k` 查 OOM；低并发仍不足则升级内存 |
 | Compose 不认 `!override` | 升级官方 Compose 到 2.24.4+，不要改成普通 ports 合并 |
-| Docker 拉取超时 | 查 Docker Hub/镜像源 DNS 和出站网络；代理按官方方式配置，不关闭 TLS 校验 |
+| Docker/apt 源连接被重置（curl 35） | 大陆网络对官方源的常见阻断；改用腾讯云镜像并按第 2 节校验密钥指纹 |
+| `docker compose pull` 超时或过慢 | 配置 `mirror.ccs.tencentyun.com` 加速；确认加速器只代理 Docker Hub |
+| Weaviate 镜像拉取失败 | 按第 4 节切到 Qdrant，并设置 `QDRANT_URL` 与 `QDRANT_API_KEY` |
+| apt 报签名或 404 | 镜像未同步该代号；回退公网镜像或官方源，不绕过签名校验 |
+| 服务实际版本与文档不同 | 以 `/etc/os-release` 为准，重新核对软件源代号与包名 |
 | 插件安装失败 | 查供应商插件来源、签名、Marketplace/GitHub/PyPI 连接与空间，不关闭签名校验 |
 | Dify 401 | 使用应用 Key 而非模型 Key，确认应用类型与 Key 未撤销 |
 | Dify 403 | 检查管理 IP 白名单；本机用域名解析到 127.0.0.1，避免云公网回流 |
@@ -646,7 +805,7 @@ Docker 启用后按 Compose 默认 restart 策略恢复容器。维护窗口内�
 ## 给服务器 AI 的任务
 
 ```text
-请阅读当前仓库 docs/deployment/tencent-cloud-policymate-dify.md 全文，按阶段在腾讯云 Ubuntu 22.04、4 核 4 GB 服务器部署 PoliceMate 和 Dify。
+请阅读当前仓库 docs/deployment/tencent-cloud-policymate-dify.md 全文，按阶段在这台腾讯云服务器（4 核、4 GB 内存，发行版以 /etc/os-release 实际值为准）部署 PoliceMate 和 Dify。
 先盘点已有服务、端口、目录、内存、Swap 与磁盘，报告修改范围；需要域名、管理 IP、备案、安全组、模型账号和真实服务信息时向我索取。已有服务先备份再合并，不覆盖其他网站。
 固定 PoliceMate 提交及 Dify 稳定 tag，先验证再发布，按文档逐阶段验收。
 保持 PM_ANALYSIS_ENABLED=off 和 PM_ENABLE_TEST_CONTROLS=0：当前真实适配器尚未实现。
