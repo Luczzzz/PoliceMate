@@ -200,7 +200,11 @@ function ConflictVersionCard({ version }: { version: ReportConflictVersion }) {
             </p>
           ) : null}
         </div>
-      ) : null}
+      ) : (
+        <p className="field__note" data-testid={`conflict-branch-note-${version.factId}`}>
+          该说法对应的程序分支见下方「决定性事实缺口与条件分支」。
+        </p>
+      )}
     </li>
   );
 }

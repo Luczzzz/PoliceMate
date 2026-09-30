@@ -510,31 +510,46 @@ function partitionSentences(sentences: Sentence[]): Sentence[][] {
   return groups;
 }
 
-/** 伤情程度线索：用于识别同一事实的不同说法。 */
-const SEVERITY_RULES: Array<{ pattern: RegExp; severity: string }> = [
-  { pattern: /轻微伤|擦伤|挫伤/, severity: "minor" },
-  { pattern: /轻伤|重伤/, severity: "light_or_above" },
-];
+/** 可能出现“同一事实不同说法”的值类别；时间与地点在连续案情中可并存，不纳入。 */
+const VALUE_CONFLICT_CATEGORIES: readonly FactCategory[] = ["result", "amount", "count", "age"];
 
 /**
- * 检测同一事实的不同说法：同一连续案情内出现互相冲突的伤情程度表述时，
- * 把相关结果事实标为争议并共享争议分组。报告必须并列展示全部版本，
- * 不得静默选定其中之一（ADR-0008 第 5 点）。
+ * 两个事实是否属于同一事件。
+ *
+ * 任一未绑定事件（“甲称…乙称…”这类陈述句通常没有行为词）即视为可比较；
+ * 两侧都绑定且事件不同，则视为两起独立事件，不当作同一事实的不同说法。
  */
-function markResultConflicts(drafts: FactDraft[], matterIndex: number): void {
-  const bySeverity = new Map<string, FactDraft[]>();
-  for (const draft of drafts) {
-    if (draft.category !== "result" || draft.value === null) continue;
-    const rule = SEVERITY_RULES.find((candidate) => candidate.pattern.test(draft.value!.raw));
-    if (rule === undefined) continue;
-    const bucket = bySeverity.get(rule.severity) ?? [];
-    bucket.push(draft);
-    bySeverity.set(rule.severity, bucket);
-  }
-  if (bySeverity.size < 2) return;
-  const disputeGroupId = `conflict-matter-${matterIndex}-result`;
-  for (const bucket of bySeverity.values()) {
-    for (const draft of bucket) {
+function eventRefsCompatible(a: FactDraft, b: FactDraft): boolean {
+  if (a.eventRef === null || b.eventRef === null) return true;
+  return a.eventRef === b.eventRef;
+}
+
+/**
+ * 检测同一事实的不同说法：同一连续案情内，同一值类别出现互相不同、
+ * 且属于同一事件（或至少一方未绑定事件）的取值时，把相关事实标为争议并共享
+ * 争议分组。报告必须并列展示全部版本，不得静默选定其中之一
+ * （ADR-0008 第 5 点）。每个类别最多形成一组争议，避免把同一案情的多个
+ * 独立数值全部误判为冲突。
+ */
+function markValueConflicts(drafts: FactDraft[], matterIndex: number): void {
+  for (const category of VALUE_CONFLICT_CATEGORIES) {
+    const candidates = drafts.filter(
+      (draft) => draft.category === category && draft.value !== null && draft.value.raw !== "",
+    );
+    if (candidates.length < 2) continue;
+
+    let conflict: FactDraft[] = [];
+    for (const anchor of candidates) {
+      const group = candidates.filter((other) => eventRefsCompatible(anchor, other));
+      if (new Set(group.map((draft) => draft.value!.raw)).size >= 2) {
+        conflict = group;
+        break;
+      }
+    }
+    if (conflict.length === 0) continue;
+
+    const disputeGroupId = `conflict-matter-${matterIndex}-${category}`;
+    for (const draft of conflict) {
       draft.status = "disputed";
       draft.disputeGroupId = disputeGroupId;
     }
@@ -729,7 +744,7 @@ function extractMatterDrafts(
     });
   }
 
-  markResultConflicts(drafts, matterIndex);
+  markValueConflicts(drafts, matterIndex);
   return drafts;
 }
 
@@ -751,7 +766,7 @@ export interface ExtractFixtureResult {
  */
 export function extractCaseFactsFixture(caseText: string): ExtractFixtureResult {
   // 先按“另外/此外”等连接词切段：这类表述本身即表示新事项开始，
-  // 即使与上一段共享人员、地点或时间也分开（ADR-0003 第 8 条、ADR-0008 第 5 点）。
+  // 即使与上一段共享人员、地点或时间也分开（ADR-0008 第 5 点，取代 ADR-0003 第 8 点的“只提示、由民警决定”）。
   const segments = caseText
     .split(/(?:另外|此外|另一起|还有一起)[，,、]?/)
     .map((segment) => segment.trim())

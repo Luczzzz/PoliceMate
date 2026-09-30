@@ -188,6 +188,11 @@ export function ModifyFactsPage() {
           以下修改尚未形成新的事实快照，不会改变当前有效报告
           {report ? `（快照 v${report.snapshotVersion}）` : ""}。确认新快照后，旧报告及其临时状态立即失效。
         </p>
+        {state.analysisCount > 1 ? (
+          <p data-testid="modify-analysis-context">
+            当前正在修改的是「{state.analysisLabel}」（本次输入共拆分为 {state.analysisCount} 份分析）。
+          </p>
+        ) : null}
       </section>
 
       {error !== null ? (

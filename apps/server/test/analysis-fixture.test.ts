@@ -186,5 +186,26 @@ describe("fixture 提取：争议事实分组", () => {
       expect(fact.disputeGroupId).toBeNull();
     }
   });
+
+  it("同类别不同取值的说法被标记为争议（金额）", () => {
+    const result = extractCaseFactsFixture("3月2日，李某称电动车价值5000元。王某称只值2000元。");
+    const amounts = result.facts.filter((fact) => fact.category === "amount");
+    expect(amounts.map((fact) => fact.value?.raw)).toEqual(["5000元", "2000元"]);
+    for (const fact of amounts) {
+      expect(fact.status).toBe("disputed");
+      expect(fact.disputeGroupId).not.toBeNull();
+    }
+    expect(new Set(amounts.map((fact) => fact.disputeGroupId)).size).toBe(1);
+  });
+
+  it("同类别但分属不同事件的取值不标记为争议", () => {
+    const result = extractCaseFactsFixture("3月2日，张某盗窃现金3000元。当天张某又诈骗5000元。");
+    const amounts = result.facts.filter((fact) => fact.category === "amount");
+    expect(amounts.length).toBe(2);
+    for (const fact of amounts) {
+      expect(fact.status).toBe("candidate");
+      expect(fact.disputeGroupId).toBeNull();
+    }
+  });
 });
 
