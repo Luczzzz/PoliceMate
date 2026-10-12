@@ -46,6 +46,8 @@ test.describe("报告临时工作台", () => {
     await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 1 项，共 4 项");
     await expect(page.getByTestId("workbench-item-ev-02")).toHaveCount(0);
     await page.getByTestId("workbench-clear-evidence").click();
+    // 未筛选时中低优先级收进“更多”。
+    await page.getByTestId("workbench-more-evidence").locator(":scope > summary").click();
     await expect(page.getByTestId("workbench-item-ev-02")).toBeVisible();
 
     // 证据清单可按优先级与当前掌握状态筛选。

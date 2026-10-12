@@ -13,6 +13,7 @@ import type {
 import {
   FACT_STATUS_LABELS,
   GAP_ANSWER_LABELS,
+  QUICK_BRIEF_LIMITS,
   REPORT_BASIS_CONFIRMATION_LABELS,
   reportHasUnconfirmedBasis,
 } from "@policymate/contracts";
@@ -98,6 +99,12 @@ function GenericModule({ module }: { module: ReportModule }) {
 }
 
 /** 研判速览之后的模块默认折叠，只展开核心证据核查（ADR-0011）；折叠态只留一行摘要。 */
+/** 折叠态只显示一行摘要，超过上限截断（完整摘要在展开后仍可见）。 */
+function foldSummary(summary: string): string {
+  const chars = [...summary];
+  return chars.length <= QUICK_BRIEF_LIMITS.moduleSummaryMax ? summary : `${chars.slice(0, QUICK_BRIEF_LIMITS.moduleSummaryMax).join("")}…`;
+}
+
 const DEFAULT_OPEN_MODULE = "evidence_checklist";
 
 function ReportModuleSection({ module, collapsible = false }: { module: ReportModule; collapsible?: boolean }) {
@@ -115,34 +122,36 @@ function ReportModuleSection({ module, collapsible = false }: { module: ReportMo
     >
       <summary>
         <span className="report-module-fold__label">{module.label}</span>
-        {module.summary ? <span className="report-module-fold__summary">{module.summary}</span> : null}
+        {module.summary ? <span className="report-module-fold__summary">{foldSummary(module.summary)}</span> : null}
       </summary>
       {body}
     </details>
   );
 }
 
-/** 点击索引或速览动作跳转到折叠模块时，先展开对应模块。 */
+/** 跳转到折叠模块前先展开它；页面加载时 URL 已带锚点、重复点击同一锚点也要生效。 */
+function openFoldFor(hash: string): void {
+  const match = /^#report-module-(.+)$/.exec(hash);
+  if (match === null) return;
+  const fold = document.querySelector<HTMLDetailsElement>(`details[data-fold-for="${match[1]}"]`);
+  if (fold === null) return;
+  fold.open = true;
+  document.getElementById(`report-module-${match[1]}`)?.scrollIntoView();
+}
+
 function useOpenFoldOnHash() {
   useEffect(() => {
-    const open = () => {
-      const match = /^#report-module-(.+)$/.exec(window.location.hash);
-      if (match === null) return;
-      const fold = document.querySelector<HTMLDetailsElement>(`details[data-fold-for="${match[1]}"]`);
-      if (fold !== null && !fold.open) {
-        fold.open = true;
-        document.getElementById(`report-module-${match[1]}`)?.scrollIntoView();
-      }
-    };
-    const click = (event: MouseEvent) => {
+    openFoldFor(window.location.hash);
+    const onHashChange = () => openFoldFor(window.location.hash);
+    const onClick = (event: MouseEvent) => {
       const anchor = (event.target as Element | null)?.closest?.('a[href^="#report-module-"]');
-      if (anchor !== null && anchor !== undefined) window.setTimeout(open, 0);
+      if (anchor instanceof HTMLAnchorElement) openFoldFor(anchor.hash);
     };
-    window.addEventListener("hashchange", open);
-    document.addEventListener("click", click);
+    window.addEventListener("hashchange", onHashChange);
+    document.addEventListener("click", onClick);
     return () => {
-      window.removeEventListener("hashchange", open);
-      document.removeEventListener("click", click);
+      window.removeEventListener("hashchange", onHashChange);
+      document.removeEventListener("click", onClick);
     };
   }, []);
 }
@@ -307,35 +316,39 @@ function FactConflictSection({ conflicts }: { conflicts: ReportFactConflict[] })
 }
 
 /** 研判速览（ADR-0011）：一句白话定性、立即动作、“如果…则…”走向；法律术语仅作注释。 */
-function QuickBriefSection({ brief }: { brief: NonNullable<AnalysisReport["quickBrief"]> }) {
+function QuickBriefSection({ brief, inconclusive }: { brief: NonNullable<AnalysisReport["quickBrief"]>; inconclusive: boolean }) {
+  const steps = (
+    <div className="quick-brief__steps" key="steps">
+      <h3>现在先做</h3>
+      <ol data-testid="quick-brief-steps">
+        {brief.nextSteps.map((step, index) => (
+          <li key={index}>
+            <a href={`#report-module-${step.targetModule}`}>{step.plain}</a>
+            {step.legal ? <small className="quick-brief__legal">（{step.legal}）</small> : null}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+  const branches = brief.branchCards.length > 0 ? (
+    <div className="quick-brief__branches" key="branches">
+      <h3>结论会怎么变</h3>
+      <ul data-testid="quick-brief-branches">
+        {brief.branchCards.map((card, index) => (
+          <li key={index} className="quick-brief__card">
+            <span className="quick-brief__if">如果{card.condition}</span>
+            <span className="quick-brief__then">→ {card.outcome}</span>
+            {card.legal ? <small className="quick-brief__legal">〔{card.legal}〕</small> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  ) : null;
   return (
     <section className="quick-brief" aria-label="研判速览" data-testid="quick-brief">
       <h2 className="quick-brief__bottom-line" data-testid="quick-brief-bottom-line">{brief.bottomLine}</h2>
-      <div className="quick-brief__steps">
-        <h3>现在先做</h3>
-        <ol data-testid="quick-brief-steps">
-          {brief.nextSteps.map((step, index) => (
-            <li key={index}>
-              <a href={`#report-module-${step.targetModule}`}>{step.plain}</a>
-              {step.legal ? <small className="quick-brief__legal">（{step.legal}）</small> : null}
-            </li>
-          ))}
-        </ol>
-      </div>
-      {brief.branchCards.length > 0 ? (
-        <div className="quick-brief__branches">
-          <h3>结论会怎么变</h3>
-          <ul data-testid="quick-brief-branches">
-            {brief.branchCards.map((card, index) => (
-              <li key={index} className="quick-brief__card">
-                <span className="quick-brief__if">如果{card.condition}</span>
-                <span className="quick-brief__then">→ {card.outcome}</span>
-                {card.legal ? <small className="quick-brief__legal">〔{card.legal}〕</small> : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      {/* 不能下结论时，先让民警看到“补什么事实会怎样”，再看动作（Q13）。 */}
+      {inconclusive ? [branches, steps] : [steps, branches]}
     </section>
   );
 }
@@ -575,7 +588,9 @@ function ReportBody({
         </section>
       ) : null}
 
-      {report.quickBrief !== undefined ? <QuickBriefSection brief={report.quickBrief} /> : <ReportOverview report={report} />}
+      {report.quickBrief !== undefined
+        ? <QuickBriefSection brief={report.quickBrief} inconclusive={report.status === "insufficient_facts" || report.status === "conflicting"} />
+        : <ReportOverview report={report} />}
       <ReportModuleIndex modules={modules} />
 
       <div className="report-actions" aria-label="报告操作">

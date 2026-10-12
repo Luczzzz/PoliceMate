@@ -225,30 +225,72 @@ function interviewKey(itemId: string): string {
   return `interview:${itemId}`;
 }
 
-function InterviewRoleGroup({ role, items }: {
+/** 未筛选时每个角色默认显示的询问条数，其余收进“更多”（ADR-0011）。 */
+const INTERVIEW_PER_ROLE_PREVIEW = 3;
+
+function InterviewRoleGroup({ role, items, capped }: {
   role: { id: string; label: string };
   items: ReportInterviewPointItem[];
+  capped: boolean;
 }) {
   const { reviewed, focus } = useWorkbench();
+  const row = (item: ReportInterviewPointItem) => (
+    <li className="workbench-item" key={item.itemId} data-testid={`workbench-item-${item.itemId}`}>
+      {item.topic !== null ? <p className="workbench-item__meta">{item.topic}</p> : null}
+      <p className="workbench-item__text">{item.text}</p>
+      <WorkbenchMarkButtons
+        itemId={item.itemId}
+        markKey={interviewKey(item.itemId)}
+        reviewed={reviewed.includes(interviewKey(item.itemId))}
+        focus={focus.includes(interviewKey(item.itemId))}
+      />
+    </li>
+  );
+  const shown = capped ? items.slice(0, INTERVIEW_PER_ROLE_PREVIEW) : items;
+  const more = capped ? items.slice(INTERVIEW_PER_ROLE_PREVIEW) : [];
   return (
     <li className="interview-role-group">
       <h3>{role.label}</h3>
-      <ul className="workbench-list">
-        {items.map((item) => (
-          <li className="workbench-item" key={item.itemId} data-testid={`workbench-item-${item.itemId}`}>
-            {item.topic !== null ? <p className="workbench-item__meta">{item.topic}</p> : null}
-            <p className="workbench-item__text">{item.text}</p>
-            <WorkbenchMarkButtons
-              itemId={item.itemId}
-              markKey={interviewKey(item.itemId)}
-              reviewed={reviewed.includes(interviewKey(item.itemId))}
-              focus={focus.includes(interviewKey(item.itemId))}
-            />
-          </li>
-        ))}
-      </ul>
+      <ul className="workbench-list">{shown.map(row)}</ul>
+      {more.length > 0 ? (
+        <details className="report-module__more" data-testid={`workbench-more-interview-${role.id}`}>
+          <summary>更多（{more.length} 问）</summary>
+          <ul className="workbench-list">{more.map(row)}</ul>
+        </details>
+      ) : null}
     </li>
   );
+}
+
+function EvidenceItemRow({ item }: { item: ReportEvidenceChecklistItem }) {
+  const { reviewed, focus } = useWorkbench();
+  return (
+    <li className="workbench-item" data-testid={`workbench-item-${item.itemId}`}>
+      <p className="workbench-item__text">{item.text}</p>
+      <p className="workbench-item__meta">
+        <span className={`evidence-priority evidence-priority--${item.priority}`}>{item.priorityLabel}</span>
+        <span>{item.holdingStatusLabel}</span>
+      </p>
+      <dl className="workbench-item__details">
+        {item.purpose !== null ? <div><dt>证明目的</dt><dd>{item.purpose}</dd></div> : null}
+        {item.sourceHint !== null ? <div><dt>可能来源</dt><dd>{item.sourceHint}</dd></div> : null}
+        {item.preservationRisk !== null ? <div><dt>保全风险</dt><dd>{item.preservationRisk}</dd></div> : null}
+      </dl>
+      <WorkbenchMarkButtons
+        itemId={item.itemId}
+        markKey={evidenceKey(item.itemId)}
+        reviewed={reviewed.includes(evidenceKey(item.itemId))}
+        focus={focus.includes(evidenceKey(item.itemId))}
+      />
+    </li>
+  );
+}
+
+/** 未筛选时只默认显示高优先级证据（没有高优先级时取前 3 项），其余收进“更多”（ADR-0011）。 */
+function splitEvidencePreview(items: ReportEvidenceChecklistItem[]) {
+  const high = items.filter((item) => item.priority === "high");
+  const primary = high.length > 0 ? high : items.slice(0, 3);
+  return { primary, rest: items.filter((item) => !primary.includes(item)) };
 }
 
 export function EvidenceChecklistWorkbench({ module }: { module: ReportModule }) {
@@ -282,6 +324,7 @@ export function EvidenceChecklistWorkbench({ module }: { module: ReportModule })
     evidenceFilters.mark !== "all" ||
     evidenceFilters.priority !== null ||
     evidenceFilters.holdingStatus !== null;
+  const preview = splitEvidencePreview(visible);
 
   return (
     <section
@@ -336,28 +379,21 @@ export function EvidenceChecklistWorkbench({ module }: { module: ReportModule })
           ) : visible.length === 0 ? (
             <p data-testid="workbench-empty-evidence">当前筛选条件下没有项目，请清除筛选或调整条件。</p>
           ) : (
-            <ul className="workbench-list" data-testid="workbench-list-evidence">
-              {visible.map((item) => (
-                <li className="workbench-item" key={item.itemId} data-testid={`workbench-item-${item.itemId}`}>
-                  <p className="workbench-item__text">{item.text}</p>
-                  <p className="workbench-item__meta">
-                    <span className={`evidence-priority evidence-priority--${item.priority}`}>{item.priorityLabel}</span>
-                    <span>{item.holdingStatusLabel}</span>
-                  </p>
-                  <dl className="workbench-item__details">
-                    {item.purpose !== null ? <div><dt>证明目的</dt><dd>{item.purpose}</dd></div> : null}
-                    {item.sourceHint !== null ? <div><dt>可能来源</dt><dd>{item.sourceHint}</dd></div> : null}
-                    {item.preservationRisk !== null ? <div><dt>保全风险</dt><dd>{item.preservationRisk}</dd></div> : null}
-                  </dl>
-                  <WorkbenchMarkButtons
-                    itemId={item.itemId}
-                    markKey={evidenceKey(item.itemId)}
-                    reviewed={reviewed.includes(evidenceKey(item.itemId))}
-                    focus={focus.includes(evidenceKey(item.itemId))}
-                  />
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="workbench-list" data-testid="workbench-list-evidence">
+                {(filtersActive ? visible : preview.primary).map((item) => (
+                  <EvidenceItemRow key={item.itemId} item={item} />
+                ))}
+              </ul>
+              {!filtersActive && preview.rest.length > 0 ? (
+                <details className="report-module__more" data-testid="workbench-more-evidence">
+                  <summary>更多（{preview.rest.length} 项）</summary>
+                  <ul className="workbench-list">
+                    {preview.rest.map((item) => <EvidenceItemRow key={item.itemId} item={item} />)}
+                  </ul>
+                </details>
+              ) : null}
+            </>
           )}
         </>
       )}
@@ -435,7 +471,7 @@ export function InterviewPointsWorkbench({ module }: { module: ReportModule }) {
           ) : (
             <ul className="interview-role-list" data-testid="workbench-list-interview">
               {roleOptions.filter((role) => visible.some((item) => item.role === role.id)).map((role) => (
-                <InterviewRoleGroup key={role.id} role={role} items={visible.filter((item) => item.role === role.id)} />
+                <InterviewRoleGroup key={role.id} role={role} items={visible.filter((item) => item.role === role.id)} capped={!filtersActive} />
               ))}
             </ul>
           )}

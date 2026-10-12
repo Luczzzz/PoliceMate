@@ -72,3 +72,31 @@ test("概览在窄屏与放大字体下不横向溢出", async ({ page }) => {
   }));
   expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.width + 1);
 });
+
+test("伤情未查时一句话先说不能下结论，走向分支排在动作之前", async ({ page }) => {
+  await page.goto("/analysis");
+  await page.getByTestId("case-text-input").fill("3月2日晚上，张某在城南市场门口殴打李某。");
+  await page.getByTestId("case-input-submit").click();
+  await page.waitForURL(/\/analysis\/report$/);
+  await expect(page.getByTestId("quick-brief")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("quick-brief-bottom-line")).toContainText("现在还不能下结论，因为");
+  const branchesFirst = await page.getByTestId("quick-brief").evaluate((brief) => {
+    const branches = brief.querySelector('[data-testid="quick-brief-branches"]');
+    const steps = brief.querySelector('[data-testid="quick-brief-steps"]');
+    return Boolean(branches && steps && (branches.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING));
+  });
+  expect(branchesFirst).toBe(true);
+});
+
+test("证据清单默认只显示高优先级，其余收进“更多”；询问要点每角色默认不超过 3 问", async ({ page }) => {
+  await reachReport(page);
+  const evidence = page.getByTestId("report-module-evidence_checklist");
+  for (const item of await evidence.locator('[data-testid^="workbench-item-"]:visible').all()) {
+    await expect(item.locator(".evidence-priority")).toHaveClass(/evidence-priority--high/);
+  }
+  await expect(page.getByTestId("workbench-more-evidence")).toBeVisible();
+  await page.getByTestId("report-fold-interview_points").locator(":scope > summary").click();
+  for (const group of await page.locator(".interview-role-group").all()) {
+    expect(await group.locator(":scope > ul > li").count()).toBeLessThanOrEqual(3);
+  }
+});

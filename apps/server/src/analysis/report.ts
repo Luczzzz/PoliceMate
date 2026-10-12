@@ -29,6 +29,7 @@ import {
   REPORT_CONFLICT_BOUNDARY,
   REPORT_DOCUMENT_TASK_BOUNDARY,
   REPORT_MODULE_LABELS,
+  QUICK_BRIEF_INCONCLUSIVE_PREFIX,
   QUICK_BRIEF_LIMITS,
   REPORT_STATUS_LABELS,
 } from "@policymate/contracts";
@@ -283,7 +284,7 @@ function validateQuickBrief(brief: unknown): void {
   const limits = QUICK_BRIEF_LIMITS;
   const text = (value: unknown, max: number): value is string =>
     typeof value === "string" && value.trim() !== "" && [...value].length <= max;
-  const optionalLegal = (value: unknown) => value === null || value === undefined || typeof value === "string";
+  const optionalLegal = (value: unknown) => value === null || typeof value === "string";
   const b = brief as Partial<ReportQuickBrief> | null;
   if (!b || typeof b !== "object" || !text(b.bottomLine, limits.bottomLineMax)) {
     throw new Error("研判速览一句话定性缺失或超长。");
@@ -300,7 +301,7 @@ function validateQuickBrief(brief: unknown): void {
     throw new Error("研判速览走向卡片数量不符合契约。");
   }
   for (const card of b.branchCards) {
-    if (!card || !text(card.condition, 60) || !text(card.outcome, 60) || !optionalLegal(card.legal)) {
+    if (!card || !text(card.condition, limits.branchCardTextMax) || !text(card.outcome, limits.branchCardTextMax) || !optionalLegal(card.legal)) {
       throw new Error("研判速览走向卡片缺少白话条件或走向。");
     }
   }
@@ -361,15 +362,37 @@ export function validateReportResult(result: ReportGenerationResult, session: An
   }
 }
 
+/**
+ * 条件不足或存在多种可能时，一句话必须先说明“现在还不能下结论”。
+ * 上游已写成这样则原样保留；否则在原白话定性前加上前缀，放不下时用固定句，不改动动作和分支。
+ */
+function inconclusiveBrief(brief: ReportQuickBrief, reason: string): ReportQuickBrief {
+  if (brief.bottomLine.startsWith(QUICK_BRIEF_INCONCLUSIVE_PREFIX)) return brief;
+  const prefixed = `${QUICK_BRIEF_INCONCLUSIVE_PREFIX}${reason}：${brief.bottomLine}`;
+  const bottomLine = [...prefixed].length <= QUICK_BRIEF_LIMITS.bottomLineMax
+    ? prefixed
+    : `${QUICK_BRIEF_INCONCLUSIVE_PREFIX}${reason}，请按下方走向补充核验。`;
+  return { ...brief, bottomLine };
+}
+
+const INCONCLUSIVE_REASON: Partial<Record<ReportStatus, string>> = {
+  insufficient_facts: "关键事实未确认",
+  conflicting: "存在多种可能",
+};
+
 /** 部分模块失败时，丢弃锚点指向失败模块的动作；剩余不足下限则整体不显示速览。 */
 function usableQuickBrief(result: ReportGenerationResult): ReportQuickBrief | undefined {
-  const brief = result.quickBrief;
+  let brief = result.quickBrief;
   if (brief === undefined) return undefined;
   if (result.status === "basis_unavailable" || result.status === "generation_failed") return undefined;
   const failed = new Set(result.modules.filter((module) => module.status === "generation_failed").map((module) => module.id));
-  if (failed.size === 0) return brief;
-  const nextSteps = brief.nextSteps.filter((step) => !failed.has(step.targetModule));
-  return nextSteps.length < QUICK_BRIEF_LIMITS.nextStepsMin ? undefined : { ...brief, nextSteps };
+  if (failed.size > 0) {
+    const nextSteps = brief.nextSteps.filter((step) => !failed.has(step.targetModule));
+    if (nextSteps.length < QUICK_BRIEF_LIMITS.nextStepsMin) return undefined;
+    brief = { ...brief, nextSteps };
+  }
+  const reason = INCONCLUSIVE_REASON[result.status];
+  return reason === undefined ? brief : inconclusiveBrief(brief, reason);
 }
 
 export function buildReport(
@@ -385,6 +408,7 @@ export function buildReport(
   gapBranches: ReportGapBranch[] = [],
   conflicts: ReportFactConflict[] = [],
 ): AnalysisReport {
+  const quickBrief = usableQuickBrief(result);
   return {
     contractVersion: CONTRACT_VERSION,
     requestId,
@@ -405,7 +429,7 @@ export function buildReport(
     gapBranches,
     conflicts,
     documentTasks: result.documentTasks,
-    ...(usableQuickBrief(result) === undefined ? {} : { quickBrief: usableQuickBrief(result) }),
+    ...(quickBrief === undefined ? {} : { quickBrief }),
   };
 }
 
@@ -441,8 +465,6 @@ const DOWNGRADE_SUMMARY: Record<"basis_unavailable" | "conflicting" | "insuffici
   conflicting: "存在不能排除的相邻方向，保留多种可能，不形成单一判断。",
   insufficient_facts: "决定性事实尚未确认，暂不能形成单一主结论；请按条件分支补充核验。",
 };
-
-const INCONCLUSIVE_PREFIX = "现在还不能下结论，因为";
 
 export type ConservativeDowngradeStatus = keyof typeof DOWNGRADE_SUMMARY;
 
@@ -493,17 +515,13 @@ export function applyConservativeDowngrade(
   });
 
   const { quickBrief, ...withoutBrief } = result;
-  // 速览只在保留可执行内容的条件不足降级里保留，且一句话必须先说明“不能下结论”；
-  // 其余降级不展示倾向性速览（ADR-0011）。
+  // 速览只在保留可执行内容的条件不足降级、以及存在多种可能的降级里保留，
+  // 且一句话必须先说明“不能下结论”；依据不可用等其余降级不展示倾向性速览（ADR-0011）。
   const keptBrief: ReportQuickBrief | undefined =
-    preserveActionableContent && quickBrief !== undefined
-      ? {
-          ...quickBrief,
-          bottomLine: quickBrief.bottomLine.startsWith(INCONCLUSIVE_PREFIX)
-            ? quickBrief.bottomLine
-            : `${INCONCLUSIVE_PREFIX}决定性事实尚未确认，请按下方走向补充核验。`,
-        }
-      : undefined;
+    quickBrief === undefined ? undefined
+    : forcedStatus === "conflicting" ? inconclusiveBrief(quickBrief, INCONCLUSIVE_REASON.conflicting!)
+    : preserveActionableContent ? inconclusiveBrief(quickBrief, INCONCLUSIVE_REASON.insufficient_facts!)
+    : undefined;
   return {
     ...withoutBrief,
     ...(keptBrief === undefined ? {} : { quickBrief: keptBrief }),

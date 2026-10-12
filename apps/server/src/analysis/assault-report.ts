@@ -11,12 +11,38 @@ import type {
 import {
   EVIDENCE_HOLDING_STATUS_LABELS,
   EVIDENCE_PRIORITY_LABELS,
+  QUICK_BRIEF_INCONCLUSIVE_PREFIX,
   REPORT_MODULE_LABELS,
 } from "@policymate/contracts";
 import { focusMatchingFacts } from "../content/case-focus";
 import type { ReportGenerationRequest, ReportGenerationResult } from "../providers/types";
 
 export const ASSAULT_REPORT_VERSION = "assault-actionable-v1";
+
+/** 殴打案的确定性速览：与 Dify 生成层输出同形，措辞按 ADR-0011 的样例。 */
+function assaultQuickBrief({ injuryMissing, criminalInjury, reported, drinking }: {
+  injuryMissing: boolean; criminalInjury: boolean; reported: boolean; drinking: boolean;
+}): ReportQuickBrief {
+  return {
+    bottomLine: injuryMissing
+      ? `${QUICK_BRIEF_INCONCLUSIVE_PREFIX}伤情没查清：像是打人致伤（涉嫌殴打他人/故意伤害）。`
+      : criminalInjury
+        ? "像是打人致轻伤以上（涉嫌故意伤害），重点查刑事办理条件。"
+        : "像是打人（涉嫌殴打他人），先受理调查，同步查明伤情。",
+    nextSteps: [
+      { plain: "先问清伤情，督促就医并留好病历", legal: "固定伤情，为伤情鉴定做准备", targetModule: "evidence_checklist" },
+      { plain: "尽快调取现场监控", legal: "易被覆盖，最紧急", targetModule: "evidence_checklist" },
+      { plain: "分别问双方谁先动手、有无器械", legal: "区分单方殴打、互殴与防卫", targetModule: "interview_points" },
+      { plain: reported ? "先受理报案并登记，不等鉴定" : "先登记殴打线索，核实管辖", legal: "受理不等于已认定违法", targetModule: "filing_conditions" },
+      ...(drinking ? [{ plain: "核实是否醉酒失控，别当成自动免责", legal: "饮酒不等于醉酒", targetModule: "enforcement_risks" as const }] : []),
+    ],
+    branchCards: [
+      { condition: "鉴定为轻伤及以上", outcome: "转刑事立案方向，按刑事程序办理", legal: "故意伤害罪" },
+      { condition: "鉴定为轻微伤或无伤", outcome: "按治安案件办理", legal: "殴打他人" },
+      { condition: "查实双方互相动手", outcome: "双方行为都要记录，不能只处理一方", legal: null },
+    ],
+  };
+}
 
 /** 仅在当前法源可用、没有冲突且报告正常生成时细化殴打案报告。 */
 export function buildAssaultReport(
@@ -132,25 +158,7 @@ export function buildAssaultReport(
     seen.add(key);
     return true;
   });
-  const quickBrief: ReportQuickBrief = {
-    bottomLine: injuryMissing
-      ? "现在还不能下结论，因为伤情没查清：像是打人致伤（涉嫌殴打他人/故意伤害）。"
-      : criminalInjury
-        ? "像是打人致轻伤以上（涉嫌故意伤害），重点查刑事办理条件。"
-        : "像是打人（涉嫌殴打他人），先受理调查，同步查明伤情。",
-    nextSteps: [
-      { plain: "先问清伤情，督促就医并留好病历", legal: "固定伤情，为伤情鉴定做准备", targetModule: "evidence_checklist" },
-      { plain: "尽快调取现场监控", legal: "易被覆盖，最紧急", targetModule: "evidence_checklist" },
-      { plain: "分别问双方谁先动手、有无器械", legal: "区分单方殴打、互殴与防卫", targetModule: "interview_points" },
-      { plain: reported ? "先受理报案并登记，不等鉴定" : "先登记殴打线索，核实管辖", legal: "受理不等于已认定违法", targetModule: "filing_conditions" },
-      ...(drinking ? [{ plain: "核实是否醉酒失控，别当成自动免责", legal: "饮酒不等于醉酒", targetModule: "enforcement_risks" as const }] : []),
-    ],
-    branchCards: [
-      { condition: "鉴定为轻伤及以上", outcome: "转刑事立案方向，按刑事程序办理", legal: "故意伤害罪" },
-      { condition: "鉴定为轻微伤或无伤", outcome: "按治安案件办理", legal: "殴打他人" },
-      { condition: "查实双方互相动手", outcome: "双方行为都要记录，不能只处理一方", legal: null },
-    ],
-  };
+  const quickBrief = assaultQuickBrief({ injuryMissing, criminalInjury, reported, drinking });
   return {
     ...base,
     quickBrief,

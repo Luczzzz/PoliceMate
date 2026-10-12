@@ -66,11 +66,30 @@ describe("研判速览随报告状态降级（ADR-0011 / Q13）", () => {
     expect(buildReport(state, "r2", "2026-10-01T00:00:00Z", { ...result, quickBrief: undefined }, "rel").quickBrief).toBeUndefined();
   });
 
-  it.each(["basis_unavailable", "conflicting"] as const)("非保留降级（%s）不显示速览", async (status) => {
+  it("依据不可用时降级不显示速览", async () => {
     const { result } = await baseline();
     const b = brief() as unknown as NonNullable<ReportGenerationResult["quickBrief"]>;
-    const downgraded = applyConservativeDowngrade({ ...result, quickBrief: b }, status, []);
-    expect(downgraded.quickBrief).toBeUndefined();
+    expect(applyConservativeDowngrade({ ...result, quickBrief: b }, "basis_unavailable", []).quickBrief).toBeUndefined();
+  });
+
+  it("存在多种可能时保留速览：一句话先说不能下结论并保留原白话，动作与分支不变", async () => {
+    const { result } = await baseline();
+    const b = brief({ bottomLine: "像是酒后打人致伤。" }) as unknown as NonNullable<ReportGenerationResult["quickBrief"]>;
+    const downgraded = applyConservativeDowngrade({ ...result, quickBrief: b }, "conflicting", []);
+    expect(downgraded.quickBrief?.bottomLine).toBe("现在还不能下结论，因为存在多种可能：像是酒后打人致伤。");
+    expect(downgraded.quickBrief?.nextSteps).toEqual(b.nextSteps);
+  });
+
+  it("上游自己返回条件不足状态但漏写前缀时，报告里的一句话也会补上；放不下则用固定句", async () => {
+    const { state, result } = await baseline();
+    const build = (bottomLine: string) => buildReport(state, "r4", "2026-10-01T00:00:00Z", {
+      ...result, status: "insufficient_facts" as const,
+      quickBrief: brief({ bottomLine }) as unknown as NonNullable<ReportGenerationResult["quickBrief"]>,
+    }, "rel").quickBrief!.bottomLine;
+    expect(build("像是打人。")).toBe("现在还不能下结论，因为关键事实未确认：像是打人。");
+    expect(build("现在还不能下结论，因为伤情没查清。")).toBe("现在还不能下结论，因为伤情没查清。");
+    const fallback = build("打".repeat(55));
+    expect(fallback).toBe("现在还不能下结论，因为关键事实未确认，请按下方走向补充核验。");
   });
 
   it("条件不足且保留可执行内容时，一句话改写为“现在还不能下结论，因为…”，动作与分支保留", async () => {

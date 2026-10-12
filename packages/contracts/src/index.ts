@@ -562,7 +562,13 @@ export const QUICK_BRIEF_LIMITS = {
   nextStepsMax: 5,
   nextStepPlainMax: 30,
   branchCardsMax: 3,
+  branchCardTextMax: 60,
+  /** 折叠模块一行摘要的显示上限。 */
+  moduleSummaryMax: 40,
 } as const;
+
+/** 条件不足或存在多种可能时，速览一句话必须以此开头。 */
+export const QUICK_BRIEF_INCONCLUSIVE_PREFIX = "现在还不能下结论，因为";
 
 export interface AnalysisReport {
   contractVersion: string;

@@ -56,6 +56,7 @@ test("折叠、筛选与临时标记不依赖服务端往返且即时响应", as
   await page.getByTestId("workbench-filter-mark-reviewed-evidence").click();
   await expect(page.getByTestId("workbench-count-evidence")).toHaveText("当前显示 1 项，共 4 项");
   await page.getByTestId("workbench-clear-evidence").click();
+  await page.getByTestId("workbench-more-evidence").locator(":scope > summary").click();
   await expect(page.getByTestId("workbench-item-ev-02")).toBeVisible();
   const elapsed = Date.now() - startedAt;
 
