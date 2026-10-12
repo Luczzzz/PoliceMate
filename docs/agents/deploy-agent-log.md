@@ -8,12 +8,12 @@
 
 | 项 | 值 |
 | --- | --- |
-| 已部署提交 | `a86e9d0acf95`（部署目录 `20261012T070802Z-a86e9d0acf95`，回滚点 `3f67db4e66a1`） |
+| 已部署提交 | `59a33518598a`（部署目录 `20261012T104044Z-59a33518598a`，回滚点 `a86e9d0acf95`） |
 | 运行模式 | `PM_PROVIDER_MODE=dify`、`PM_ANALYSIS_ENABLED=on`、`PM_ENABLE_TEST_CONTROLS=0` |
 | Dify | 1.17.1（commit `8387590`），工作流应用 `policymate-analysis`，应用 ID `077271dc-b94a-4be6-8052-9f2080aef090` |
 | Dify 模型 | `deepseek-v4.1-flash`（插件 `langgenius/openai_api_compatible` 0.0.68），节点 `temperature=0.2` |
-| 工作流版本串 | `policymate-analysis-v1.2.0`（与 `PM_DIFY_WORKFLOW_VERSION` 一致；v1.2.0 = unwrap 断言改 v2 + 新版 report 提示词/Schema） |
-| 契约 / 提示词版本 | `1.0` / **`actionable-analysis-v2`** |
+| 工作流版本串 | `policymate-analysis-v1.3.0`（提示词 v3 / ADR-0013 草稿契约；与 `PM_DIFY_WORKFLOW_VERSION` 一致） |
+| 契约 / 提示词版本 | `1.0` / **`actionable-analysis-v3`** |
 | 提取预算 | `PM_ANALYSIS_TIMEOUT_MS=240000`（**含重试的总预算，每次尝试 = 总预算 ÷ 尝试次数**） |
 | 报告预算 | `PM_REPORT_TIMEOUT_MS=480000`（同上语义，每次尝试 240 秒；用户可感知的硬上限是前端 420 秒 / 服务端 410 秒） |
 | 分析并发 | `PM_MAX_CONCURRENCY=1` |
@@ -237,6 +237,71 @@
 3. **可观测性**：容忍目前只体现在 `print()`（Dify 节点日志可查）。建议把「本次容忍次数与丢弃字段」纳入验收输出，否则质量/体量回归会被静默掩盖。
 4. **预算语义写进文档**：`PM_*_TIMEOUT_MS` 是含重试的总预算（单次尝试 = 总预算 ÷ 尝试次数）。规范里「提取 30 秒 / 报告 90 秒」在本机不成立，建议标注为「参考值·依环境调整」。
 5. 若你希望用版本串区分这次节点热修，说一声，我提升为 `v1.2.1` 并同步 `PM_DIFY_WORKFLOW_VERSION`（当前保持 `v1.2.0`，因为契约与提示词未变）。
+
+## 六、v3 部署回报与直连模式试用（2026-10-12，部署 `59a3351`）
+
+### 6.1 你要求配合的四件事：①②③④ 全部完成
+
+- ① `llm_report` 节点 System Prompt 换成新版 `report-system.md`（6,923 字符，逐字，按「复制时从下一行开始」规则去掉紧随标记的 `---`）。
+- ② 结构化输出 Schema 换成新版 `dify-report-result.json`（`ReportDraft`，8,423 字符 vs v2 约 18.3 KB）。
+- ③ `wrap` 节点按 `dify-workflow-build.md` 第 8 节**删掉写 `workflowVersion`／`contentReleaseId` 的两行**；同时保留我们在第五节的容错，并把 `_SHAPES` 白名单**按新 Schema 重新生成**（否则草稿新增/更名的字段会被误删）。`unwrap` 断言同步改为 v3。
+- ④ 工作流版本串升为 **`policymate-analysis-v1.3.0`** 并发布；`PM_DIFY_WORKFLOW_VERSION` 同步；已重启并确认可用性 true。
+
+### 6.2 v3 验收（Dify 模式，5 例虚构案情：短·殴打／短·盗窃／中·邻里／长·多事实／长·诈骗）
+
+| 用例 | 端到端 | 报告节点 | 报告令牌 | 结果 |
+| --- | --- | --- | --- | --- |
+| 短·殴打 | 68.3 秒 | 45 秒 | 29,923 | complete / 6 模块 |
+| 短·盗窃 | 90.6 秒 | 46 秒 | 30,066 | complete / 6 模块 |
+| 中·邻里纠纷 | 65.2 秒 | 38 秒 | 27,897 | complete / 6 模块 |
+| 长·多事实 | 84.2 秒 | 47 秒 | 32,243 | complete / 6 模块 |
+| 长·诈骗线索 | 99.5 秒 | 56 秒 | 34,800 | complete / 6 模块 |
+
+- **中位端到端 84.2 秒 / 最大 99.5 秒；报告节点中位 46 秒 / 最大 56 秒** → 你设的目标（中位 ≤90 秒、最大 ≤150 秒）**达成**。
+- 对比 v2：报告节点 62–100 秒、27k–42k 令牌 → v3 报告节点 38–56 秒、28k–35k 令牌；ADR-0013 的草稿化确实压缩了耗时与体量。
+- 六模块、研判速览、锚点、信封与草稿 Schema 校验全部通过。
+
+### 6.3 一个需要你补遥测的瞬时故障（已自愈，但无法定位）
+
+- 发布+重启后的**第一轮 5 例全部 503**：第 1 例 60.4 秒失败，随后 4 例在 **0.0 秒**返回 503（指向可用性探测 15 秒缓存窗口的整段拦截）。
+- 清理后同一工作流复跑 5 例全部 201，随后又单独复现 2 次成功——所以**不是结构性故障**。
+- 但失败时我只拿到 `service_unavailable` 的通用文案（我的脚本只记了状态码，Dify 侧同期运行全部 `succeeded`），**无法定位**。请求：把"哪个阶段失败、失败原因"写进遥测或响应体（至少阶段 + 上游错误类），否则这类瞬时故障只能靠猜。
+
+### 6.4 直连模型模式（ADR-0014）试用结果：5/5 通过，但有两个硬阻塞
+
+在**非生产实例**（`127.0.0.1:8788`，`PM_PROVIDER_MODE=llm`，与生产同代码同环境，仅端口不同）实测你要求的 5 例：
+
+| 用例 | 端到端 | 结果 |
+| --- | --- | --- |
+| 短·殴打 | 59.2 秒 | complete / 6 模块 |
+| 短·盗窃 | 84.3 秒 | complete / 6 模块 |
+| 中·邻里纠纷 | 93.0 秒 | complete / 6 模块 |
+| 长·多事实 | 144.5 秒 | complete / 6 模块 |
+| 长·诈骗线索 | 95.3 秒 | complete / 6 模块 |
+
+- **中位 93.0 秒（略超你设的 ≤90 秒）/ 最大 144.5 秒（≤150 秒内）**；无 JSON 解析失败、无重试、无 503。
+- **容错确实在起作用**：日志出现一次
+  `llm output tolerated: {"operation":"report","trailingCommas":false,"droppedKeys":["interviewItemsPlaceholder"]}`（1/5 触发）——正是第五节事件 6 那类偏差，这次被丢弃而不是整份失败。
+
+**两个必须先解决的阻塞（我已在本机解决，但都需要你们决策）**：
+
+1. **供应商不支持 `response_format: json_schema`**。直连默认走 `json_schema`，网关返回
+   `400 invalid_request_error: This response_format type is unavailable now`；改 `PM_LLM_RESPONSE_FORMAT=json_object` 后 5/5 通过。
+   建议：把"默认值是否该是 json_object"按实测供应商能力决定，或在文档里写明该供应商的取值。
+2. **网关强制要求 `x-opencode-session` 请求头，而直连提供者只发 `Authorization`**。我在本机加了一个只绑回环的 TLS 出口（`127.0.0.1:8445`，自签 CA，注入该头）才通；直连模式要求 HTTPS + `/v1` 结尾，所以这个出口不可避免。
+   建议：若希望直连模式"零基础设施"，需要 `PM_LLM_EXTRA_HEADERS`（或等价的头配置）；否则文档要写明"需要一个注入头的 HTTPS 出口"。
+
+**性能结论**：本机这一轮**直连并不比 Dify v3 快**（中位 93 秒 vs 84 秒，最大 144.5 秒 vs 99.5 秒）。合理怀疑与 `json_object` 模式少了 Schema 提示、输出更长有关（未验证）。因此我不会主动切换生产；如果你们要推进直连，建议先对比两种模式的输出体量（你们已有 `analysis.report` 的 `durationMs`/`outputCharacters` 遥测）。
+
+### 6.5 对你们未决项的回答
+
+1. **第五节 5.4 第 1 项（把 `wrap` 容错回写文档）**：我们会**继续保留 Dify 作为回退**，所以请回写。最终形态就是线上两份，供你们照抄：
+   - `_strip_trailing_commas(text)`：状态机扫描，只删字符串字面量之外、紧随 `]`/`}` 的多余逗号；
+   - `_prune(node, shape)` + `_SHAPES = json.loads(r'''…''')`：`_SHAPES` 由 `dify-report-result.json` / `dify-extract-result.json` **自动生成**（含 `anyOf` → 对象分支合并），只丢弃白名单外的键；
+   - 两处插入点：解析失败的 `except` 分支里先试修复再抛错；`isinstance(result, dict)` 之后调用 `_prune`。
+   （若你们希望逐字对齐，我可以把这两个函数的完整源码贴在本文件里，或随 DSL 一起给。）
+2. **第 4 项（DSL 留档）**：你说可以随直连一起作废——但如果 Dify 仍作为回退保留，我建议**保留留档**（否则回退路径无据可查）。DSL 已导出（`include_secret=false`，无凭据）在我方运维目录；提交进仓库受我的写入边界限制（只能维护本文件），需要所有者解锁该路径。
+3. **4.7 预算语义**：已按你同意的方式留在本文件（总预算 ÷ 尝试次数 = 单次时限）。本机现取值：`PM_ANALYSIS_TIMEOUT_MS=240000`、`PM_REPORT_TIMEOUT_MS=480000`。
 
 ## 开发端回复
 
