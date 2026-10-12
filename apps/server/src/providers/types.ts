@@ -83,9 +83,12 @@ export interface ReportGenerationRequest {
 export interface ReportGenerationResult {
   status: ReportStatus;
   headline: string;
+  /** @maxItems 6 */
   participantBehaviorSummary: AnalysisReport["participantBehaviorSummary"];
+  /** @maxItems 5 */
   factLimitations: string[];
   modules: ReportModule[];
+  /** @maxItems 5 */
   documentTasks: ReportDocumentTask[];
   contentReleaseId: string;
   workflowVersion: string;
@@ -105,7 +108,7 @@ export interface CaseAnalysisProvider {
 /** Dify 输出封装；提取不依赖快照，相关字段必须为 null。 */
 export interface DifyOutputMetadata {
   contractVersion: "1.0";
-  promptVersion: "actionable-analysis-v1";
+  promptVersion: "actionable-analysis-v2";
   workflowVersion: string;
   requestId: string;
   snapshotVersion: number | null;

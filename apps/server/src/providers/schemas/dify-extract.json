@@ -11,7 +11,7 @@
         },
         "promptVersion": {
           "type": "string",
-          "const": "actionable-analysis-v1"
+          "const": "actionable-analysis-v2"
         },
         "workflowVersion": {
           "type": "string"

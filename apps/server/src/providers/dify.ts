@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import Ajv from "ajv";
 import type { DifyExtractionOutput, DifyReportOutput } from "./types";
 
-export const DIFY_PROMPT_VERSION = "actionable-analysis-v1";
+export const DIFY_PROMPT_VERSION = "actionable-analysis-v2";
 const ajv = new Ajv({ allErrors: false, allowUnionTypes: true });
 const extractSchema = JSON.parse(readFileSync(new URL("./schemas/dify-extract.json", import.meta.url), "utf8"));
 const reportSchema = JSON.parse(readFileSync(new URL("./schemas/dify-report.json", import.meta.url), "utf8"));

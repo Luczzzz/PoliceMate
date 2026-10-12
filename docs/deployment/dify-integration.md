@@ -56,7 +56,7 @@
 ```json
 {
   "contractVersion": "1.0",
-  "promptVersion": "actionable-analysis-v1",
+  "promptVersion": "actionable-analysis-v2",
   "workflowVersion": "审查通过的工作流版本",
   "requestId": "本次报告请求编号或随机编号",
   "snapshotVersion": 1,
@@ -117,7 +117,7 @@
 ```json
 {
   "contractVersion": "1.0",
-  "promptVersion": "actionable-analysis-v1",
+  "promptVersion": "actionable-analysis-v2",
   "workflowVersion": "审查通过的工作流版本",
   "requestId": "与输入一致",
   "snapshotVersion": 1,
@@ -127,7 +127,7 @@
 }
 ```
 
-任一字段与本次请求不一致、`promptVersion` 不是 `actionable-analysis-v1`、
+任一字段与本次请求不一致、`promptVersion` 不是 `actionable-analysis-v2`、
 报告正文字段与封装不一致时，后端丢弃该响应并失败关闭。
 
 ## 配置

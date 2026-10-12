@@ -493,12 +493,26 @@ export interface ReportModule {
   label: string;
   status: ReportModuleStatus;
   summary: string | null;
+  /**
+   * 体量上限（ADR-0012）：每条不超过 80 字。
+   * @maxItems 6
+   */
   items: string[];
+  /**
+   * 只保留被引用的链路（ADR-0012）。
+   * @maxItems 4
+   */
   traceLinks: ReportTraceLink[];
   failureReason: string | null;
-  /** 仅“核心证据核查清单”使用的结构化项目；其余模块为空数组。 */
+  /**
+   * 仅“核心证据核查清单”使用的结构化项目；其余模块为空数组。
+   * @maxItems 8
+   */
   evidenceItems: ReportEvidenceChecklistItem[];
-  /** 仅“分角色询问要点”使用的结构化项目；其余模块为空数组。 */
+  /**
+   * 仅“分角色询问要点”使用的结构化项目；其余模块为空数组。每个角色不超过 4 条。
+   * @maxItems 12
+   */
   interviewItems: ReportInterviewPointItem[];
 }
 

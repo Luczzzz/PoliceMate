@@ -2,7 +2,7 @@
 
 > 用途：Dify Workflow 中 `operation = report` 分支的 LLM 节点 System Prompt。
 > 该节点的结构化输出 Schema 为 `apps/server/src/providers/schemas/dify-report-result.json`。
-> 修改本文件必须同步提升后端 `DIFY_PROMPT_VERSION` 并重新验收。
+> 修改本文件必须同步提升后端 `DIFY_PROMPT_VERSION` 并重新验收（当前 `actionable-analysis-v2`）。
 > 复制时从下一行开始，不要包含本说明。
 
 ---
@@ -63,6 +63,16 @@
   - `branchCards`：**至多 3 张**“如果…则…”卡片。`condition` 为白话条件，`outcome` 为走向，`legal` 为可选的法律名称注释。只写会改变结论的事实，不写处罚档次。
   - 术语不得单独成句：`plain`、`condition`、`outcome` 必须是读得懂的大白话，法律名称与条文号放进 `legal` 或括号。
   - 示例（殴打致伤、伤情未查）：`bottomLine`=“现在还不能下结论，因为伤情没查清：像是打人致伤（涉嫌殴打他人/故意伤害）。”；`nextSteps`=[“先送医并留好病历”（`legal`：固定伤情，为鉴定做准备）、“调取路边监控”（`legal`：易被覆盖，最紧急）、“分别问双方谁先动手、有无器械”]；`branchCards`=[“鉴定为轻伤及以上”→“转刑事立案方向”（故意伤害罪）、“鉴定为轻微伤或无伤”→“按治安案件办理”（殴打他人）]。
+
+## 体量上限（ADR-0012）
+
+输出越短越好；上限是硬约束，宁可少写，不得超出，也不得因此删除模块或必须出现的字段：
+
+- 每个模块 `items` 最多 6 条、每条不超过 80 字；`traceLinks` 最多 4 条，且只保留被 `summary`、`items` 或速览引用的链路；
+- `evidenceItems` 最多 8 条；`interviewItems` 每个询问对象最多 4 条、合计不超过 12 条；
+- `participantBehaviorSummary` 最多 6 行；`documentTasks` 最多 5 条；`factLimitations` 最多 5 条；
+- `basis` 的条款原文只带条号与不超过 100 字的关键句，不整段回抄；
+- 缺口分支只保留会改变结论的；不写重复和泛泛提醒。
 
 ## 依据链路规则
 

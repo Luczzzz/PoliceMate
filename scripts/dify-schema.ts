@@ -30,6 +30,12 @@ for (const [type, name] of targets) {
     additionalProperties: false,
     skipTypeCheck: true,
   }).createSchema(type);
-  writeFileSync(`${output}/${name}`, `${JSON.stringify(schema, null, 2)}\n`);
+  // 体量上限（ADR-0012）只约束模型输出；后端封装校验不因超出而整份失败，由显示层折叠。
+  const text = JSON.stringify(schema, null, 2);
+  const out =
+    name === "dify-report.json"
+      ? JSON.stringify(JSON.parse(text, (key, value) => (key === "maxItems" ? undefined : value)), null, 2)
+      : text;
+  writeFileSync(`${output}/${name}`, `${out}\n`);
   console.log(`Generated ${name} from ${type}.`);
 }

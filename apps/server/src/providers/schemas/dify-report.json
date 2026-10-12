@@ -11,7 +11,7 @@
         },
         "promptVersion": {
           "type": "string",
-          "const": "actionable-analysis-v1"
+          "const": "actionable-analysis-v2"
         },
         "workflowVersion": {
           "type": "string"
@@ -169,13 +169,15 @@
           "type": "array",
           "items": {
             "type": "string"
-          }
+          },
+          "description": "体量上限（ADR-0012）：每条不超过 80 字。"
         },
         "traceLinks": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/ReportTraceLink"
-          }
+          },
+          "description": "只保留被引用的链路（ADR-0012）。"
         },
         "failureReason": {
           "type": [
@@ -195,7 +197,7 @@
           "items": {
             "$ref": "#/definitions/ReportInterviewPointItem"
           },
-          "description": "仅“分角色询问要点”使用的结构化项目；其余模块为空数组。"
+          "description": "仅“分角色询问要点”使用的结构化项目；其余模块为空数组。每个角色不超过 4 条。"
         }
       },
       "required": [
