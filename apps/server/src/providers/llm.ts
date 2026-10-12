@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hydrateReportDraft } from "../analysis/report-draft";
 import type { AppConfig } from "../config";
+import { parseTolerantJson, pruneToSchema } from "./tolerant-json";
 import { DIFY_PROMPT_VERSION, readJsonBounded, validateExtract, validateReport } from "./contract";
 import type {
   CaseAnalysisProvider,
@@ -29,6 +30,8 @@ const SCHEMAS = {
 export interface LlmProviderOptions {
   fetchImpl?: typeof fetch;
   maxResponseBytes?: number;
+  /** 容忍了末尾逗号或丢弃了自创字段时回调；只含操作名、是否修复和字段名，不含内容。 */
+  onRepair?: (info: { operation: "extract" | "report"; trailingCommas: boolean; droppedKeys: string[] }) => void;
 }
 
 function configured(config: AppConfig): ServiceAvailability {
@@ -48,7 +51,7 @@ function configured(config: AppConfig): ServiceAvailability {
 }
 
 /** 只接受纯 JSON；允许去掉一层代码围栏，其余内容一律报错。 */
-function parseModelJson(content: string): unknown {
+function parseModelJson(content: string): { value: unknown; repaired: boolean } {
   let text = content.trim();
   if (text.startsWith("```")) {
     text = text.split("\n").slice(1).join("\n").trimEnd();
@@ -57,7 +60,7 @@ function parseModelJson(content: string): unknown {
   }
   if (text === "") throw new Error("模型未返回内容。");
   try {
-    return JSON.parse(text) as unknown;
+    return parseTolerantJson(text);
   } catch {
     throw new Error("模型输出不是有效 JSON。");
   }
@@ -110,7 +113,12 @@ export function createLlmProvider(config: AppConfig, options: LlmProviderOptions
       await response.body?.cancel();
       throw new Error(`LLM HTTP ${response.status}。`);
     }
-    return parseModelJson(completionContent(await readJsonBounded(response, maxBytes)));
+    const parsed = parseModelJson(completionContent(await readJsonBounded(response, maxBytes)));
+    const pruned = pruneToSchema(parsed.value, SCHEMAS[operation] as Parameters<typeof pruneToSchema>[1]);
+    if (parsed.repaired || pruned.dropped.length > 0) {
+      options.onRepair?.({ operation, trailingCommas: parsed.repaired, droppedKeys: [...new Set(pruned.dropped)] });
+    }
+    return pruned.value;
   };
 
   return {

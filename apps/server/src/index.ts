@@ -8,7 +8,7 @@ import { createGovernedContentProvider } from "./providers/content";
 async function main(): Promise<void> {
   const config = loadConfig();
   const dify = config.providerMode === "dify" ? createDifyProvider(config)
-    : config.providerMode === "llm" ? createLlmProvider(config) : null;
+    : config.providerMode === "llm" ? createLlmProvider(config, { onRepair: (info) => console.warn(`[policymate-server] llm output tolerated: ${JSON.stringify(info)}`) }) : null;
   const app = dify === null
     ? await buildApp({ config, fixtures: createFixtureControls() })
     : await buildApp({ config, providers: { dify, analysis: dify, content: createGovernedContentProvider() } });

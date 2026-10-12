@@ -82,6 +82,28 @@ describe("直连 LLM 提供者（ADR-0014）", () => {
     expect((await provider.extractCaseFacts({ caseText: text })).matters.length).toBeGreaterThan(0);
   });
 
+  it("容忍末尾多余逗号与模型自创字段，并回调报告（不含内容）", async () => {
+    const repairs: Array<{ operation: string; trailingCommas: boolean; droppedKeys: string[] }> = [];
+    const provider = createLlmProvider(config(), {
+      fetchImpl: mockChat((content) => ({ content: JSON.stringify({ ...(content as object), note_x: "n" }).replace(/\}$/, ",}") })),
+      onRepair: (info) => repairs.push(info),
+    });
+    expect((await provider.extractCaseFacts({ caseText: text })).matters.length).toBeGreaterThan(0);
+    expect(repairs).toEqual([{ operation: "extract", trailingCommas: true, droppedKeys: ["note_x"] }]);
+  });
+
+  it("报告草稿中的自创字段被丢弃后仍能补全", async () => {
+    const request = await requestForReport();
+    const provider = createLlmProvider(config(), {
+      fetchImpl: mockChat((content) => {
+        const draft = structuredClone(content) as { modules: Array<Record<string, unknown>> };
+        draft.modules[3].interviewItems_note = "自创";
+        return { content: draft };
+      }),
+    });
+    expect((await provider.generateReport!(request)).modules).toHaveLength(6);
+  });
+
   it.each([
     ["非 JSON 文本", { content: "好的，结果如下" }],
     ["截断（finish_reason=length）", { finish: "length" }],
@@ -92,11 +114,17 @@ describe("直连 LLM 提供者（ADR-0014）", () => {
     await expect(provider.extractCaseFacts({ caseText: text })).rejects.toThrow();
   });
 
-  it("拒绝带完整法条回抄的旧格式报告", async () => {
+  it("带完整法条回抄的旧格式报告：多余字段被丢弃，条文以仓库法源为准", async () => {
     const request = await requestForReport();
     const full = await fixtures.analysis.generateReport!(request);
-    const provider = createLlmProvider(config(), { fetchImpl: mockChat((_c) => ({ content: full })) });
-    await expect(provider.generateReport!(request)).rejects.toThrow();
+    const forged = structuredClone(full);
+    const trace = forged.modules.flatMap((m) => m.traceLinks).find((t) => t.basis !== null)!;
+    trace.basis!.minimalText = "模型改写的条文";
+    const repairs: string[][] = [];
+    const provider = createLlmProvider(config(), { fetchImpl: mockChat(() => ({ content: forged })), onRepair: (info) => repairs.push(info.droppedKeys) });
+    const report = await provider.generateReport!(request);
+    expect(repairs[0]).toContain("minimalText");
+    expect(report.modules.flatMap((m) => m.traceLinks).some((t) => t.basis?.minimalText === "模型改写的条文")).toBe(false);
   });
 
   it.each([401, 429, 500])("HTTP %s 不返回上游正文或密钥", async (status) => {
