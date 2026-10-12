@@ -11,7 +11,7 @@
 
 ## 0. 部署目标与边界
 
-项目边界以 [CONTEXT.md](../../CONTEXT.md)、[会话隐私与传输安全 ADR](../adr/0004-session-privacy-and-transport-hardening.md) 和 [受控试行门槛 ADR](../adr/0007-controlled-trial-acceptance-and-release-gate.md) 为准。本指南不改变这些产品决策。
+项目边界以 [GLOSSARY.md](../../GLOSSARY.md)、[会话隐私与传输安全 ADR](../adr/0004-session-privacy-and-transport-hardening.md) 和 [受控试行门槛 ADR](../adr/0007-controlled-trial-acceptance-and-release-gate.md) 为准。本指南不改变这些产品决策。
 
 当前仓库的 `apps/server/src/index.ts` 按 `PM_PROVIDER_MODE` 装配提供者：`fixture`（开发/测试）
 或 `dify`（真实）。生产默认 `dify`，缺少 Dify 地址、应用密钥或允许的工作流版本时失败关闭，

@@ -95,3 +95,7 @@ _Avoid_: 实时知识库状态、自动生效内容
 **程序辅助工具**:
 A tool that presents procedural tasks, time limits, conditions, exceptions, documents, notices, and legal sources for officers to verify. It does not decide case acceptance, case filing, legal classification, punishment, or criminal charges.
 _Avoid_: 执法决定系统、自动办案系统、法律裁判工具
+
+**研判速览**:
+分析报告首屏的固定组合:一句白话定性、3–5 条立即可做的动作、至多 3 条“如果…则…”的走向分支。每处以白话为主句,法律术语或条文仅作注释。它是对六模块内容的提炼入口,不是新的结论层,不增加依据之外的判断。
+_Avoid_: 结论摘要、最终定性、案件结论

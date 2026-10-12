@@ -91,6 +91,10 @@
         },
         "workflowVersion": {
           "type": "string"
+        },
+        "quickBrief": {
+          "$ref": "#/definitions/ReportQuickBrief",
+          "description": "研判速览（ADR-0011）；缺省表示上游未提供，不补造。"
         }
       },
       "required": [
@@ -691,6 +695,82 @@
         "execution_closure"
       ],
       "description": "第一版固定的六个办理阶段。顺序即展示顺序，不得增删或改变含义。"
+    },
+    "ReportQuickBrief": {
+      "type": "object",
+      "properties": {
+        "bottomLine": {
+          "type": "string"
+        },
+        "nextSteps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportNextStep"
+          }
+        },
+        "branchCards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ReportBranchCard"
+          }
+        }
+      },
+      "required": [
+        "bottomLine",
+        "nextSteps",
+        "branchCards"
+      ],
+      "additionalProperties": false,
+      "description": "研判速览（ADR-0011）：一句白话定性、3–5 条立即动作、至多 3 张走向卡片。 可选字段：旧版本报告没有该字段时前端回落到研判概览，不补造。"
+    },
+    "ReportNextStep": {
+      "type": "object",
+      "properties": {
+        "plain": {
+          "type": "string"
+        },
+        "legal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "targetModule": {
+          "$ref": "#/definitions/ReportModuleId",
+          "description": "对应的报告模块；点击后跳转到该模块详情。"
+        }
+      },
+      "required": [
+        "plain",
+        "legal",
+        "targetModule"
+      ],
+      "additionalProperties": false,
+      "description": "研判速览中的一条立即动作：白话主句在前，法律术语仅作注释（ADR-0011）。"
+    },
+    "ReportBranchCard": {
+      "type": "object",
+      "properties": {
+        "condition": {
+          "type": "string"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "legal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "condition",
+        "outcome",
+        "legal"
+      ],
+      "additionalProperties": false,
+      "description": "“如果…则…”走向卡片：左侧白话条件，右侧走向，法律名称作小字注释。"
     }
   }
 }

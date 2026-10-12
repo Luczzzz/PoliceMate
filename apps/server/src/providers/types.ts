@@ -89,6 +89,8 @@ export interface ReportGenerationResult {
   documentTasks: ReportDocumentTask[];
   contentReleaseId: string;
   workflowVersion: string;
+  /** 研判速览（ADR-0011）；缺省表示上游未提供，不补造。 */
+  quickBrief?: AnalysisReport["quickBrief"];
 }
 
 /**

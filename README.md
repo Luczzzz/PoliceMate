@@ -2,7 +2,7 @@
 
 松警伴侣是面向公安一线民警的**程序辅助工具**，第一版为移动端 H5 **受控试行版**。
 规范性产品行为见 [`docs/specs/songjing-h5-v1-product-spec.md`](docs/specs/songjing-h5-v1-product-spec.md)，
-领域词汇见 [`CONTEXT.md`](CONTEXT.md)。
+领域词汇见 [`GLOSSARY.md`](GLOSSARY.md)。
 
 当前实现对应 `#27 建立松警伴侣可运行产品基线`、`#28 交付受治理的文书范例功能`、
 `#29 从自由案情形成分析前事实快照` 与 `#39 提交案情直接生成报告`：可运行的移动端外壳、

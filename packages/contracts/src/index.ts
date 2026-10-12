@@ -531,6 +531,39 @@ export interface ReportDocumentTask {
 export const REPORT_DOCUMENT_TASK_BOUNDARY =
   "以下为可能适用的候选范例，不代表必须制作；请核对差异和选择前需核验条件后自行判断。";
 
+/** 研判速览中的一条立即动作：白话主句在前，法律术语仅作注释（ADR-0011）。 */
+export interface ReportNextStep {
+  plain: string;
+  legal: string | null;
+  /** 对应的报告模块；点击后跳转到该模块详情。 */
+  targetModule: ReportModuleId;
+}
+
+/** “如果…则…”走向卡片：左侧白话条件，右侧走向，法律名称作小字注释。 */
+export interface ReportBranchCard {
+  condition: string;
+  outcome: string;
+  legal: string | null;
+}
+
+/**
+ * 研判速览（ADR-0011）：一句白话定性、3–5 条立即动作、至多 3 张走向卡片。
+ * 可选字段：旧版本报告没有该字段时前端回落到研判概览，不补造。
+ */
+export interface ReportQuickBrief {
+  bottomLine: string;
+  nextSteps: ReportNextStep[];
+  branchCards: ReportBranchCard[];
+}
+
+export const QUICK_BRIEF_LIMITS = {
+  bottomLineMax: 60,
+  nextStepsMin: 3,
+  nextStepsMax: 5,
+  nextStepPlainMax: 30,
+  branchCardsMax: 3,
+} as const;
+
 export interface AnalysisReport {
   contractVersion: string;
   requestId: string;
@@ -554,6 +587,8 @@ export interface AnalysisReport {
   /** 同一事实的不同说法；全部并列保留，系统不选定任一版本。无争议时为空数组。 */
   conflicts: ReportFactConflict[];
   documentTasks: ReportDocumentTask[];
+  /** 研判速览；旧版本报告或降级状态下缺省。 */
+  quickBrief?: ReportQuickBrief;
 }
 
 /**

@@ -18,6 +18,7 @@ import type {
   ReportModuleId,
   ReportStatus,
   ReportTraceLink,
+  ReportQuickBrief,
 } from "@policymate/contracts";
 import {
   CONTRACT_VERSION,
@@ -28,6 +29,7 @@ import {
   REPORT_CONFLICT_BOUNDARY,
   REPORT_DOCUMENT_TASK_BOUNDARY,
   REPORT_MODULE_LABELS,
+  QUICK_BRIEF_LIMITS,
   REPORT_STATUS_LABELS,
 } from "@policymate/contracts";
 import { HANDLING_STAGE_CATALOG, PROCEDURE_CATEGORY_LABELS } from "../content/catalog";
@@ -277,6 +279,33 @@ function validateDocumentTasks(tasks: ReportDocumentTask[]): void {
   }
 }
 
+function validateQuickBrief(brief: unknown): void {
+  const limits = QUICK_BRIEF_LIMITS;
+  const text = (value: unknown, max: number): value is string =>
+    typeof value === "string" && value.trim() !== "" && [...value].length <= max;
+  const optionalLegal = (value: unknown) => value === null || value === undefined || typeof value === "string";
+  const b = brief as Partial<ReportQuickBrief> | null;
+  if (!b || typeof b !== "object" || !text(b.bottomLine, limits.bottomLineMax)) {
+    throw new Error("研判速览一句话定性缺失或超长。");
+  }
+  if (!Array.isArray(b.nextSteps) || b.nextSteps.length < limits.nextStepsMin || b.nextSteps.length > limits.nextStepsMax) {
+    throw new Error("研判速览立即动作数量不符合契约。");
+  }
+  for (const step of b.nextSteps) {
+    if (!step || !text(step.plain, limits.nextStepPlainMax) || !optionalLegal(step.legal) || !MODULE_IDS.includes(step.targetModule)) {
+      throw new Error("研判速览立即动作缺少白话主句、过长或锚点无效。");
+    }
+  }
+  if (!Array.isArray(b.branchCards) || b.branchCards.length > limits.branchCardsMax) {
+    throw new Error("研判速览走向卡片数量不符合契约。");
+  }
+  for (const card of b.branchCards) {
+    if (!card || !text(card.condition, 60) || !text(card.outcome, 60) || !optionalLegal(card.legal)) {
+      throw new Error("研判速览走向卡片缺少白话条件或走向。");
+    }
+  }
+}
+
 export function validateReportResult(result: ReportGenerationResult, session: AnalysisSessionState, legalSources: LegalSourceReference[]): void {
   if (!result || typeof result.headline !== "string" || !Array.isArray(result.modules)) {
     throw new Error("报告结构无效。");
@@ -319,6 +348,7 @@ export function validateReportResult(result: ReportGenerationResult, session: An
     else if (module.interviewItems.length > 0) throw new Error("非询问模块不得携带询问项目。");
   }
   validateDocumentTasks(result.documentTasks);
+  if (result.quickBrief !== undefined) validateQuickBrief(result.quickBrief);
   const hasBasis = legalSources.some(validSource);
   if (result.status === "complete" && !hasBasis) throw new Error("主判断缺少当前有效法源。");
   const critical = result.modules.filter((module) => ["preliminary_qualification", "filing_conditions", "legal_basis_trace"].includes(module.id));
@@ -329,6 +359,17 @@ export function validateReportResult(result: ReportGenerationResult, session: An
   if (qualification?.status === "present" && filing?.status === "basis_unavailable") {
     throw new Error("跨模块依据状态矛盾。");
   }
+}
+
+/** 部分模块失败时，丢弃锚点指向失败模块的动作；剩余不足下限则整体不显示速览。 */
+function usableQuickBrief(result: ReportGenerationResult): ReportQuickBrief | undefined {
+  const brief = result.quickBrief;
+  if (brief === undefined) return undefined;
+  if (result.status === "basis_unavailable" || result.status === "generation_failed") return undefined;
+  const failed = new Set(result.modules.filter((module) => module.status === "generation_failed").map((module) => module.id));
+  if (failed.size === 0) return brief;
+  const nextSteps = brief.nextSteps.filter((step) => !failed.has(step.targetModule));
+  return nextSteps.length < QUICK_BRIEF_LIMITS.nextStepsMin ? undefined : { ...brief, nextSteps };
 }
 
 export function buildReport(
@@ -364,6 +405,7 @@ export function buildReport(
     gapBranches,
     conflicts,
     documentTasks: result.documentTasks,
+    ...(usableQuickBrief(result) === undefined ? {} : { quickBrief: usableQuickBrief(result) }),
   };
 }
 
@@ -399,6 +441,8 @@ const DOWNGRADE_SUMMARY: Record<"basis_unavailable" | "conflicting" | "insuffici
   conflicting: "存在不能排除的相邻方向，保留多种可能，不形成单一判断。",
   insufficient_facts: "决定性事实尚未确认，暂不能形成单一主结论；请按条件分支补充核验。",
 };
+
+const INCONCLUSIVE_PREFIX = "现在还不能下结论，因为";
 
 export type ConservativeDowngradeStatus = keyof typeof DOWNGRADE_SUMMARY;
 
@@ -448,8 +492,21 @@ export function applyConservativeDowngrade(
     };
   });
 
+  const { quickBrief, ...withoutBrief } = result;
+  // 速览只在保留可执行内容的条件不足降级里保留，且一句话必须先说明“不能下结论”；
+  // 其余降级不展示倾向性速览（ADR-0011）。
+  const keptBrief: ReportQuickBrief | undefined =
+    preserveActionableContent && quickBrief !== undefined
+      ? {
+          ...quickBrief,
+          bottomLine: quickBrief.bottomLine.startsWith(INCONCLUSIVE_PREFIX)
+            ? quickBrief.bottomLine
+            : `${INCONCLUSIVE_PREFIX}决定性事实尚未确认，请按下方走向补充核验。`,
+        }
+      : undefined;
   return {
-    ...result,
+    ...withoutBrief,
+    ...(keptBrief === undefined ? {} : { quickBrief: keptBrief }),
     status: forcedStatus,
     headline: preserveActionableContent ? result.headline : summary,
     factLimitations: mergedNotes,
