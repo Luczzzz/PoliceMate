@@ -242,6 +242,13 @@
 
 （倒序追加：日期 / 提交 SHA / 结论或反建议 / 需要部署端配合的事项）
 
+### 开发端回复 · 2026-10-12（待提交 SHA 见下一提交；覆盖下方 `383493a` 回复中第3项的实施方式）
+
+- 第3项（体量）改为更彻底的方案，见 ADR-0013：模型只输出报告草稿，标签、法条原文与元数据、文书固定字段、版本元数据由后端补全。report 输出 Schema 约 18.3 KB → 11.9 KB，每条依据链路不再回抄 13 个法源字段。
+- **提示词版本再次提升为 `actionable-analysis-v3`，旧工作流在新后端下会被拒（503）。** 这一版取代 `383493a` 回复里要求部署的 v2，**请直接部署 v3，不必先上 v2**。
+- 需要部署端配合：① 把新版 `docs/deployment/dify-prompts/report-system.md` 逐字替换到 `llm_report` 节点；② 节点结构化输出 Schema 换成新版 `dify-report-result.json`（JSON 对象，现为 `ReportDraft`）；③ **`wrap` 节点代码按 `docs/deployment/dify-workflow-build.md` 第 8 节更新：删掉向报告结果写入 `workflowVersion`、`contentReleaseId` 的两行**，否则草稿 Schema 会拒绝；④ 工作流版本串提升并发布；⑤ 用虚构案情至少跑 5 次（含短、长案情），回报每次 report 节点的耗时和输出令牌数；目标中位 ≤ 90 秒、最大 ≤ 150 秒。
+- 第4项（DSL 留档）仍待 v3 验收通过后一次性提供，请不要现在导出旧版本。
+
 ### 开发端回复 · 2026-10-12（待提交 SHA 见下一提交）
 
 - 第1项：已修。冒烟脚本实际路径是 `scripts/dify-smoke.ts:45`（非 `apps/server/scripts/`），已补契约头。

@@ -73,7 +73,7 @@ def main(payload_json: str) -> dict:
     for key in ("contractVersion", "promptVersion", "workflowVersion", "requestId"):
         if not isinstance(metadata[key], str) or metadata[key] == "":
             raise ValueError("payload_json 缺少必填元数据：" + key)
-    if metadata["promptVersion"] != "actionable-analysis-v2":
+    if metadata["promptVersion"] != "actionable-analysis-v3":
         raise ValueError("promptVersion 不受支持")
     return {
         "payload": json.dumps(data["payload"], ensure_ascii=False),
@@ -145,10 +145,8 @@ def main(operation: str, metadata: str, extract_output: str = "", report_output:
         raise ValueError("LLM 输出不是有效 JSON") from error
     if not isinstance(result, dict):
         raise ValueError("LLM 输出不是 JSON 对象")
-    if operation == "report":
-        # 版本与批次以后端输入为准，避免模型改写。
-        result["workflowVersion"] = meta["workflowVersion"]
-        result["contentReleaseId"] = meta["contentReleaseId"]
+    # v3（ADR-0013）：报告草稿不含 workflowVersion / contentReleaseId，
+    # 这两项由后端补全，这里不得再写入 result，否则会被草稿 Schema 拒绝。
     envelope = {
         "contractVersion": meta["contractVersion"],
         "promptVersion": meta["promptVersion"],
@@ -205,13 +203,13 @@ umask 077
 printf 'header = "Authorization: Bearer %s"\n' "$DIFY_KEY" > "$SMOKE_DIR/curl.conf"
 unset DIFY_KEY
 cat > "$SMOKE_DIR/payload.json" <<'JSON'
-{"contractVersion":"1.0","promptVersion":"actionable-analysis-v2","workflowVersion":"policymate-analysis-v1.0.0","requestId":"smoke-0001","snapshotVersion":null,"snapshotHash":null,"contentReleaseId":null,"operation":"extract","payload":{"caseText":"虚构测试：3月2日晚，甲某在虚构酒店门口殴打乙某，乙某手部擦伤。"}}
+{"contractVersion":"1.0","promptVersion":"actionable-analysis-v3","workflowVersion":"policymate-analysis-v1.0.0","requestId":"smoke-0001","snapshotVersion":null,"snapshotHash":null,"contentReleaseId":null,"operation":"extract","payload":{"caseText":"虚构测试：3月2日晚，甲某在虚构酒店门口殴打乙某，乙某手部擦伤。"}}
 JSON
 node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],JSON.stringify({inputs:{operation:p.operation,payload_json:JSON.stringify(p),contract_version:p.contractVersion,workflow_version:p.workflowVersion},response_mode:"blocking",user:"policymate-smoke"},null,2))' "$SMOKE_DIR/payload.json" "$SMOKE_DIR/request.json"
 curl --config "$SMOKE_DIR/curl.conf" --fail-with-body --silent --show-error --max-time 120 \
   -H 'Content-Type: application/json' --data-binary @"$SMOKE_DIR/request.json" \
   "https://实际Dify域名/v1/workflows/run" --output "$SMOKE_DIR/response.json"
-node -e 'const fs=require("fs");const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(b.data?.status!=="succeeded"){console.error("工作流失败:",b.data?.status);process.exit(1)}const env=typeof b.data.outputs.result==="string"?JSON.parse(b.data.outputs.result):b.data.outputs.result;const ok=env.contractVersion==="1.0"&&env.promptVersion==="actionable-analysis-v2"&&env.requestId==="smoke-0001"&&Array.isArray(env.result?.matters)&&env.result.matters.length>0;console.log(ok?"提取封装校验通过":"提取封装校验失败");process.exit(ok?0:1)' "$SMOKE_DIR/response.json"
+node -e 'const fs=require("fs");const b=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(b.data?.status!=="succeeded"){console.error("工作流失败:",b.data?.status);process.exit(1)}const env=typeof b.data.outputs.result==="string"?JSON.parse(b.data.outputs.result):b.data.outputs.result;const ok=env.contractVersion==="1.0"&&env.promptVersion==="actionable-analysis-v3"&&env.requestId==="smoke-0001"&&Array.isArray(env.result?.matters)&&env.result.matters.length>0;console.log(ok?"提取封装校验通过":"提取封装校验失败");process.exit(ok?0:1)' "$SMOKE_DIR/response.json"
 rm -f "$SMOKE_DIR"/curl.conf "$SMOKE_DIR"/*.json; rmdir "$SMOKE_DIR"
 ```
 
@@ -256,7 +254,7 @@ npm run dify:smoke
 
 1. 导出不含供应商凭据的 DSL，提交到 `docs/deployment/dify-workflow.dsl.yml`。
 2. 在 [dify-integration.md](dify-integration.md) 记录：应用 ID、工作流版本字符串、模型名称与版本、
-   Prompt 版本 `actionable-analysis-v2`、测试日期与结果、DSL 导出日期。
+   Prompt 版本 `actionable-analysis-v3`、测试日期与结果、DSL 导出日期。
 3. 若改动了 Prompt 文件，同步提升后端 `DIFY_PROMPT_VERSION`
    （`apps/server/src/providers/dify.ts`）并重新执行 11.2 与仓库测试。
 4. 若改动契约或类型，运行 `npm run dify:schema` 重新生成 Schema 并一起提交。
@@ -316,7 +314,7 @@ npm run dify:smoke
   非法结构、迟到响应），每条给出通过/失败与证据。
 - 按第 11.4 节留档：导出不含凭据的 DSL 到 docs/deployment/dify-workflow.dsl.yml，
   在 dify-integration.md 记录应用 ID、工作流版本串、模型名称与版本、Prompt 版本
-  actionable-analysis-v2、测试日期与结果。
+  actionable-analysis-v3、测试日期与结果。
 
 【交付报告格式】
 只报告：应用 ID、工作流版本串、模型名称与版本、Dify tag/commit、验收逐项通过/失败与证据、

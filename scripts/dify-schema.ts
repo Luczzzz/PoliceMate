@@ -19,7 +19,7 @@ const targets = [
   ["DifyExtractionOutput", "dify-extract.json"],
   ["DifyReportOutput", "dify-report.json"],
   ["CaseExtractionResult", "dify-extract-result.json"],
-  ["ReportGenerationResult", "dify-report-result.json"],
+  ["ReportDraft", "dify-report-result.json"],
 ] as const;
 
 for (const [type, name] of targets) {

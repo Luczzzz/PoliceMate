@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import Ajv from "ajv";
 import type { DifyExtractionOutput, DifyReportOutput } from "./types";
 
-export const DIFY_PROMPT_VERSION = "actionable-analysis-v2";
+export const DIFY_PROMPT_VERSION = "actionable-analysis-v3";
 const ajv = new Ajv({ allErrors: false, allowUnionTypes: true });
 const extractSchema = JSON.parse(readFileSync(new URL("./schemas/dify-extract.json", import.meta.url), "utf8"));
 const reportSchema = JSON.parse(readFileSync(new URL("./schemas/dify-report.json", import.meta.url), "utf8"));
@@ -19,6 +19,7 @@ import type {
   ServiceAvailability,
 } from "./types";
 import type { AppConfig } from "../config";
+import { hydrateReportDraft } from "../analysis/report-draft";
 
 const DEFAULT_MAX_RESPONSE_BYTES = 512 * 1024;
 const DIFY_WORKFLOW_PATH = "/workflows/run";
@@ -186,13 +187,16 @@ export function createDifyProvider(
     for (const [key, value] of Object.entries(metadata)) {
       if (envelope[key as keyof typeof metadata] !== value) throw new Error("Dify 输出版本或请求绑定不匹配。");
     }
-    if (operation === "report") {
-      const result = envelope.result as ReportGenerationResult;
-      if (result.workflowVersion !== metadata.workflowVersion || result.contentReleaseId !== metadata.contentReleaseId) {
-        throw new Error("Dify 报告版本与封装不一致。");
-      }
+    if (report !== null) {
+      // 模型只给草稿；标签、法条原文与版本元数据由后端补全（ADR-0013）。
+      return hydrateReportDraft((envelope as DifyReportOutput).result, {
+        facts: report.facts,
+        legalSources: report.legalSources,
+        contentReleaseId: metadata.contentReleaseId ?? "",
+        workflowVersion: config.difyWorkflowVersion!,
+      });
     }
-    return envelope.result;
+    return (envelope as DifyExtractionOutput).result;
   };
 
   let probe: Promise<ServiceAvailability> | null = null;

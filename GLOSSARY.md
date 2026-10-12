@@ -96,6 +96,10 @@ _Avoid_: 实时知识库状态、自动生效内容
 A tool that presents procedural tasks, time limits, conditions, exceptions, documents, notices, and legal sources for officers to verify. It does not decide case acceptance, case filing, legal classification, punishment, or criminal charges.
 _Avoid_: 执法决定系统、自动办案系统、法律裁判工具
 
+**报告草稿**:
+模型对一份分析报告实际写出的部分：只含判断性文字和指向事实、法源的标识，不含展示名称、条文原文和固定边界说明。系统把草稿补全后才成为民警看到的分析报告；草稿引用了不存在的事实、法源或条号时，整份报告不予采用。
+_Avoid_: 模型报告、原始报告、AI 结论
+
 **研判速览**:
 分析报告首屏的固定组合:一句白话定性、3–5 条立即可做的动作、至多 3 条“如果…则…”的走向分支。每处以白话为主句,法律术语或条文仅作注释。它是对六模块内容的提炼入口,不是新的结论层,不增加依据之外的判断。
 _Avoid_: 结论摘要、最终定性、案件结论

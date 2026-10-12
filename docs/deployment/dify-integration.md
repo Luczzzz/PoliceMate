@@ -56,7 +56,7 @@
 ```json
 {
   "contractVersion": "1.0",
-  "promptVersion": "actionable-analysis-v2",
+  "promptVersion": "actionable-analysis-v3",
   "workflowVersion": "审查通过的工作流版本",
   "requestId": "本次报告请求编号或随机编号",
   "snapshotVersion": 1,
@@ -100,11 +100,15 @@
 - `present` 模块的每条 `traceLinks` 至少引用一个当前事实，且 `factIds` 与
   `factReferences` 一一对应；`factReferences` 会被后端用快照事实覆盖，模型不得自行
   声称"已确认"；
-- `formal_basis` 链路的 `basis` 必须逐字段匹配后端提供的当前有效法源（含条款原文、
-  版本、地域、核验日期），`practical_check` 链路的 `basis` 必须为 `null`；
+- 模型输出的是 `ReportDraft`（ADR-0013）：`formal_basis` 链路的 `basis` 只含
+  `sourceId` 与 `article`，必须来自后端提供的当前有效法源，条文原文、版本、地域、
+  核验日期由后端补全；引用不存在的法源或条号时整份报告被拒。`practical_check`
+  链路的 `basis` 必须为 `null`；
+- 各类 `*Label`、模块名称、文书任务的 `boundaryStatement`、`contentReleaseId`、
+  `workflowVersion` 都不由模型输出，由后端补全；
 - 证据与询问模块只允许 `evidence_checklist` / `interview_points` 携带结构化项目，
-  其优先级、掌握状态、角色名称必须取契约枚举；
-- 文书任务只使用结构化条件，且 `boundaryStatement` 必须等于契约固定文案；
+  其优先级、掌握状态必须取契约枚举；
+- 文书任务只使用结构化条件；
 - `status === "complete"` 要求至少一条当前有效法源，且三个关键模块为 `present`。
 
 法源仅使用本次后端提供且当前有效的受治理记录，不依赖模型记忆或联网补写。
@@ -117,7 +121,7 @@
 ```json
 {
   "contractVersion": "1.0",
-  "promptVersion": "actionable-analysis-v2",
+  "promptVersion": "actionable-analysis-v3",
   "workflowVersion": "审查通过的工作流版本",
   "requestId": "与输入一致",
   "snapshotVersion": 1,
@@ -127,8 +131,9 @@
 }
 ```
 
-任一字段与本次请求不一致、`promptVersion` 不是 `actionable-analysis-v2`、
-报告正文字段与封装不一致时，后端丢弃该响应并失败关闭。
+任一字段与本次请求不一致、`promptVersion` 不是 `actionable-analysis-v3`、
+报告草稿不符合 `dify-report.json`（含多出 `workflowVersion` 等草稿不应有的字段）时，
+后端丢弃该响应并失败关闭。
 
 ## 配置
 

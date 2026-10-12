@@ -10,6 +10,11 @@ import type {
   GapBranch,
   HandlingStageCatalogEntry,
   ReportDocumentTask,
+  ReportEvidenceChecklistItem,
+  ReportInterviewPointItem,
+  ReportModuleId,
+  ReportModuleStatus,
+  ReportTraceLink,
   UrgentRiskCategory,
   FactSnapshot,
   LegalSourceReference,
@@ -96,6 +101,49 @@ export interface ReportGenerationResult {
   quickBrief?: AnalysisReport["quickBrief"];
 }
 
+/** 草稿中的法条引用：只给法源与条号，其余字段由后端从受治理法源补全（ADR-0013）。 */
+export interface ReportDraftBasis {
+  sourceId: string;
+  article: string;
+}
+
+export interface ReportDraftTraceLink extends Pick<ReportTraceLink, "factIds" | "condition" | "conditionStatus" | "judgment" | "basisKind"> {
+  basis: ReportDraftBasis | null;
+}
+
+export interface ReportDraftModule {
+  id: ReportModuleId;
+  status: ReportModuleStatus;
+  summary: string | null;
+  /** @maxItems 6 */
+  items: string[];
+  /** @maxItems 4 */
+  traceLinks: ReportDraftTraceLink[];
+  failureReason: string | null;
+  /** @maxItems 8 */
+  evidenceItems: Array<Omit<ReportEvidenceChecklistItem, "priorityLabel" | "holdingStatusLabel">>;
+  /** @maxItems 12 */
+  interviewItems: ReportInterviewPointItem[];
+}
+
+/**
+ * 模型实际输出的报告草稿（ADR-0013）：只含判断性文字与标识。
+ * 展示标签、法条原文与元数据、文书固定字段、封装元数据由后端补全为 `ReportGenerationResult`。
+ */
+export interface ReportDraft {
+  status: ReportStatus;
+  headline: string;
+  /** @maxItems 6 */
+  participantBehaviorSummary: AnalysisReport["participantBehaviorSummary"];
+  /** @maxItems 5 */
+  factLimitations: string[];
+  modules: ReportDraftModule[];
+  /** @maxItems 5 */
+  documentTasks: Array<Omit<ReportDocumentTask, "procedureCategoryLabel" | "stageLabel" | "boundaryStatement">>;
+  /** 研判速览（ADR-0011）。 */
+  quickBrief?: AnalysisReport["quickBrief"];
+}
+
 /**
  * 案情分析边界：候选事实提取与报告生成。
  * 真实 Dify 接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
@@ -108,7 +156,7 @@ export interface CaseAnalysisProvider {
 /** Dify 输出封装；提取不依赖快照，相关字段必须为 null。 */
 export interface DifyOutputMetadata {
   contractVersion: "1.0";
-  promptVersion: "actionable-analysis-v2";
+  promptVersion: "actionable-analysis-v3";
   workflowVersion: string;
   requestId: string;
   snapshotVersion: number | null;
@@ -121,7 +169,7 @@ export interface DifyExtractionOutput extends DifyOutputMetadata {
 }
 
 export interface DifyReportOutput extends DifyOutputMetadata {
-  result: ReportGenerationResult;
+  result: ReportDraft;
 }
 
 /** 当前激活的不可变内容发布批次摘要。 */

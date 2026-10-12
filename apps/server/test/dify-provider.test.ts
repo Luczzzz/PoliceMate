@@ -7,6 +7,7 @@ import { createGovernedContentProvider } from "../src/providers/content";
 import { AnalysisEngine } from "../src/analysis/engine";
 import { buildApp } from "../src/app";
 import { anonymousTokens } from "../src/security";
+import { toReportDraft } from "../src/analysis/report-draft";
 
 const config = (): AppConfig => ({
   ...loadConfig({}), providerMode: "dify", enableTestControls: false,
@@ -28,7 +29,7 @@ function mockTransport(change?: (envelope: Record<string, unknown>) => unknown) 
     const { payload, operation, ...metadata } = input;
     const result = operation === "extract"
       ? await fixtures.analysis.extractCaseFacts(payload)
-      : { ...await fixtures.analysis.generateReport!(payload), workflowVersion: metadata.workflowVersion, contentReleaseId: metadata.contentReleaseId };
+      : toReportDraft(await fixtures.analysis.generateReport!(payload));
     const envelope = { ...metadata, result };
     return Response.json({ data: { status: "succeeded", outputs: { result: change ? change(envelope) : envelope } } });
   });
@@ -76,7 +77,7 @@ describe("真实 Dify 提供者", () => {
     await expect(provider.generateReport!(await requestForReport())).rejects.toThrow();
   });
 
-  it.each(["workflowVersion", "contentReleaseId"])("拒绝报告正文 %s 与封装不一致", async (field) => {
+  it.each(["workflowVersion", "contentReleaseId"])("拒绝草稿携带应由后端填写的 %s", async (field) => {
     const provider = createDifyProvider(config(), { fetchImpl: mockTransport((envelope) => ({ ...envelope, result: { ...(envelope.result as object), [field]: "wrong" } })) });
     await expect(provider.generateReport!(await requestForReport())).rejects.toThrow();
   });
