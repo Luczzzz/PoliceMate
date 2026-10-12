@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   });
 
   try {
-    const tokenResponse = await app.inject({ method: "POST", url: "/api/v1/anonymous-tokens" });
+    const tokenResponse = await app.inject({ method: "POST", url: "/api/v1/anonymous-tokens", headers: { "x-pm-contract-version": "1.0" } });
     const token = (tokenResponse.json() as { token?: string }).token;
     if (tokenResponse.statusCode !== 200 || !token) fail("匿名令牌签发失败。");
     const headers = { "x-pm-contract-version": "1.0", "x-pm-anonymous-token": token };

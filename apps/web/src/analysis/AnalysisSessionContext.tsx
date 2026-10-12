@@ -45,12 +45,12 @@ export interface StoredAnalysis {
 /** 会话空闲上限：与产品规格一致（30 分钟不可恢复）。 */
 export const SESSION_IDLE_TTL_MS = 30 * 60 * 1000;
 /**
- * 提交案情一次请求内完成提取、拆分与报告生成：提取最多 30 秒、每份报告
- * 最多 90 秒（均含一次自动重试），客户端留出传输余量。
+ * 提交案情一次请求内完成提取、拆分与报告生成（实测 180–310 秒）；须大于服务端
+ * 请求上限（app.ts requestTimeout）与 PM_REPORT_TIMEOUT_MS。
  */
-export const SUBMISSION_REQUEST_TIMEOUT_MS = 125 * 1000;
-/** 单独重新生成报告最多等待 90 秒（含一次自动重试）；客户端留出传输余量。 */
-export const REPORT_REQUEST_TIMEOUT_MS = 95 * 1000;
+export const SUBMISSION_REQUEST_TIMEOUT_MS = 420 * 1000;
+/** 单独重新生成报告最多等待 360 秒（与服务端报告预算对齐）；客户端留出传输余量。 */
+export const REPORT_REQUEST_TIMEOUT_MS = 360 * 1000;
 
 /** 正在进行的真实阶段。只描述真实处理阶段，不显示虚假百分比。 */
 export interface PendingOperation {

@@ -330,6 +330,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     logger: false,
     genReqId: () => randomUUID(),
     bodyLimit: runtime.bodyLimitBytes,
+    // 须大于报告预算（PM_REPORT_TIMEOUT_MS）且小于前端提交超时，否则长报告会被连接层掐断。
+    requestTimeout: 410 * 1000,
   });
 
   // 来源限制：先于业务处理拒绝非允许来源，避免把未授权流量带入状态机。

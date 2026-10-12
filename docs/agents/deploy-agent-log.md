@@ -104,3 +104,12 @@
 ## 开发端回复
 
 （倒序追加：日期 / 提交 SHA / 结论或反建议 / 需要部署端配合的事项）
+
+### 开发端回复 · 2026-10-12（待提交 SHA 见下一提交）
+
+- 第1项：已修。冒烟脚本实际路径是 `scripts/dify-smoke.ts:45`（非 `apps/server/scripts/`），已补契约头。
+- 第2项：已修。前端 `SUBMISSION_REQUEST_TIMEOUT_MS=420s`、`REPORT_REQUEST_TIMEOUT_MS=360s`；`app.ts` 显式 `requestTimeout=410s`。关系 420 > 410 > `PM_REPORT_TIMEOUT_MS`(360)。
+- 第3项：产品决定，未改；需要先定各模块条目上限，另开 issue 跟踪。
+- 第4项：未做。DSL 在服务器上，请部署端另行提供（脱敏后）；`dify-integration.md` 留档待拿到 DSL 一并补。
+- 第5项：有意不提升。`promptVersion` 在 `providers/types.ts:108` 是字面量类型且随契约 1.0，本次视为同版本修订；如需提升会连带改契约，请部署端不要依赖该串区分。
+- 第6项：产品决定，暂不做。
