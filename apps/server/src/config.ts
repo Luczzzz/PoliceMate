@@ -11,7 +11,7 @@ export interface AppConfig {
   host: string;
   port: number;
   /** 真实 Dify 与开发测试替身显式分开，不自动回退。 */
-  providerMode: "fixture" | "dify";
+  providerMode: "fixture" | "dify" | "llm";
   /** 是否挂载测试用替身控制接口；生产环境必须关闭。 */
   enableTestControls: boolean;
   /** 后端总开关；关闭时两个入口均不可用。 */
@@ -47,6 +47,15 @@ export interface AppConfig {
   difyApiKey?: string | null;
   difyWorkflowVersion?: string | null;
   difyMaxResponseBytes?: number;
+  /** 直连 OpenAI 兼容接口的适配层配置（ADR-0014）；密钥只存在于后端。 */
+  llmBaseUrl?: string | null;
+  llmApiKey?: string | null;
+  llmModel?: string | null;
+  /** 报告上的工作流版本标注；默认 `policymate-llm-v1.0.0`。 */
+  llmWorkflowVersion?: string | null;
+  /** 结构化输出方式；接口不支持 json_schema 时用 json_object（仍由后端 Schema 校验）。 */
+  llmResponseFormat?: "json_schema" | "json_object";
+  llmMaxResponseBytes?: number;
   /** 运行环境标识；用于发布检查，不参与产品行为。 */
   environment?: "development" | "production";
 }
@@ -122,7 +131,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const staticDirCandidate = readOptional(env.PM_WEB_DIST) ?? defaultStaticDir;
   const configuredOrigins = readList(env.PM_ALLOWED_ORIGINS);
   const mode = readOptional(env.PM_PROVIDER_MODE) ?? (env.NODE_ENV === "production" ? "dify" : "fixture");
-  if (mode !== "fixture" && mode !== "dify") throw new Error("PM_PROVIDER_MODE 必须为 fixture 或 dify。");
+  if (mode !== "fixture" && mode !== "dify" && mode !== "llm") throw new Error("PM_PROVIDER_MODE 必须为 fixture、dify 或 llm。");
+  const llmFormat = readOptional(env.PM_LLM_RESPONSE_FORMAT) ?? "json_schema";
+  if (llmFormat !== "json_schema" && llmFormat !== "json_object") throw new Error("PM_LLM_RESPONSE_FORMAT 必须为 json_schema 或 json_object。");
   const testControls = readBoolean(env.PM_ENABLE_TEST_CONTROLS, false);
   if (testControls && (mode !== "fixture" || env.NODE_ENV === "production")) {
     throw new Error("测试控制只允许在非生产 fixture 模式启用。");
@@ -156,6 +167,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     difyApiKey: readOptional(env.PM_DIFY_API_KEY),
     difyWorkflowVersion: readOptional(env.PM_DIFY_WORKFLOW_VERSION),
     difyMaxResponseBytes: readNumber(env.PM_DIFY_MAX_RESPONSE_BYTES, 512 * 1024),
+    llmBaseUrl: readOptional(env.PM_LLM_BASE_URL),
+    llmApiKey: readOptional(env.PM_LLM_API_KEY),
+    llmModel: readOptional(env.PM_LLM_MODEL),
+    llmWorkflowVersion: readOptional(env.PM_LLM_WORKFLOW_VERSION),
+    llmResponseFormat: llmFormat,
+    llmMaxResponseBytes: readNumber(env.PM_LLM_MAX_RESPONSE_BYTES, 1024 * 1024),
     environment: env.NODE_ENV === "production" ? "production" : "development",
   };
 }

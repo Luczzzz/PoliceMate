@@ -2,11 +2,13 @@ import { buildApp } from "./app";
 import { loadConfig } from "./config";
 import { createFixtureControls } from "./providers/fixture";
 import { createDifyProvider } from "./providers/dify";
+import { createLlmProvider } from "./providers/llm";
 import { createGovernedContentProvider } from "./providers/content";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const dify = config.providerMode === "dify" ? createDifyProvider(config) : null;
+  const dify = config.providerMode === "dify" ? createDifyProvider(config)
+    : config.providerMode === "llm" ? createLlmProvider(config) : null;
   const app = dify === null
     ? await buildApp({ config, fixtures: createFixtureControls() })
     : await buildApp({ config, providers: { dify, analysis: dify, content: createGovernedContentProvider() } });

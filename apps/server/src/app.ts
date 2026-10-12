@@ -608,7 +608,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       analysisTimeoutMs: runtime.analysisTimeoutMs,
       reportTimeoutMs: runtime.reportTimeoutMs,
       maxAttempts: runtime.maxProviderAttempts,
-      preserveConditionalAnalysis: config.providerMode === "dify",
+      preserveConditionalAnalysis: config.providerMode !== "fixture",
       telemetry,
     });
   const legalSources = async (): Promise<LegalSourceReference[]> =>

@@ -1,5 +1,5 @@
 import { createGenerator } from "ts-json-schema-generator";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -38,4 +38,21 @@ for (const [type, name] of targets) {
       : text;
   writeFileSync(`${output}/${name}`, `${out}\n`);
   console.log(`Generated ${name} from ${type}.`);
+}
+
+/**
+ * 直连 LLM 模式（ADR-0014）读取的系统提示词，由 `docs/deployment/dify-prompts/*.md`
+ * 截取“复制时从下一行开始”之后的正文生成，保证仓库里只有一份提示词真源。
+ */
+const promptOutput = `${root}apps/server/src/providers/prompts`;
+mkdirSync(promptOutput, { recursive: true });
+for (const [source, name] of [["extract-system.md", "extract-system.txt"], ["report-system.md", "report-system.txt"]] as const) {
+  const lines = readFileSync(`${root}docs/deployment/dify-prompts/${source}`, "utf8").split("\n");
+  const marker = lines.findIndex((line) => line.includes("复制时从下一行开始"));
+  if (marker < 0) throw new Error(`${source} 缺少“复制时从下一行开始”标记。`);
+  const body = lines.slice(marker + 1);
+  while (body[0]?.trim() === "") body.shift();
+  if (body[0]?.trim() === "---") body.shift();
+  writeFileSync(`${promptOutput}/${name}`, `${body.join("\n").trim()}\n`);
+  console.log(`Generated prompts/${name}.`);
 }
