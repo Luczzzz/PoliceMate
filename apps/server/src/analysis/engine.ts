@@ -44,6 +44,7 @@ import {
   validateReportResult,
   type ConservativeDowngradeStatus,
 } from "./report";
+import { measureReport } from "./report-draft";
 
 /**
  * 案情分析状态机。
@@ -666,6 +667,7 @@ export class AnalysisEngine {
     this.pendingReports.set(sessionId, pending);
     const reportSignal = signal === undefined ? controller.signal : AbortSignal.any([signal, controller.signal]);
     let result;
+    const reportStartedAt = Date.now();
     try {
       result = await this.callUpstream(
       "报告生成",
@@ -703,6 +705,8 @@ export class AnalysisEngine {
       kind: "analysis.report",
       outcome: "ok",
       outputItems: effectiveResult.modules.length,
+      ...measureReport(result),
+      durationMs: Date.now() - reportStartedAt,
       matchedSourceIds: effectiveLegalSources
         .filter((source) => source.status === "current")
         .map((source) => source.sourceId),

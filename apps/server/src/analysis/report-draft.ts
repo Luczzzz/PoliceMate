@@ -107,3 +107,33 @@ export function toReportDraft(result: ReportGenerationResult): ReportDraft {
     ...(result.quickBrief === undefined ? {} : { quickBrief: result.quickBrief }),
   };
 }
+
+interface MeasurableReport {
+  participantBehaviorSummary: readonly unknown[];
+  factLimitations: readonly unknown[];
+  documentTasks: readonly unknown[];
+  modules: ReadonlyArray<{
+    items: readonly unknown[];
+    traceLinks: readonly unknown[];
+    evidenceItems: readonly unknown[];
+    interviewItems: readonly unknown[];
+  }>;
+}
+
+/**
+ * 报告体量度量（只含计数，不含内容）：序列化字符数，以及超过 ADR-0012 数量上限的部分个数。
+ * 后端校验不因超限拒绝报告，此处只为让部署端看到模型是否遵守上限。
+ */
+export function measureReport(report: MeasurableReport): { outputCharacters: number; capExceeded: number } {
+  const over = (count: number, max: number): number => (count > max ? 1 : 0);
+  let capExceeded =
+    over(report.participantBehaviorSummary.length, 6) +
+    over(report.factLimitations.length, 5) +
+    over(report.documentTasks.length, 5);
+  for (const module of report.modules) {
+    capExceeded +=
+      over(module.items.length, 6) + over(module.traceLinks.length, 4) +
+      over(module.evidenceItems.length, 8) + over(module.interviewItems.length, 12);
+  }
+  return { outputCharacters: JSON.stringify(report).length, capExceeded };
+}

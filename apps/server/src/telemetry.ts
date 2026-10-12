@@ -35,6 +35,10 @@ export interface TelemetryEvent {
   inputCharacters?: number;
   /** 输出条目数量（数量本身不含内容）。 */
   outputItems?: number;
+  /** 报告序列化字符数（只计数）。 */
+  outputCharacters?: number;
+  /** 超过 ADR-0012 数量上限的部分个数（只计数）。 */
+  capExceeded?: number;
   attempts?: number;
   /** 已匹配的受治理法源记录 ID。 */
   matchedSourceIds?: string[];
@@ -61,6 +65,8 @@ const ALLOWED_KEYS: ReadonlySet<string> = new Set([
   "contentReleaseId",
   "inputCharacters",
   "outputItems",
+  "outputCharacters",
+  "capExceeded",
   "attempts",
   "matchedSourceIds",
   "featureCount",
