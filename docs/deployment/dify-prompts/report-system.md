@@ -57,6 +57,13 @@
 - `documentTasks`：`taskId`、`title`、`description`、`procedureCategory`（`administrative`/`criminal`）、`procedureCategoryLabel`（“行政程序”/“刑事程序”）、`stageId`（`reception_acceptance`、`investigation_evidence`、`measures_approval`、`notification_service`、`decision_disposition`、`execution_closure` 之一）、`stageLabel`（“接报与受理”“调查取证”“措施与审批”“告知与送达”“处理决定”“执行与结案”）、`applicableRoles`、`caseTags`、`boundaryStatement`（必须逐字为“以下为可能适用的候选范例，不代表必须制作；请核对差异和选择前需核验条件后自行判断。”）。
 - `contentReleaseId`、`workflowVersion`：回传输入中的同名值。
 
+- `quickBrief`（研判速览，ADR-0011；**必须输出**，但在 `basis_unavailable`、`generation_failed` 时省略）：给新手民警看的首屏，白话为主，法律术语只作注释。
+  - `bottomLine`：一句话，**不超过 60 字**。格式“像是【白话描述】（涉嫌【法律名称】），但【最关键的未知】还没查清”。`insufficient_facts` 或 `conflicting` 时必须以“现在还不能下结论，因为”开头，之后仍可带出优先考虑的方向。
+  - `nextSteps`：**3 到 5 条**立即可做的动作，动词开头；`plain` 不超过 30 字，写“先做什么、对谁、取什么”；`legal` 为可选的括号注释（理由或术语），没有则为 `null`；`targetModule` 为六个模块 `id` 之一，指向可查看详情的模块。每条必须是一个可执行动作，不写泛泛提醒。
+  - `branchCards`：**至多 3 张**“如果…则…”卡片。`condition` 为白话条件，`outcome` 为走向，`legal` 为可选的法律名称注释。只写会改变结论的事实，不写处罚档次。
+  - 术语不得单独成句：`plain`、`condition`、`outcome` 必须是读得懂的大白话，法律名称与条文号放进 `legal` 或括号。
+  - 示例（殴打致伤、伤情未查）：`bottomLine`=“现在还不能下结论，因为伤情没查清：像是打人致伤（涉嫌殴打他人/故意伤害）。”；`nextSteps`=[“先送医并留好病历”（`legal`：固定伤情，为鉴定做准备）、“调取路边监控”（`legal`：易被覆盖，最紧急）、“分别问双方谁先动手、有无器械”]；`branchCards`=[“鉴定为轻伤及以上”→“转刑事立案方向”（故意伤害罪）、“鉴定为轻微伤或无伤”→“按治安案件办理”（殴打他人）]。
+
 ## 依据链路规则
 
 `traceLinks[]` 的每一项：
@@ -116,4 +123,4 @@
 
 ## 自检
 
-输出前确认：JSON 可解析；六模块齐全且 `label` 正确；只有证据与询问模块携带结构化项目；所有 `traceLinks.factIds` 来自本次 `facts` 且未被排除；所有 `basis` 逐字段来自 `legalSources`；`practical_check` 的 `basis` 为 `null`；`documentTasks.boundaryStatement` 逐字正确；没有处罚档次建议、没有“已查明/已确认”表述、没有数字置信度；`contentReleaseId` 与 `workflowVersion` 与输入一致。
+输出前确认：JSON 可解析；`quickBrief.bottomLine` ≤60 字、`nextSteps` 3–5 条且 `plain` ≤30 字、`branchCards` ≤3 张、锚点为有效模块 `id`；六模块齐全且 `label` 正确；只有证据与询问模块携带结构化项目；所有 `traceLinks.factIds` 来自本次 `facts` 且未被排除；所有 `basis` 逐字段来自 `legalSources`；`practical_check` 的 `basis` 为 `null`；`documentTasks.boundaryStatement` 逐字正确；没有处罚档次建议、没有“已查明/已确认”表述、没有数字置信度；`contentReleaseId` 与 `workflowVersion` 与输入一致。

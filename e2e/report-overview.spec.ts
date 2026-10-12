@@ -2,43 +2,55 @@ import { expect, test } from "@playwright/test";
 import { reachReport } from "./report-flow";
 
 /**
- * 研判概览验收：结果页首先给出方向、判断依据、优先核查与影响方向的条件，
- * 六模块保留为可追溯详情（ADR-0010）。
+ * 研判速览验收（ADR-0011）：首屏给出一句话、立即动作与走向分支，
+ * 六模块默认折叠为可追溯详情。
  */
 
 test.beforeEach(async ({ request }) => {
   await request.post("/api/test/fixtures/reset");
 });
 
-test("概览在模块索引之前给出方向、判断依据与优先核查", async ({ page }) => {
+test("研判速览在模块索引之前：一句话、立即动作、走向分支", async ({ page }) => {
   await reachReport(page);
-  const overview = page.getByTestId("report-overview");
-  await expect(overview).toBeVisible();
-  await expect(overview).toContainText("判断依据");
-  await expect(overview).toContainText("优先核查");
-  await expect(overview.locator("li").first()).not.toBeEmpty();
+  const brief = page.getByTestId("quick-brief");
+  await expect(brief).toBeVisible();
+  await expect(page.getByTestId("quick-brief-bottom-line")).toContainText("涉嫌殴打他人");
+  const steps = page.getByTestId("quick-brief-steps").locator("li");
+  expect(await steps.count()).toBeGreaterThanOrEqual(3);
+  expect(await steps.count()).toBeLessThanOrEqual(5);
+  await expect(page.getByTestId("quick-brief-branches")).toContainText("如果");
+  expect(await page.getByTestId("quick-brief-branches").locator("li").count()).toBeLessThanOrEqual(3);
 
-  const before = await page.getByTestId("analysis-report").evaluate((report) => {
-    const overviewNode = report.querySelector('[data-testid="report-overview"]');
-    const indexNode = report.querySelector('[data-testid="report-module-index"]');
-    const headlineNode = report.querySelector('[data-testid="report-headline"]');
-    if (overviewNode === null || indexNode === null || headlineNode === null) return false;
-    return Boolean(
-      headlineNode.compareDocumentPosition(overviewNode) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ) && Boolean(overviewNode.compareDocumentPosition(indexNode) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const ordered = await page.getByTestId("analysis-report").evaluate((report) => {
+    const node = (id: string) => report.querySelector(`[data-testid="${id}"]`);
+    const headline = node("report-headline"), quick = node("quick-brief"), index = node("report-module-index");
+    if (!headline || !quick || !index) return false;
+    return Boolean(headline.compareDocumentPosition(quick) & Node.DOCUMENT_POSITION_FOLLOWING) &&
+      Boolean(quick.compareDocumentPosition(index) & Node.DOCUMENT_POSITION_FOLLOWING);
   });
-  expect(before).toBe(true);
+  expect(ordered).toBe(true);
 });
 
-test("优先核查项可跳转到证据核查模块，争议与缺口在概览中可见", async ({ page }) => {
+test("默认只展开核心证据核查，其余模块折叠为一行摘要，点击可展开", async ({ page }) => {
   await reachReport(page);
-  const overview = page.getByTestId("report-overview");
-  const firstAction = overview.locator('.report-overview__actions a').first();
-  await expect(firstAction).toHaveAttribute("href", "#report-module-evidence_checklist");
-  await firstAction.click();
-  const evidence = page.getByTestId("report-module-evidence_checklist");
-  const box = await evidence.boundingBox();
-  expect(box?.y).toBeLessThan(120);
+  await expect(page.getByTestId("report-fold-evidence_checklist")).toHaveAttribute("open", "");
+  for (const id of ["preliminary_qualification", "filing_conditions", "interview_points", "enforcement_risks", "legal_basis_trace"]) {
+    await expect(page.getByTestId(`report-fold-${id}`)).not.toHaveAttribute("open", "");
+  }
+  await page.getByTestId("report-fold-enforcement_risks").locator(":scope > summary").click();
+  await expect(page.getByTestId("report-module-enforcement_risks")).toBeVisible();
+});
+
+test("立即动作可跳转，并自动展开被折叠的目标模块", async ({ page }) => {
+  await reachReport(page);
+  const interview = page.getByTestId("quick-brief-steps").locator('a[href="#report-module-interview_points"]').first();
+  await expect(interview).toBeVisible();
+  await interview.click();
+  await expect(page.getByTestId("report-fold-interview_points")).toHaveAttribute("open", "");
+  await expect(page.getByTestId("report-module-interview_points")).toBeVisible();
+  // 索引同样会展开折叠模块。
+  await page.getByTestId("report-index-legal_basis_trace").click();
+  await expect(page.getByTestId("report-fold-legal_basis_trace")).toHaveAttribute("open", "");
 });
 
 test("未经确认状态压缩为一句提示，详细版本信息仍在报告信息区", async ({ page }) => {

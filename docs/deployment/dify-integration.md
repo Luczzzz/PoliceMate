@@ -90,7 +90,7 @@
 `contentReleaseId`。`gapBranches` 已包含每个未解决缺口的"若…则…"条件与程序路径，
 模型应围绕这些条件给出条件性分析，而不是只重复"信息不足"。
 
-`result` 对应 `ReportGenerationResult`：`status`、`headline`、`participantBehaviorSummary`、
+`result` 对应 `ReportGenerationResult`：`status`、`headline`、可选的 `quickBrief`（研判速览，见 ADR-0011）、`participantBehaviorSummary`、
 `factLimitations`、完整六模块 `modules`（含链路引用、结构化证据与询问要点字段）、
 `documentTasks`、`contentReleaseId`、`workflowVersion`。
 

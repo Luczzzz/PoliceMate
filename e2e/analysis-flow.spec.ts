@@ -76,7 +76,11 @@ test.describe("提交案情直达报告", () => {
       "enforcement_risks",
       "legal_basis_trace",
     ]) {
-      await expect(page.getByTestId(`report-module-${moduleId}`)).toBeVisible();
+      await expect(page.getByTestId(`report-module-${moduleId}`)).toBeAttached();
+      // 研判速览之后只默认展开核心证据核查，其余模块折叠（ADR-0011）。
+      const fold = page.getByTestId(`report-fold-${moduleId}`);
+      if (moduleId === "evidence_checklist") await expect(fold).toHaveAttribute("open", "");
+      else await expect(fold).not.toHaveAttribute("open", "");
     }
 
     // 主路径不再出现确认、追问与分析前确认页面。
@@ -95,6 +99,7 @@ test.describe("提交案情直达报告", () => {
     await expect(notice).toContainText("未经确认");
 
     // 每条依据都带确认状态标签（不只是第一条）。
+    await page.getByTestId("report-fold-preliminary_qualification").locator(":scope > summary").click();
     const qualification = page.getByTestId("report-module-preliminary_qualification");
     await qualification.locator("summary").click();
     const labels = qualification.locator('[data-testid^="basis-confirmation-"]');

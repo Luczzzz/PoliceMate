@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   AnalysisReport,
   GapAnswer,
@@ -56,6 +56,8 @@ function documentTaskState(task: ReportDocumentTask) {
   };
 }
 
+const ITEM_PREVIEW_LIMIT = 5;
+
 function GenericModule({ module }: { module: ReportModule }) {
   const items = module.items.filter((item) => item !== module.summary);
   return (
@@ -72,10 +74,20 @@ function GenericModule({ module }: { module: ReportModule }) {
       {module.summary ? <p className="report-module__summary">{module.summary}</p> : null}
       {items.length > 0 ? (
         <ul className="report-module__items">
-          {items.map((item, index) => (
+          {items.slice(0, ITEM_PREVIEW_LIMIT).map((item, index) => (
             <li key={index}>{item}</li>
           ))}
         </ul>
+      ) : null}
+      {items.length > ITEM_PREVIEW_LIMIT ? (
+        <details className="report-module__more" data-testid={`report-more-${module.id}`}>
+          <summary>更多（{items.length - ITEM_PREVIEW_LIMIT} 条）</summary>
+          <ul className="report-module__items">
+            {items.slice(ITEM_PREVIEW_LIMIT).map((item, index) => (
+              <li key={index}>{item}</li>
+            ))}
+          </ul>
+        </details>
       ) : null}
       {module.traceLinks.length > 0 ? (
         <ReportBasisLinks moduleId={module.id} traceLinks={module.traceLinks} />
@@ -85,14 +97,54 @@ function GenericModule({ module }: { module: ReportModule }) {
   );
 }
 
-function ReportModuleSection({ module }: { module: ReportModule }) {
-  if (module.id === "evidence_checklist") {
-    return <EvidenceChecklistWorkbench module={module} />;
-  }
-  if (module.id === "interview_points") {
-    return <InterviewPointsWorkbench module={module} />;
-  }
-  return <GenericModule module={module} />;
+/** 研判速览之后的模块默认折叠，只展开核心证据核查（ADR-0011）；折叠态只留一行摘要。 */
+const DEFAULT_OPEN_MODULE = "evidence_checklist";
+
+function ReportModuleSection({ module, collapsible = false }: { module: ReportModule; collapsible?: boolean }) {
+  const body =
+    module.id === "evidence_checklist" ? <EvidenceChecklistWorkbench module={module} /> :
+    module.id === "interview_points" ? <InterviewPointsWorkbench module={module} /> :
+    <GenericModule module={module} />;
+  if (!collapsible) return body;
+  return (
+    <details
+      className="report-module-fold"
+      data-testid={`report-fold-${module.id}`}
+      data-fold-for={module.id}
+      open={module.id === DEFAULT_OPEN_MODULE}
+    >
+      <summary>
+        <span className="report-module-fold__label">{module.label}</span>
+        {module.summary ? <span className="report-module-fold__summary">{module.summary}</span> : null}
+      </summary>
+      {body}
+    </details>
+  );
+}
+
+/** 点击索引或速览动作跳转到折叠模块时，先展开对应模块。 */
+function useOpenFoldOnHash() {
+  useEffect(() => {
+    const open = () => {
+      const match = /^#report-module-(.+)$/.exec(window.location.hash);
+      if (match === null) return;
+      const fold = document.querySelector<HTMLDetailsElement>(`details[data-fold-for="${match[1]}"]`);
+      if (fold !== null && !fold.open) {
+        fold.open = true;
+        document.getElementById(`report-module-${match[1]}`)?.scrollIntoView();
+      }
+    };
+    const click = (event: MouseEvent) => {
+      const anchor = (event.target as Element | null)?.closest?.('a[href^="#report-module-"]');
+      if (anchor !== null && anchor !== undefined) window.setTimeout(open, 0);
+    };
+    window.addEventListener("hashchange", open);
+    document.addEventListener("click", click);
+    return () => {
+      window.removeEventListener("hashchange", open);
+      document.removeEventListener("click", click);
+    };
+  }, []);
 }
 
 function DocumentTaskCard({ task }: { task: ReportDocumentTask }) {
@@ -250,6 +302,40 @@ function FactConflictSection({ conflicts }: { conflicts: ReportFactConflict[] })
           <p className="field__note">{conflict.boundaryStatement}</p>
         </article>
       ))}
+    </section>
+  );
+}
+
+/** 研判速览（ADR-0011）：一句白话定性、立即动作、“如果…则…”走向；法律术语仅作注释。 */
+function QuickBriefSection({ brief }: { brief: NonNullable<AnalysisReport["quickBrief"]> }) {
+  return (
+    <section className="quick-brief" aria-label="研判速览" data-testid="quick-brief">
+      <h2 className="quick-brief__bottom-line" data-testid="quick-brief-bottom-line">{brief.bottomLine}</h2>
+      <div className="quick-brief__steps">
+        <h3>现在先做</h3>
+        <ol data-testid="quick-brief-steps">
+          {brief.nextSteps.map((step, index) => (
+            <li key={index}>
+              <a href={`#report-module-${step.targetModule}`}>{step.plain}</a>
+              {step.legal ? <small className="quick-brief__legal">（{step.legal}）</small> : null}
+            </li>
+          ))}
+        </ol>
+      </div>
+      {brief.branchCards.length > 0 ? (
+        <div className="quick-brief__branches">
+          <h3>结论会怎么变</h3>
+          <ul data-testid="quick-brief-branches">
+            {brief.branchCards.map((card, index) => (
+              <li key={index} className="quick-brief__card">
+                <span className="quick-brief__if">如果{card.condition}</span>
+                <span className="quick-brief__then">→ {card.outcome}</span>
+                {card.legal ? <small className="quick-brief__legal">〔{card.legal}〕</small> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -439,6 +525,8 @@ function ReportBody({
   const modules = MODULE_READING_ORDER.flatMap((id) =>
     report.modules.filter((module) => module.id === id),
   );
+  const foldModules = report.quickBrief !== undefined;
+  useOpenFoldOnHash();
   return (
     <div className="report-body" data-testid="analysis-report">
       {urgentPrompts.length > 0 ? (
@@ -487,7 +575,7 @@ function ReportBody({
         </section>
       ) : null}
 
-      <ReportOverview report={report} />
+      {report.quickBrief !== undefined ? <QuickBriefSection brief={report.quickBrief} /> : <ReportOverview report={report} />}
       <ReportModuleIndex modules={modules} />
 
       <div className="report-actions" aria-label="报告操作">
@@ -524,7 +612,7 @@ function ReportBody({
 
       <section className="report-findings" aria-label="初步分析与受立案条件">
         {modules.slice(0, 2).map((module) => (
-          <ReportModuleSection key={module.id} module={module} />
+          <ReportModuleSection key={module.id} module={module} collapsible={foldModules} />
         ))}
       </section>
 
@@ -576,7 +664,7 @@ function ReportBody({
 
       <div className="report-modules">
         {modules.slice(2).map((module) => (
-          <ReportModuleSection key={module.id} module={module} />
+          <ReportModuleSection key={module.id} module={module} collapsible={foldModules} />
         ))}
       </div>
 

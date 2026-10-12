@@ -2982,3 +2982,20 @@ svg {
     gap: 0.125rem;
   }
 }
+
+/* 研判速览与折叠模块（ADR-0011） */
+.quick-brief { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--border, #d0d7de); border-radius: 8px; background: var(--surface, #fff); }
+.quick-brief h2, .quick-brief h3 { margin: 0; }
+.quick-brief__bottom-line { font-size: 1.25rem; line-height: 1.5; overflow-wrap: anywhere; }
+.quick-brief h3 { font-size: 1rem; margin-bottom: 4px; }
+.quick-brief ol, .quick-brief ul { margin: 0; padding-left: 1.4em; display: grid; gap: 6px; }
+.quick-brief__card { display: flex; flex-wrap: wrap; gap: 4px 8px; list-style: none; margin-left: -1.4em; }
+.quick-brief__if { font-weight: 600; }
+.quick-brief__legal { color: var(--muted, #57606a); overflow-wrap: anywhere; }
+.report-module-fold { border: 1px solid var(--border, #d0d7de); border-radius: 8px; margin-block: 8px; }
+.report-module-fold > summary { display: grid; gap: 2px; padding: 10px 12px; cursor: pointer; min-height: 44px; }
+.report-module-fold__label { font-weight: 600; }
+.report-module-fold__summary { color: var(--muted, #57606a); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.report-module-fold[open] .report-module-fold__summary { display: none; }
+.report-module-fold > :not(summary) { margin: 0 12px 12px; }
+.report-module__more > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }

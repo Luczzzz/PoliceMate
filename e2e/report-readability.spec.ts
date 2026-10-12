@@ -38,6 +38,7 @@ test("先展示分析方向与受立案条件，再展示待核验分支和行�
 
 test("摘要不重复展示，模块使用中文状态并具有明确段落间距", async ({ page }) => {
   await reachReport(page);
+  await page.getByTestId("report-fold-enforcement_risks").locator(":scope > summary").click();
   const module = page.getByTestId("report-module-enforcement_risks");
   const summary = "重点控制证据灭失、伤情漏查、传唤时限与程序误用。";
   const text = await module.innerText();
@@ -81,7 +82,7 @@ test("技术版本默认收起，仍可查看完整快照与生成时间", async
   const metadata = page.getByTestId("report-metadata");
   await expect(metadata).not.toHaveAttribute("open");
   await expect(metadata.locator("dl")).not.toBeVisible();
-  await metadata.locator("summary").click();
+  await metadata.locator(":scope > summary").click();
   await expect(metadata.locator("dl")).toBeVisible();
   await expect(metadata).toContainText(/v\d+ · [0-9a-f]{64}/);
   await expect(metadata).toContainText("北京时间");
@@ -102,7 +103,7 @@ for (const viewport of [
     expect(box?.y).toBeGreaterThanOrEqual(0);
     expect(box?.y).toBeLessThan(100);
 
-    await page.getByTestId("report-metadata").locator("summary").click();
+    await page.getByTestId("report-metadata").locator(":scope > summary").click();
     await page.evaluate(() => { document.documentElement.style.fontSize = "32px"; });
     const overflow = await page.evaluate(() => ({
       width: document.documentElement.clientWidth,
