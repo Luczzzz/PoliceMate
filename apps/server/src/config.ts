@@ -56,8 +56,27 @@ export interface AppConfig {
   /** 结构化输出方式；接口不支持 json_schema 时用 json_object（仍由后端 Schema 校验）。 */
   llmResponseFormat?: "json_schema" | "json_object";
   llmMaxResponseBytes?: number;
+  /**
+   * 案情分析输出形态（ADR-0015）：`stream` 为流式纯文本，`structured` 为结构化报告。
+   * 未设置时 `llm` 模式默认 `stream`，其余默认 `structured`。
+   */
+  reportFormat?: ReportFormat;
+  /** 流式上游连续无新内容的空闲超时（含首字等待）。 */
+  streamIdleTimeoutMs?: number;
+  /** 流式输出字符数上限，到达即截断。 */
+  streamMaxChars?: number;
   /** 运行环境标识；用于发布检查，不参与产品行为。 */
   environment?: "development" | "production";
+}
+
+export type ReportFormat = "stream" | "structured";
+
+export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 30 * 1000;
+export const DEFAULT_STREAM_MAX_CHARS = 12000;
+
+/** 当前生效的输出形态；配置未显式给出时按提供者模式取默认。 */
+export function resolveReportFormat(config: Pick<AppConfig, "reportFormat" | "providerMode">): ReportFormat {
+  return config.reportFormat ?? (config.providerMode === "llm" ? "stream" : "structured");
 }
 
 /** 已解析的运行时安全/超时配置。 */
@@ -71,6 +90,8 @@ export interface ResolvedRuntimeConfig {
   analysisTimeoutMs: number;
   reportTimeoutMs: number;
   maxProviderAttempts: number;
+  streamIdleTimeoutMs: number;
+  streamMaxChars: number;
 }
 
 export const DEFAULT_ANALYSIS_TIMEOUT_MS = 30 * 1000;
@@ -96,6 +117,8 @@ export function resolveRuntimeConfig(config: AppConfig): ResolvedRuntimeConfig {
     analysisTimeoutMs: config.analysisTimeoutMs ?? DEFAULT_ANALYSIS_TIMEOUT_MS,
     reportTimeoutMs: config.reportTimeoutMs ?? DEFAULT_REPORT_TIMEOUT_MS,
     maxProviderAttempts: config.maxProviderAttempts ?? DEFAULT_MAX_PROVIDER_ATTEMPTS,
+    streamIdleTimeoutMs: config.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+    streamMaxChars: config.streamMaxChars ?? DEFAULT_STREAM_MAX_CHARS,
   };
 }
 
@@ -134,6 +157,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (mode !== "fixture" && mode !== "dify" && mode !== "llm") throw new Error("PM_PROVIDER_MODE 必须为 fixture、dify 或 llm。");
   const llmFormat = readOptional(env.PM_LLM_RESPONSE_FORMAT) ?? "json_schema";
   if (llmFormat !== "json_schema" && llmFormat !== "json_object") throw new Error("PM_LLM_RESPONSE_FORMAT 必须为 json_schema 或 json_object。");
+  const rawFormat = readOptional(env.PM_REPORT_FORMAT);
+  if (rawFormat !== null && rawFormat !== "stream" && rawFormat !== "structured") throw new Error("PM_REPORT_FORMAT 必须为 stream 或 structured。");
+  const reportFormat: ReportFormat = rawFormat ?? resolveReportFormat({ reportFormat: undefined, providerMode: mode });
   const testControls = readBoolean(env.PM_ENABLE_TEST_CONTROLS, false);
   if (testControls && (mode !== "fixture" || env.NODE_ENV === "production")) {
     throw new Error("测试控制只允许在非生产 fixture 模式启用。");
@@ -173,6 +199,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     llmWorkflowVersion: readOptional(env.PM_LLM_WORKFLOW_VERSION),
     llmResponseFormat: llmFormat,
     llmMaxResponseBytes: readNumber(env.PM_LLM_MAX_RESPONSE_BYTES, 1024 * 1024),
+    reportFormat,
+    streamIdleTimeoutMs: readNumber(env.PM_STREAM_IDLE_TIMEOUT_MS, DEFAULT_STREAM_IDLE_TIMEOUT_MS),
+    streamMaxChars: readNumber(env.PM_STREAM_MAX_CHARS, DEFAULT_STREAM_MAX_CHARS),
     environment: env.NODE_ENV === "production" ? "production" : "development",
   };
 }

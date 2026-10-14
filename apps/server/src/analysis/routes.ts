@@ -11,9 +11,21 @@ import type {
   LegalSourceReference,
   ReviseFactRequest,
 } from "@policymate/contracts";
-import { CONTRACT_VERSION } from "@policymate/contracts";
-import { AnalysisInputError, AnalysisUpstreamError, type AnalysisEngine, type CaseFocusResolver } from "./engine";
+import { CONTRACT_VERSION, STREAM_ANALYSIS_DISCLAIMER } from "@policymate/contracts";
+import type { StreamAnalysisInterruptReason, StreamAnalysisStatus } from "@policymate/contracts";
+import { AnalysisInputError, AnalysisUpstreamError, validateCaseText, type AnalysisEngine, type CaseFocusResolver } from "./engine";
 import type { ConcurrencyGate } from "../security";
+import type { StreamAnalysisProvider } from "../providers/types";
+import type { TelemetrySink, TelemetryOutcome } from "../telemetry";
+
+/** 流式纯文本分析的运行参数（ADR-0015）；未提供时不注册流式路由。 */
+export interface StreamRouteOptions {
+  provider: NonNullable<StreamAnalysisProvider["streamAnalysis"]>;
+  idleTimeoutMs: number;
+  totalTimeoutMs: number;
+  maxChars: number;
+  telemetry: TelemetrySink;
+}
 
 /**
  * 案情分析路由。
@@ -33,6 +45,7 @@ export interface AnalysisRoutesOptions {
   caseFocusResolver?: CaseFocusResolver;
   /** 并发闸门：同一令牌在途分析请求不得超过上限。 */
   concurrencyGate: ConcurrencyGate;
+  stream?: StreamRouteOptions;
 }
 
 function errorBody(
@@ -151,6 +164,117 @@ export async function registerAnalysisRoutes(
       signal,
     );
   };
+
+  if (options.stream !== undefined) registerStreamRoute(options.stream);
+
+  /**
+   * 流式纯文本分析（ADR-0015）：无状态，不建会话、不提取事实、不落盘。
+   * 开流前的失败（鉴权、校验、停用、并发）都以 JSON 错误返回；开流后的失败
+   * 以 `done` 事件的 interrupted 结束，已出文字保留，由前端标记为不完整。
+   */
+  function registerStreamRoute(stream: StreamRouteOptions): void {
+    type EndState = "complete" | "truncated" | "client_abort" | StreamAnalysisInterruptReason;
+    app.post<{ Body: { caseText?: unknown } }>("/api/v1/analysis/stream", async (request, reply) => {
+      try {
+        await assertCapability();
+        const caseText = validateCaseText(request.body?.caseText);
+        await withConcurrency(request, reply, async (clientSignal) => {
+          const legalSources = await options.legalSources();
+          const startedAt = performance.now();
+          reply.hijack();
+          const raw = reply.raw;
+          raw.writeHead(200, {
+            "content-type": "text/event-stream; charset=utf-8",
+            "cache-control": "no-cache, no-store",
+            "x-accel-buffering": "no",
+            "x-robots-tag": "noindex, nofollow, noarchive",
+            connection: "keep-alive",
+          });
+          const send = (event: string, data: unknown) => {
+            if (!raw.writableEnded && !raw.destroyed) raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+          };
+
+          const upstream = new AbortController();
+          let endState: EndState | null = null;
+          const finish = (state: EndState) => {
+            if (endState === null) { endState = state; upstream.abort(); }
+          };
+          clientSignal.addEventListener("abort", () => finish("client_abort"));
+          const aborted = new Promise<never>((_resolve, reject) => {
+            upstream.signal.addEventListener("abort", () => reject(new Error("aborted")));
+          });
+          aborted.catch(() => undefined);
+          let idleTimer: ReturnType<typeof setTimeout> | undefined;
+          const armIdle = () => {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => finish("idle_timeout"), stream.idleTimeoutMs);
+          };
+          const totalTimer = setTimeout(() => finish("total_timeout"), stream.totalTimeoutMs);
+
+          let emitted = 0;
+          let firstChunkMs: number | undefined;
+          const iterator = stream.provider({ caseText, legalSources }, upstream.signal)[Symbol.asyncIterator]();
+          armIdle();
+          try {
+            for (;;) {
+              const pending = iterator.next();
+              pending.catch(() => undefined);
+              const next = await Promise.race([pending, aborted]);
+              if (next.done) break;
+              armIdle();
+              firstChunkMs ??= Math.round(performance.now() - startedAt);
+              const chars = Array.from(next.value);
+              const remaining = stream.maxChars - emitted;
+              if (chars.length > remaining) {
+                if (remaining > 0) send("delta", { text: chars.slice(0, remaining).join("") });
+                emitted += Math.max(remaining, 0);
+                finish("truncated");
+                break;
+              }
+              emitted += chars.length;
+              send("delta", { text: next.value });
+            }
+          } catch {
+            finish("upstream_error");
+          } finally {
+            clearTimeout(idleTimer);
+            clearTimeout(totalTimer);
+            void Promise.resolve(iterator.return?.(undefined)).catch(() => undefined);
+          }
+
+          const state: EndState = (endState as EndState | null) ?? "complete";
+          if (state !== "client_abort") {
+            const status: StreamAnalysisStatus = state === "complete" ? "complete" : state === "truncated" ? "truncated" : "interrupted";
+            send("done", {
+              status,
+              ...(status === "interrupted" ? { reason: state } : {}),
+              disclaimer: STREAM_ANALYSIS_DISCLAIMER,
+            });
+          }
+          if (!raw.writableEnded) raw.end();
+
+          const outcome: TelemetryOutcome = state === "complete" || state === "truncated" ? "ok"
+            : state === "client_abort" ? "cancelled"
+            : state === "upstream_error" ? "error" : "timeout";
+          stream.telemetry.record({
+            requestId: request.id,
+            timestamp: new Date().toISOString(),
+            kind: "analysis.stream",
+            outcome,
+            durationMs: Math.max(1, Math.round(performance.now() - startedAt)),
+            contractVersion: CONTRACT_VERSION,
+            inputCharacters: Array.from(caseText).length,
+            outputCharacters: emitted,
+            ...(firstChunkMs !== undefined ? { firstChunkMs } : {}),
+            featureState: state,
+          });
+        });
+        return reply;
+      } catch (error) {
+        return handleError(error, request.id, reply);
+      }
+    });
+  }
 
   // 提交案情：提取候选事实，按互不相关事项自动拆分为多份分析；每份分析在
   // 同一响应内形成独立事实快照与报告。

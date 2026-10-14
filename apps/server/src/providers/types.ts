@@ -148,7 +148,7 @@ export interface ReportDraft {
  * 案情分析边界：候选事实提取与报告生成。
  * 真实 Dify 接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
  */
-export interface CaseAnalysisProvider {
+export interface CaseAnalysisProvider extends StreamAnalysisProvider {
   extractCaseFacts(request: CaseExtractionRequest, signal?: AbortSignal): Promise<CaseExtractionResult>;
   generateReport?(request: ReportGenerationRequest, signal?: AbortSignal): Promise<ReportGenerationResult>;
 }
@@ -243,6 +243,17 @@ export interface GovernedContentProvider {
    * 只依据行为标签与原始表述线索匹配，不解析模型生成的自然语言结论。
    */
   resolveCaseFocus?(facts: CandidateFact[], now?: Date): Promise<CaseFocusResolution>;
+}
+
+/** 流式纯文本分析请求（ADR-0015）：只含案情文本和本次适用的受治理法源。 */
+export interface StreamAnalysisRequest {
+  caseText: string;
+  legalSources: LegalSourceReference[];
+}
+
+/** 支持流式纯文本分析的边界；按到达顺序逐段产出文本，不做结构化校验。 */
+export interface StreamAnalysisProvider {
+  streamAnalysis?(request: StreamAnalysisRequest, signal?: AbortSignal): AsyncIterable<string>;
 }
 
 export interface Providers {

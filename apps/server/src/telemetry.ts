@@ -40,6 +40,8 @@ export interface TelemetryEvent {
   /** 超过 ADR-0012 数量上限的部分个数（只计数）。 */
   capExceeded?: number;
   attempts?: number;
+  /** 流式分析从请求开始到第一段文字到达的毫秒数（只计数）。 */
+  firstChunkMs?: number;
   /** 已匹配的受治理法源记录 ID。 */
   matchedSourceIds?: string[];
   /** 匿名功能/页面状态计数增量。 */
@@ -68,6 +70,7 @@ const ALLOWED_KEYS: ReadonlySet<string> = new Set([
   "outputCharacters",
   "capExceeded",
   "attempts",
+  "firstChunkMs",
   "matchedSourceIds",
   "featureCount",
   "featureState",

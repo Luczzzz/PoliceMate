@@ -22,6 +22,8 @@ export interface ProductShellResponse {
   contractVersion: string;
   generatedAt: string;
   entries: Record<CapabilityId, EntryAvailability>;
+  /** 案情分析输出形态（ADR-0015）；前端据此选择流式页面或结构化报告页面。 */
+  reportFormat: "stream" | "structured";
 }
 
 /** 使用与数据说明页面的一个章节。 */
@@ -634,7 +636,12 @@ export interface GenerateReportRequest {
   snapshotHash: string;
 }
 
+/** 流式替身行为（仅测试）：正常、每段变慢、产出两段后失败。 */
+export type FixtureStreamMode = "normal" | "slow" | "fail_midway";
+
 export interface ReportFailureControls {
+  /** 测试控制：流式分析替身的行为（ADR-0015）。 */
+  streamMode?: FixtureStreamMode;
   reportMode?:
     | "complete"
     | "insufficient_facts"
@@ -727,6 +734,14 @@ export const ANALYSIS_STAGE_LABELS: Record<AnalysisStage, string> = {
 /** 案情输入、补充事实与替代事实的锁定上限。 */
 export const CASE_TEXT_MAX_CHARACTERS = 10_000;
 export const ANSWER_MAX_CHARACTERS = 2_000;
+
+/** 流式分析文本下方的固定边界声明；由后端在 `done` 事件附带，不经过模型（ADR-0015）。 */
+export const STREAM_ANALYSIS_DISCLAIMER =
+  "本工具由AI生成分析结果，仅供基层所队内部办案参考，不构成正式法律意见。法条与事实请自行核对现行规定，重大案件请请示所队领导及法制部门审核。";
+
+/** 流式分析的结束状态；`done` 事件携带，interrupted 另带 reason。 */
+export type StreamAnalysisStatus = "complete" | "truncated" | "interrupted";
+export type StreamAnalysisInterruptReason = "idle_timeout" | "total_timeout" | "upstream_error";
 
 /**
  * 需要短期匿名令牌保护的接口前缀。前后端共用同一份定义，避免两处漂移；
@@ -1100,6 +1115,7 @@ export interface FixtureControlResponse {
   legalSources: FixtureLegalSourceState[];
   extractionMode: UpstreamFailureMode;
   reportMode: NonNullable<ReportFailureControls["reportMode"]>;
+  streamMode: FixtureStreamMode;
 }
 
 /* ---------- 结构化反馈与运行元数据 ---------- */

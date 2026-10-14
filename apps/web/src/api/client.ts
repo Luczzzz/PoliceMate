@@ -1,4 +1,5 @@
-import { CONTRACT_VERSION, PROTECTED_API_PREFIXES } from "@policymate/contracts";
+import { CONTRACT_VERSION, PROTECTED_API_PREFIXES, STREAM_ANALYSIS_DISCLAIMER } from "@policymate/contracts";
+import type { StreamAnalysisInterruptReason, StreamAnalysisStatus } from "@policymate/contracts";
 
 /** 客户端可区分的失败类型；用于映射到具体的用户可见状态。 */
 export type ApiFailureKind =
@@ -252,4 +253,119 @@ export async function getJson<T>(
   options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<T> {
   return requestJson<T>(path, options);
+}
+
+/** 流式分析的结束信息；`interrupted` 与 `truncated` 都表示文本不完整。 */
+export interface StreamAnalysisOutcome {
+  status: StreamAnalysisStatus;
+  reason: StreamAnalysisInterruptReason | null;
+  disclaimer: string;
+}
+
+/** 解析 SSE 文本块；只处理 event 与 data 两个字段。 */
+function parseSseBlock(block: string): { event: string; data: unknown } | null {
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+  }
+  if (dataLines.length === 0) return null;
+  try {
+    return { event, data: JSON.parse(dataLines.join("\n")) };
+  } catch {
+    return null;
+  }
+}
+
+async function openAnalysisStream(caseText: string, token: string, signal: AbortSignal): Promise<Response> {
+  return fetch("/api/v1/analysis/stream", {
+    method: "POST",
+    headers: {
+      accept: "text/event-stream",
+      "content-type": "application/json",
+      "x-pm-contract-version": CONTRACT_VERSION,
+      [TOKEN_HEADER]: token,
+    },
+    body: JSON.stringify({ caseText }),
+    cache: "no-store",
+    credentials: "same-origin",
+    signal,
+  });
+}
+
+/**
+ * 流式纯文本分析（ADR-0015）。每收到一段文字就调用 `onText`；收到 `done`
+ * 事件后返回结束信息。开流前的失败抛出 `ApiFailure`；连接在 `done` 之前断开
+ * 也抛出 `ApiFailure`，已通过 `onText` 交付的文字由调用方保留并标为不完整。
+ * 不设客户端总时限：空闲与总时限由后端控制，用户可随时通过 `signal` 停止。
+ */
+export async function streamAnalysis(
+  caseText: string,
+  onText: (text: string) => void,
+  signal: AbortSignal,
+): Promise<StreamAnalysisOutcome> {
+  const cancelled = () => new ApiFailure("cancelled", "已停止。");
+  let response: Response;
+  try {
+    let token = await ensureAnonymousToken();
+    response = await openAnalysisStream(caseText, token, signal);
+    if (response.status === 401) {
+      await response.body?.cancel();
+      resetAnonymousToken();
+      token = await ensureAnonymousToken();
+      response = await openAnalysisStream(caseText, token, signal);
+    }
+  } catch (error) {
+    if (error instanceof ApiFailure) throw error;
+    throw signal.aborted ? cancelled() : new ApiFailure("offline", "网络不可用，请检查网络连接后重试。");
+  }
+
+  if (!response.ok || response.body === null) {
+    let body: unknown = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    const envelope = extractEnvelope(body);
+    throw new ApiFailure(kindForStatus(response.status, envelope.code), envelope.message ?? "服务暂时不可用，请稍后重试。", {
+      code: envelope.code,
+      requestId: envelope.requestId,
+      status: response.status,
+    });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      buffer += decoder.decode(part.value, { stream: true }).replace(/\r\n/g, "\n");
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const parsed = parseSseBlock(buffer.slice(0, boundary));
+        buffer = buffer.slice(boundary + 2);
+        if (parsed?.event === "delta") {
+          const text = (parsed.data as { text?: unknown }).text;
+          if (typeof text === "string") onText(text);
+        } else if (parsed?.event === "done") {
+          const done = parsed.data as { status?: StreamAnalysisStatus; reason?: StreamAnalysisInterruptReason; disclaimer?: string };
+          return {
+            status: done.status ?? "interrupted",
+            reason: done.reason ?? null,
+            disclaimer: typeof done.disclaimer === "string" && done.disclaimer !== "" ? done.disclaimer : STREAM_ANALYSIS_DISCLAIMER,
+          };
+        }
+        boundary = buffer.indexOf("\n\n");
+      }
+    }
+  } catch {
+    throw signal.aborted ? cancelled() : new ApiFailure("offline", "连接中断。");
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  throw signal.aborted ? cancelled() : new ApiFailure("offline", "连接中断。");
 }

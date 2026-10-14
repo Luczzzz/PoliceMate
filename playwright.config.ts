@@ -16,6 +16,11 @@ if (existsSync(browserDepsLib)) {
 
 const webPort = Number(process.env.PM_WEB_PORT ?? "5173");
 const baseURL = `http://127.0.0.1:${webPort}`;
+// 流式纯文本分析（ADR-0015）由独立实例驱动：PM_REPORT_FORMAT=stream，避免影响结构化用例。
+const streamWebPort = Number(process.env.PM_STREAM_WEB_PORT ?? "5174");
+const streamServerPort = Number(process.env.PM_STREAM_SERVER_PORT ?? "8788");
+const streamBaseURL = `http://127.0.0.1:${streamWebPort}`;
+const STREAM_MATCH = /stream-analysis\.spec\.ts/;
 
 /** 微信内置浏览器 User-Agent（Android 版），用于核心流程代理验收。 */
 const WECHAT_USER_AGENT =
@@ -47,7 +52,13 @@ export default defineConfig({
   projects: [
     {
       name: "mobile-chrome",
+      testIgnore: STREAM_MATCH,
       use: { ...devices["Pixel 7"] },
+    },
+    {
+      name: "stream-chrome",
+      testMatch: STREAM_MATCH,
+      use: { ...devices["Pixel 7"], baseURL: streamBaseURL },
     },
     // 微信内置浏览器：核心流程黑盒验收（Chromium 引擎 + 微信 UA 代理）。
     {
@@ -67,12 +78,22 @@ export default defineConfig({
         ]
       : []),
   ],
-  webServer: {
-    command: "PM_ENABLE_TEST_CONTROLS=1 npm run dev",
-    url: baseURL,
-    reuseExistingServer: false,
-    timeout: 120_000,
-    stdout: "pipe",
-    stderr: "pipe",
-  },
+  webServer: [
+    {
+      command: "PM_ENABLE_TEST_CONTROLS=1 npm run dev",
+      url: baseURL,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+    {
+      command: `PM_ENABLE_TEST_CONTROLS=1 PM_REPORT_FORMAT=stream PM_WEB_PORT=${streamWebPort} PM_SERVER_PORT=${streamServerPort} npm run dev`,
+      url: streamBaseURL,
+      reuseExistingServer: false,
+      timeout: 120_000,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  ],
 });

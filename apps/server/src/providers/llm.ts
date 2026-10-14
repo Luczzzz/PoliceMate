@@ -14,6 +14,7 @@ import type {
   ReportGenerationRequest,
   ReportGenerationResult,
   ServiceAvailability,
+  StreamAnalysisRequest,
 } from "./types";
 
 const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -21,7 +22,11 @@ const DEFAULT_WORKFLOW_VERSION = "policymate-llm-v1.0.0";
 const TEMPERATURE = 0.2;
 
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
-const PROMPTS = { extract: read("./prompts/extract-system.txt"), report: read("./prompts/report-system.txt") };
+const PROMPTS = {
+  extract: read("./prompts/extract-system.txt"),
+  report: read("./prompts/report-system.txt"),
+  stream: read("./prompts/stream-system.txt"),
+};
 const SCHEMAS = {
   extract: JSON.parse(read("./schemas/dify-extract-result.json")) as object,
   report: JSON.parse(read("./schemas/dify-report-result.json")) as object,
@@ -121,7 +126,70 @@ export function createLlmProvider(config: AppConfig, options: LlmProviderOptions
     return pruned.value;
   };
 
+  /** 逐段读取 chat/completions 的 SSE，只产出 delta.content；不做结构校验（ADR-0015）。 */
+  async function* streamAnalysis(request: StreamAnalysisRequest, signal?: AbortSignal): AsyncGenerator<string> {
+    const availability = configured(config);
+    if (!availability.available) throw new Error(availability.reason ?? "模型接口不可用。");
+    const response = await fetchImpl(`${config.llmBaseUrl!.replace(/\/$/, "")}/chat/completions`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${config.llmApiKey!}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        model: config.llmModel,
+        temperature: TEMPERATURE,
+        stream: true,
+        messages: [
+          { role: "system", content: PROMPTS.stream },
+          { role: "user", content: JSON.stringify({ caseText: request.caseText, legalSources: request.legalSources.map((source) => ({
+            sourceId: source.sourceId, title: source.title, version: source.version, issuingAuthority: source.issuingAuthority,
+            articles: source.articles.map((article) => ({ location: article.location, text: article.minimalText })),
+          })) }) },
+        ],
+        user: `policymate-${randomUUID()}`,
+      }),
+      signal,
+      redirect: "error",
+    });
+    if (!response.ok || response.body === null) {
+      await response.body?.cancel();
+      throw new Error(`LLM HTTP ${response.status}。`);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let produced = false;
+    const handleLine = (line: string): string | null => {
+      if (!line.startsWith("data:")) return null;
+      const data = line.slice(5).trim();
+      if (data === "" || data === "[DONE]") return null;
+      let event: { choices?: Array<{ finish_reason?: unknown; delta?: { content?: unknown } }> };
+      try { event = JSON.parse(data); } catch { throw new Error("模型流式输出格式无效。"); }
+      const choice = event.choices?.[0];
+      if (choice?.finish_reason === "length") throw new Error("模型输出被截断。");
+      return typeof choice?.delta?.content === "string" && choice.delta.content !== "" ? choice.delta.content : null;
+    };
+    try {
+      for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        buffer += decoder.decode(part.value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const piece = handleLine(line.trimEnd());
+          if (piece !== null) { produced = true; yield piece; }
+        }
+      }
+      buffer += decoder.decode();
+      const tail = handleLine(buffer.trim());
+      if (tail !== null) { produced = true; yield tail; }
+    } finally {
+      await reader.cancel().catch(() => undefined);
+    }
+    if (!produced) throw new Error("模型未返回内容。");
+  }
+
   return {
+    streamAnalysis,
     async getAvailability() {
       return configured(config);
     },

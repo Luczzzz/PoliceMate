@@ -1,0 +1,26 @@
+# 流式纯文本分析部署说明（ADR-0015）
+
+## 配置
+
+- `PM_PROVIDER_MODE=llm`，并配置 `PM_LLM_BASE_URL`、`PM_LLM_API_KEY`、`PM_LLM_MODEL`（见 ADR-0014）。`dify` 模式不支持流式；在 `dify` 下显式设置 `PM_REPORT_FORMAT=stream` 时，案情分析入口会显示不可用，不会静默回退。
+- `PM_REPORT_FORMAT=stream|structured`：未设置时 `llm` 默认 `stream`，其他模式默认 `structured`。设为 `structured` 即回退到结构化报告。
+- `PM_STREAM_IDLE_TIMEOUT_MS`（默认 30000）：上游连续这么久没有新内容（含首字等待）就中断。
+- `PM_REPORT_TIMEOUT_MS`（默认 90000）：整段输出的总时限，流式沿用。
+- `PM_STREAM_MAX_CHARS`（默认 12000）：输出字符上限，到达即截断并标“内容不完整”。
+
+## 缓冲检查（上线前必做）
+
+后端对 `/api/v1/analysis/stream` 的响应已带 `X-Accel-Buffering: no` 与 `Cache-Control: no-cache`，Nginx 默认会遵守前者，所以现有站点配置不用改，`proxy_read_timeout 300s` 也够用。
+
+但流式输出一旦被任何一层缓冲，就会攒到最后一起出现，等于白做，所以上线前要在真实环境确认文字是逐段到达的：
+
+1. 在真实域名下，用浏览器提交一段较长案情，肉眼确认文字边生成边出现，而不是等十几秒后整段弹出。
+2. 或用命令行：`curl -N -X POST https://<域名>/api/v1/analysis/stream -H 'x-pm-contract-version: 1.0' -H "x-pm-anonymous-token: $TOKEN" -H 'content-type: application/json' -d '{"caseText":"虚构案情"}'`，观察 `event: delta` 是否陆续打印。
+3. 若请求链路上还有 CDN、负载均衡或 WAF（腾讯云常见），逐层检查是否开启了响应缓冲或压缩，必要时对 `/api/v1/analysis/stream` 关闭。
+4. 若发现被缓冲，在 Nginx 对应 `location` 加 `proxy_buffering off;` 作为兜底。
+
+检查结果记入 `docs/acceptance/manual-evidence.md`。
+
+## 验收口径
+
+在 ADR-0007 的基础上：首字延迟中位数 ≤ 10 秒；5 次运行的法条引用，用虚构案情逐条人工比对仓库法源并记录。

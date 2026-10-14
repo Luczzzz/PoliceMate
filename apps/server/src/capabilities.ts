@@ -10,6 +10,7 @@ export const UNAVAILABLE_REASONS = {
   analysisDisabled: "案情分析入口已临时停用",
   analysisService: "分析服务暂不可用，请稍后再试",
   documentsDisabled: "文书范例入口已临时停用",
+  streamUnsupported: "当前分析服务不支持流式输出，请联系维护者调整配置",
   noVerifiedExamples: "当前没有可用的已核验文书范例",
 } as const;
 
@@ -90,6 +91,7 @@ export function buildProductShell(
   inputs: CapabilityInputs,
   contractVersion: string,
   generatedAt: Date = new Date(),
+  reportFormat: ProductShellResponse["reportFormat"] = "structured",
 ): ProductShellResponse {
   return {
     contractVersion,
@@ -98,5 +100,6 @@ export function buildProductShell(
       caseAnalysis: resolveCaseAnalysisAvailability(inputs),
       documentExamples: resolveDocumentExamplesAvailability(inputs),
     },
+    reportFormat,
   };
 }

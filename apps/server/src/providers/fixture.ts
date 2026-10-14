@@ -6,6 +6,7 @@ import type {
   ContentStatus,
   FixtureControlResponse,
   FixtureCaseFocusState,
+  FixtureStreamMode,
   LegalSourceStatus,
   FixtureExampleState,
   LegalSourceReference,
@@ -60,6 +61,21 @@ export interface FixturePatch extends ReportFailureControls {
 /** 替身超时模式等待时长；必须明显长于测试注入的引擎超时上限。 */
 export const FIXTURE_TIMEOUT_DELAY_MS = 250;
 
+/** 流式替身每段之间的间隔，足以让浏览器黑盒测试观察到逐段出现。 */
+export const FIXTURE_STREAM_PIECE_DELAY_MS = 30;
+/** slow 模式的每段间隔：给浏览器测试留出点击“停止”的时间。 */
+export const FIXTURE_STREAM_SLOW_DELAY_MS = 400;
+
+/** 流式替身的固定文本：六个编号小节，内容为虚构、不依赖案情。 */
+export const FIXTURE_STREAM_PIECES: readonly string[] = [
+  "1、案件定性：本案按虚构示例分析，涉嫌殴打他人（待核实伤情）。\n",
+  "2、是否应当受案：属公安机关管辖范围，应当受案。\n",
+  "3、核心证据清单：①现场监控录像；②被害人陈述；③伤情鉴定意见。\n",
+  "4、询问提纲：\n- 违法嫌疑人：争执起因、具体行为。\n- 被害人：受伤时间、部位。\n",
+  "5、执法风险提示：及时固定现场监控，按规定制作询问笔录。\n",
+  "6、法律条文原文节选：本次为测试替身，没有可引用的受治理法源。\n",
+];
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -75,11 +91,13 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
   let difyAvailable = true;
   let reportMode: NonNullable<ReportFailureControls["reportMode"]> = "complete";
   let extractionMode: UpstreamFailureMode = "normal";
+  let streamMode: FixtureStreamMode = "normal";
 
   const applyPatch = (patch: FixturePatch) => {
     if (patch.difyAvailable !== undefined) difyAvailable = patch.difyAvailable;
     if (patch.reportMode !== undefined) reportMode = patch.reportMode;
     if (patch.extractionMode !== undefined) extractionMode = patch.extractionMode;
+    if (patch.streamMode !== undefined) streamMode = patch.streamMode;
     if (patch.exampleStatusAll !== undefined) store.setAllExampleStatus(patch.exampleStatusAll);
     if (patch.exampleStatus !== undefined) {
       store.setExampleStatus(patch.exampleStatus.exampleId, patch.exampleStatus.status);
@@ -112,6 +130,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       legalSources: snapshot.legalSources.map((source) => ({ ...source })),
       extractionMode,
       reportMode,
+      streamMode,
     };
   };
 
@@ -130,6 +149,16 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
    * 后端负责结构校验、状态机、快照与紧急提示，替身不决定任何产品状态。
    */
   const analysis: CaseAnalysisProvider = {
+    async *streamAnalysis(_request, signal) {
+      let index = 0;
+      for (const piece of FIXTURE_STREAM_PIECES) {
+        await delay(streamMode === "slow" ? FIXTURE_STREAM_SLOW_DELAY_MS : FIXTURE_STREAM_PIECE_DELAY_MS);
+        if (signal?.aborted) throw new Error("流式分析已中止。");
+        if (streamMode === "fail_midway" && index === 2) throw new Error("fixture stream failure");
+        yield piece;
+        index += 1;
+      }
+    },
     async extractCaseFacts(request: CaseExtractionRequest): Promise<CaseExtractionResult> {
       if (extractionMode === "timeout") await delay(FIXTURE_TIMEOUT_DELAY_MS);
       if (extractionMode === "empty") {

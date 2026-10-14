@@ -5,7 +5,7 @@ import { ShellProvider } from "./app/ShellContext";
 import { AnalysisProgress } from "./components/AnalysisProgress";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { OfflineBanner } from "./components/OfflineBanner";
-import { CaseInputPage } from "./pages/analysis/CaseInputPage";
+import { AnalysisEntryPage } from "./pages/analysis/AnalysisEntryPage";
 import { AnalysisReportPage } from "./pages/analysis/AnalysisReportPage";
 import { ModifyFactsPage } from "./pages/analysis/ModifyFactsPage";
 import { DataUsePage } from "./pages/DataUsePage";
@@ -32,7 +32,7 @@ export function App() {
                   <Routes>
                   <Route path="/" element={<HomePage />} />
                   <Route path="/data-use" element={<DataUsePage />} />
-                  <Route path="/analysis" element={<CaseInputPage />} />
+                  <Route path="/analysis" element={<AnalysisEntryPage />} />
                   <Route path="/analysis/report" element={<AnalysisReportPage />} />
                   <Route path="/analysis/modify" element={<ModifyFactsPage />} />
                   <Route

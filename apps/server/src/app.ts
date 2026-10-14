@@ -26,14 +26,14 @@ import {
   type UpstreamFailureMode,
 } from "@policymate/contracts";
 import { HANDLING_STAGE_CATALOG } from "./content/catalog";
-import { buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } from "./capabilities";
-import { resolveRuntimeConfig, type AppConfig, type ResolvedRuntimeConfig } from "./config";
+import { UNAVAILABLE_REASONS, buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } from "./capabilities";
+import { resolveReportFormat, resolveRuntimeConfig, type AppConfig, type ResolvedRuntimeConfig } from "./config";
 import { buildDataUseResponse } from "./data-use";
 import { buildFacets } from "./content/gating";
 import { AnalysisEngine } from "./analysis/engine";
 import { registerAnalysisRoutes } from "./analysis/routes";
 import type { FixtureControls, FixturePatch } from "./providers/fixture";
-import type { Providers } from "./providers/types";
+import type { Providers, ServiceAvailability } from "./providers/types";
 import {
   AnonymousTokenService,
   ConcurrencyGate,
@@ -183,6 +183,11 @@ function readFixturePatch(body: unknown): FixturePatch | null {
     patch.extractionMode = mode;
   }
 
+  if ("streamMode" in candidate) {
+    if (candidate.streamMode !== "normal" && candidate.streamMode !== "slow" && candidate.streamMode !== "fail_midway") return null;
+    patch.streamMode = candidate.streamMode;
+  }
+
   if ("difyAvailable" in candidate) {
     if (typeof candidate.difyAvailable !== "boolean") return null;
     patch.difyAvailable = candidate.difyAvailable;
@@ -326,6 +331,13 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const rateLimiter = deps.rateLimiter ?? new FixedWindowRateLimiter(runtime.rateLimitMax, runtime.rateLimitWindowMs);
   const concurrencyGate = deps.concurrencyGate ?? new ConcurrencyGate(runtime.maxConcurrency);
 
+  const reportFormat = resolveReportFormat(config);
+  /** 分析边界可用性；选了流式但提供者不支持时失败关闭，不静默回退（ADR-0015）。 */
+  const analysisBoundary = async (): Promise<ServiceAvailability> =>
+    reportFormat === "stream" && providers.analysis.streamAnalysis === undefined
+      ? { available: false, reason: UNAVAILABLE_REASONS.streamUnsupported }
+      : providers.dify.getAvailability();
+
   const app = Fastify({
     logger: false,
     genReqId: () => randomUUID(),
@@ -455,9 +467,9 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         analysisEnabled: config.analysisEnabled,
         documentsEnabled: config.documentsEnabled,
       },
-      providers,
+      { ...providers, dify: { getAvailability: analysisBoundary } },
     );
-    return buildProductShell(inputs, CONTRACT_VERSION);
+    return buildProductShell(inputs, CONTRACT_VERSION, new Date(), reportFormat);
   });
 
   app.get("/api/v1/data-use", async (): Promise<DataUseResponse> => {
@@ -620,7 +632,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     legalSources,
     activeReleaseId: async () => (await providers.content.getActiveRelease()).releaseId,
     analysisCapabilityEnabled: () => config.masterSwitch && config.analysisEnabled,
-    analysisBoundaryAvailable: async () => providers.dify.getAvailability(),
+    analysisBoundaryAvailable: analysisBoundary,
     caseFocusResolver: providers.content.resolveCaseFocus
       ? async (facts, now) => {
           const resolution = await providers.content.resolveCaseFocus!(facts, now);
@@ -631,6 +643,15 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         }
       : undefined,
     concurrencyGate,
+    stream: reportFormat === "stream" && providers.analysis.streamAnalysis !== undefined
+      ? {
+          provider: (streamRequest, signal) => providers.analysis.streamAnalysis!(streamRequest, signal),
+          idleTimeoutMs: runtime.streamIdleTimeoutMs,
+          totalTimeoutMs: runtime.reportTimeoutMs,
+          maxChars: runtime.streamMaxChars,
+          telemetry,
+        }
+      : undefined,
   });
 
   app.setErrorHandler(async (error: FastifyError, request, reply) => {

@@ -3014,3 +3014,13 @@ svg {
 .report-module-fold[open] .report-module-fold__summary { display: none; }
 .report-module-fold > :not(summary) { margin: 0 12px 12px; }
 .report-module__more > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; }
+
+/* 流式纯文本分析页（ADR-0015） */
+.stream-analysis { display: flex; flex-direction: column; gap: 14px; }
+.stream-analysis__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.stream-analysis__result { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border, #d9dde3); border-radius: 12px; background: var(--surface, #fff); }
+.stream-analysis__result-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.stream-analysis__title { margin: 0; font-size: 1.05rem; }
+.stream-analysis__status { margin: 0; font-weight: 600; }
+.stream-analysis__output { margin: 0; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font: inherit; line-height: 1.7; min-height: 4rem; }
+.stream-analysis__disclaimer { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; background: rgba(217, 119, 6, 0.1); }
