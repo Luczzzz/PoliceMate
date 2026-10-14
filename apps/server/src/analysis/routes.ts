@@ -213,9 +213,10 @@ export async function registerAnalysisRoutes(
 
           let emitted = 0;
           let firstChunkMs: number | undefined;
-          const iterator = stream.provider({ caseText, legalSources }, upstream.signal)[Symbol.asyncIterator]();
+          let iterator: AsyncIterator<string> | undefined;
           armIdle();
           try {
+            iterator = stream.provider({ caseText, legalSources }, upstream.signal)[Symbol.asyncIterator]();
             for (;;) {
               const pending = iterator.next();
               pending.catch(() => undefined);
@@ -239,7 +240,7 @@ export async function registerAnalysisRoutes(
           } finally {
             clearTimeout(idleTimer);
             clearTimeout(totalTimer);
-            void Promise.resolve(iterator.return?.(undefined)).catch(() => undefined);
+            void Promise.resolve(iterator?.return?.(undefined)).catch(() => undefined);
           }
 
           const state: EndState = (endState as EndState | null) ?? "complete";

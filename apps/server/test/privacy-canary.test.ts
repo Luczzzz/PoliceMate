@@ -126,3 +126,34 @@ describe("合成 canary 不进入遥测、日志、缓存或第三方工具", ()
     await app.close();
   });
 });
+
+describe("流式分析路由的 canary（ADR-0015）", () => {
+  it("案情正文不进入遥测、响应头或控制台输出", async () => {
+    const telemetry = createMemoryTelemetrySink();
+    const tokenService = new AnonymousTokenService();
+    const fixtures = createFixtureControls();
+    const logged: string[] = [];
+    const capture = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
+    const spies = (["log", "warn", "error", "info", "debug"] as const).map((name) => {
+      const original = console[name];
+      console[name] = capture;
+      return () => { console[name] = original; };
+    });
+    try {
+      const app = await buildApp({ config: { ...testConfig(), reportFormat: "stream" }, fixtures, tokenService, telemetry });
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/v1/analysis/stream",
+        headers: { [CONTRACT]: "1.0", [TOKEN]: tokenService.issue().token, "content-type": "application/json" },
+        payload: { caseText: SAMPLE_TEXT },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.stringify(response.headers)).not.toContain(CANARY);
+      expect(JSON.stringify(telemetry.events)).not.toContain(CANARY);
+      expect(logged.join("\n")).not.toContain(CANARY);
+      expect(telemetry.events.some((event) => event.kind === "analysis.stream")).toBe(true);
+    } finally {
+      for (const restore of spies) restore();
+    }
+  });
+});

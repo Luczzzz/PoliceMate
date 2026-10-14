@@ -175,4 +175,15 @@ describe("POST /api/v1/analysis/stream（ADR-0015）", () => {
     expect(dump).not.toContain("叶某");
     expect(dump).not.toContain("案件定性");
   });
+
+  it("提供者在开流后同步抛错：以 interrupted/upstream_error 结束，不二次发送响应，并发名额被释放", async () => {
+    const providers = withStream((() => { throw new Error("boom-sync"); }) as unknown as StreamFn);
+    const app = await buildApp({ config: config({ maxConcurrency: 1 }), providers });
+    for (let i = 0; i < 2; i += 1) {
+      const response = await app.inject({ method: "POST", url: URL, headers: { ...headers() }, payload: { caseText } });
+      expect(response.statusCode).toBe(200);
+      expect(doneOf(parseSse(response.body))).toMatchObject({ status: "interrupted", reason: "upstream_error" });
+      expect(response.body).not.toContain("boom-sync");
+    }
+  });
 });
