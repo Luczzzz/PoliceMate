@@ -303,6 +303,52 @@
 2. **第 4 项（DSL 留档）**：你说可以随直连一起作废——但如果 Dify 仍作为回退保留，我建议**保留留档**（否则回退路径无据可查）。DSL 已导出（`include_secret=false`，无凭据）在我方运维目录；提交进仓库受我的写入边界限制（只能维护本文件），需要所有者解锁该路径。
 3. **4.7 预算语义**：已按你同意的方式留在本文件（总预算 ÷ 尝试次数 = 单次时限）。本机现取值：`PM_ANALYSIS_TIMEOUT_MS=240000`、`PM_REPORT_TIMEOUT_MS=480000`。
 
+## 七、第四次部署回报（`62fb63c`：ADR-0015 流式模式）
+
+### 7.1 部署
+
+- 已上线 `62fb63cf7b5b`（含 `658adf6`）。**Dify 工作流无需同步**：提示词仍是 `actionable-analysis-v3`，
+  `dify` 模式未设 `PM_REPORT_FORMAT` 时默认 `structured`，`dify` 选 `stream` 时能力检查报不可用（按
+  ADR-0015 第 2 条，失败关闭）。线上行为与上一版一致。
+- `dify` 结构化回归 3 例（虚构，短/短/中）：全 201、`complete`、6 模块，102.2 / 121.2 / 123.6 秒。
+  （比 10-12 那轮 65–99 秒慢，同期未见失败，判断为上游模型波动。）
+
+### 7.2 流式模式实测（非生产实例：`PM_PROVIDER_MODE=llm` + `PM_REPORT_FORMAT=stream`）
+
+| 用例 | 首字延迟 | 总耗时 | 输出字数 | 结果 |
+| --- | --- | --- | --- | --- |
+| 短·殴打 | 11.8 秒 | 30.2 秒 | 3,882 | complete |
+| 短·盗窃 | 11.3 秒 | 31.3 秒 | 4,180 | complete |
+| 中·邻里纠纷 | 15.2 秒 | 34.0 秒 | 3,530 | complete |
+| 长·多事实 | **无** | 30.0 秒 | **0** | **interrupted（`idle_timeout`）** |
+| 长·诈骗线索 | 22.7 秒 | 38.1 秒 | 3,185 | complete |
+
+- **总耗时中位 ≈32 秒**（结构化同用例中位 84 秒），逐段到达、`done` 事件带边界声明（客户端确认字段在）→
+  交互改善明显。`PM_STREAM_MAX_CHARS=12000` 未触发（最长 4,180 字）。
+- **首字延迟中位 ≈13.5 秒（11.3–22.7），未达 ADR-0015 的「中位 ≤10 秒」**。
+- **1/5 例 30 秒内零输出**：上游在空闲窗口（默认 30 秒，含首字等待）内没有任何内容 → `interrupted`、
+  0 字、前端标"内容不完整"。建议二选一：① 把首字等待与中途空闲分开（首字给 45–60 秒）；② 提高
+  `PM_STREAM_IDLE_TIMEOUT_MS` 默认值。以本机实测的上游首字分布（11–23 秒，且出现 >30 秒），
+  30 秒对首字偏紧。
+
+### 7.3 【请优先处理】线上遥测目前不可用，导致任何失败都无法事后定位
+
+- `apps/server/src/telemetry.ts` 的默认实现是**内存数组**：`app.ts:329` 用
+  `createMemoryTelemetrySink()`，`record()` **既不落盘也不输出 stdout**。
+- 实测：`journalctl -u policymate --since '3 hours ago'` 里**没有任何 `analysis.*` 事件**；同样地，
+  第七节流式的 `firstChunkMs`、`analysis.stream` 遥测在服务端也看不到。
+- 后果：6.3 那次发布后 5/5 的 503（以及任何未来的线上异常）**无法诊断**——没有阶段、没有上游错误类、
+  没有重试次数。请加一个 stdout 或文件 sink（例如 `PM_TELEMETRY_SINK=stdout`，逐行 JSON），并在失败
+  路径至少落"阶段 + 上游错误类 + 尝试次数"。字段仍走 `ALLOWED_KEYS` 与金丝雀，我不希望案情或输出
+  进入遥测——现有白名单我没发现内容泄漏。
+
+### 7.4 部署侧顺带修的一个坑（与你们代码无关，留档）
+
+- `update-source.sh` 原先只走 HTTPS 拉取；本次 GitHub HTTPS 报
+  `fatal: unable to access 'https://github.com/Luczzzz/PoliceMate.git/': GnuTLS recv error (-110)`，
+  且要等约 90 秒才失败。已改为「HTTPS（HTTP/1.1）→ 失败即走 SSH 部署密钥」（本次 SSH 4 秒成功）。
+  另注意：`deploy.sh` 读的是镜像的本地 `refs/heads/main`，只看 `origin/main` 会误判"已是目标版本"。
+
 ## 开发端回复
 
 （倒序追加：日期 / 提交 SHA / 结论或反建议 / 需要部署端配合的事项）
