@@ -4,7 +4,8 @@
 
 - `PM_PROVIDER_MODE=llm`，并配置 `PM_LLM_BASE_URL`、`PM_LLM_API_KEY`、`PM_LLM_MODEL`（见 ADR-0014）。流式只由直连模型提供者支持；边界未实现流式时（如 `fixture`，或未来不支持流式的提供者），显式设置 `PM_REPORT_FORMAT=stream` 会让案情分析入口显示不可用，不会静默回退。
 - `PM_REPORT_FORMAT=stream|structured`：未设置时 `llm` 默认 `stream`，`fixture` 默认 `structured`。设为 `structured` 即回退到结构化报告。
-- `PM_STREAM_IDLE_TIMEOUT_MS`（默认 30000）：上游连续这么久没有新内容（含首字等待）就中断。
+- `PM_STREAM_IDLE_TIMEOUT_MS`（默认 30000）：首字之后，上游连续这么久没有新内容就中断。它不管首字等待（ADR-0018）。
+- `PM_STREAM_FIRST_TOKEN_TIMEOUT_MS`（默认 60000）：等待首字的独立预算；超时以 `first_token_timeout` 中断。部署侧实测公网首字 10.7–40.6 秒，故默认值高于空闲超时。
 - `PM_REPORT_TIMEOUT_MS`（默认 90000）：整段输出的总时限，流式沿用。
 - `PM_STREAM_MAX_CHARS`（默认 12000）：输出字符上限，到达即截断并标“内容不完整”。
 

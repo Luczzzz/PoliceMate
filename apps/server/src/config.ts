@@ -58,8 +58,10 @@ export interface AppConfig {
    * 未设置时 `llm` 模式默认 `stream`，其余默认 `structured`。
    */
   reportFormat?: ReportFormat;
-  /** 流式上游连续无新内容的空闲超时（含首字等待）。 */
+  /** 流式上游连续无新内容的空闲超时；只管首字之后的间隔（ADR-0018）。 */
   streamIdleTimeoutMs?: number;
+  /** 流式等待首字的独立超时（ADR-0018）：首字延迟明显长于段间间隔，故与空闲超时分开。 */
+  streamFirstTokenTimeoutMs?: number;
   /** 流式输出字符数上限，到达即截断。 */
   streamMaxChars?: number;
   /** 运行环境标识；用于发布检查，不参与产品行为。 */
@@ -69,6 +71,8 @@ export interface AppConfig {
 export type ReportFormat = "stream" | "structured";
 
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 30 * 1000;
+/** 首字预算；部署侧实测公网首字上限 40.6 秒，取 60 秒留余量（ADR-0018）。 */
+export const DEFAULT_STREAM_FIRST_TOKEN_TIMEOUT_MS = 60 * 1000;
 export const DEFAULT_STREAM_MAX_CHARS = 12000;
 
 /** 当前生效的输出形态；配置未显式给出时按提供者模式取默认。 */
@@ -88,6 +92,7 @@ export interface ResolvedRuntimeConfig {
   reportTimeoutMs: number;
   maxProviderAttempts: number;
   streamIdleTimeoutMs: number;
+  streamFirstTokenTimeoutMs: number;
   streamMaxChars: number;
 }
 
@@ -115,6 +120,7 @@ export function resolveRuntimeConfig(config: AppConfig): ResolvedRuntimeConfig {
     reportTimeoutMs: config.reportTimeoutMs ?? DEFAULT_REPORT_TIMEOUT_MS,
     maxProviderAttempts: config.maxProviderAttempts ?? DEFAULT_MAX_PROVIDER_ATTEMPTS,
     streamIdleTimeoutMs: config.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS,
+    streamFirstTokenTimeoutMs: config.streamFirstTokenTimeoutMs ?? DEFAULT_STREAM_FIRST_TOKEN_TIMEOUT_MS,
     streamMaxChars: config.streamMaxChars ?? DEFAULT_STREAM_MAX_CHARS,
   };
 }
@@ -195,6 +201,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     llmMaxResponseBytes: readNumber(env.PM_LLM_MAX_RESPONSE_BYTES, 1024 * 1024),
     reportFormat,
     streamIdleTimeoutMs: readNumber(env.PM_STREAM_IDLE_TIMEOUT_MS, DEFAULT_STREAM_IDLE_TIMEOUT_MS),
+    streamFirstTokenTimeoutMs: readNumber(env.PM_STREAM_FIRST_TOKEN_TIMEOUT_MS, DEFAULT_STREAM_FIRST_TOKEN_TIMEOUT_MS),
     streamMaxChars: readNumber(env.PM_STREAM_MAX_CHARS, DEFAULT_STREAM_MAX_CHARS),
     environment: env.NODE_ENV === "production" ? "production" : "development",
   };

@@ -18,10 +18,13 @@ import type { ConcurrencyGate } from "../security";
 import type { StreamAnalysisProvider } from "../providers/types";
 import type { TelemetrySink, TelemetryOutcome } from "../telemetry";
 
-/** 流式纯文本分析的运行参数（ADR-0015）；未提供时不注册流式路由。 */
+/** 流式纯文本分析的运行参数（ADR-0015、ADR-0018）；未提供时不注册流式路由。 */
 export interface StreamRouteOptions {
   provider: NonNullable<StreamAnalysisProvider["streamAnalysis"]>;
+  /** 首字之后的段间空闲超时。 */
   idleTimeoutMs: number;
+  /** 等待首字的独立预算；不设它就会被段间空闲超时误杀（ADR-0018）。 */
+  firstTokenTimeoutMs: number;
   totalTimeoutMs: number;
   maxChars: number;
   telemetry: TelemetrySink;
@@ -209,12 +212,23 @@ export async function registerAnalysisRoutes(
             clearTimeout(idleTimer);
             idleTimer = setTimeout(() => finish("idle_timeout"), stream.idleTimeoutMs);
           };
+          // 首字与段间间隔分开计时（ADR-0018）：部署侧实测首字延迟 10.7–40.6 秒，
+          // 明显长于段间跨度（9–19 秒），用同一个空闲超时会在首字阶段误判 idle_timeout。
+          // 注意 armIdle() 是在收到一段之后为“下一次等待”重新计时，
+          // 所以循环前不能 arm，否则首字仍会被段间空闲超时约束。
+          let firstTokenTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(
+            () => finish("first_token_timeout"),
+            stream.firstTokenTimeoutMs,
+          );
+          const clearFirstToken = () => {
+            clearTimeout(firstTokenTimer);
+            firstTokenTimer = undefined;
+          };
           const totalTimer = setTimeout(() => finish("total_timeout"), stream.totalTimeoutMs);
 
           let emitted = 0;
           let firstChunkMs: number | undefined;
           let iterator: AsyncIterator<string> | undefined;
-          armIdle();
           try {
             iterator = stream.provider({ caseText, legalSources }, upstream.signal)[Symbol.asyncIterator]();
             for (;;) {
@@ -222,8 +236,9 @@ export async function registerAnalysisRoutes(
               pending.catch(() => undefined);
               const next = await Promise.race([pending, aborted]);
               if (next.done) break;
-              armIdle();
               firstChunkMs ??= Math.round(performance.now() - startedAt);
+              clearFirstToken();
+              armIdle();
               const chars = Array.from(next.value);
               const remaining = stream.maxChars - emitted;
               if (chars.length > remaining) {
@@ -238,6 +253,7 @@ export async function registerAnalysisRoutes(
           } catch {
             finish("upstream_error");
           } finally {
+            clearFirstToken();
             clearTimeout(idleTimer);
             clearTimeout(totalTimer);
             void Promise.resolve(iterator?.return?.(undefined)).catch(() => undefined);

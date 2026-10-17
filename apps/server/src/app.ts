@@ -650,6 +650,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       ? {
           provider: (streamRequest, signal) => providers.analysis.streamAnalysis!(streamRequest, signal),
           idleTimeoutMs: runtime.streamIdleTimeoutMs,
+          firstTokenTimeoutMs: runtime.streamFirstTokenTimeoutMs,
           totalTimeoutMs: runtime.reportTimeoutMs,
           maxChars: runtime.streamMaxChars,
           telemetry,

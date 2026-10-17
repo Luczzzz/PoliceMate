@@ -111,17 +111,39 @@ describe("POST /api/v1/analysis/stream（ADR-0015）", () => {
     expect(String(done.disclaimer)).not.toBe("");
   });
 
-  it("首字迟迟不来同样算空闲超时；总时限到了也会中断", async () => {
+  it("首字超过段间空闲超时不算中断，仍能正常完成（ADR-0018）", async () => {
+    // 部署侧实测首字延迟 10.7–40.6 秒，明显长于段间跨度；
+    // 若首字仍受 idleTimeoutMs 约束，这里会变成 interrupted/idle_timeout。
+    const providers = withStream(async function* () {
+      await sleep(120);
+      yield "首字很慢";
+      yield "但能完成";
+    });
+    const app = await buildApp({ config: config({ streamIdleTimeoutMs: 50, streamFirstTokenTimeoutMs: 2000 }), providers });
+    const events = parseSse((await app.inject({ method: "POST", url: URL, headers: headers(), payload: { caseText } })).body);
+    expect(textOf(events)).toBe("首字很慢但能完成");
+    expect(doneOf(events).status).toBe("complete");
+  });
+
+  it("首字长期不来按首字超时中断；首字之后的间隔仍按空闲超时中断", async () => {
     const never = withStream(async function* (_request, signal) {
       await new Promise<void>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new Error("aborted"))));
       yield "不会到达";
     });
-    const idleApp = await buildApp({ config: config({ streamIdleTimeoutMs: 50 }), providers: never });
-    expect(doneOf(parseSse((await idleApp.inject({ method: "POST", url: URL, headers: headers(), payload: { caseText } })).body)).reason).toBe("idle_timeout");
+    // 首字预算小于空闲超时，以证明中断来自首字预算而不是段间空闲。
+    const app = await buildApp({
+      config: config({ streamIdleTimeoutMs: 5000, streamFirstTokenTimeoutMs: 50 }),
+      providers: never,
+    });
+    const done = doneOf(parseSse((await app.inject({ method: "POST", url: URL, headers: headers(), payload: { caseText } })).body));
+    expect(done.status).toBe("interrupted");
+    expect(done.reason).toBe("first_token_timeout");
+  });
 
+  it("总时限到了也会中断", async () => {
     const slow = withStream(async function* () { for (;;) { await sleep(20); yield "字"; } });
-    const totalApp = await buildApp({ config: config({ reportTimeoutMs: 150, streamIdleTimeoutMs: 1000 }), providers: slow });
-    const done = doneOf(parseSse((await totalApp.inject({ method: "POST", url: URL, headers: headers(), payload: { caseText } })).body));
+    const app = await buildApp({ config: config({ reportTimeoutMs: 150, streamIdleTimeoutMs: 1000 }), providers: slow });
+    const done = doneOf(parseSse((await app.inject({ method: "POST", url: URL, headers: headers(), payload: { caseText } })).body));
     expect(done.status).toBe("interrupted");
     expect(done.reason).toBe("total_timeout");
   });

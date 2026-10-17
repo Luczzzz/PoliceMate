@@ -741,7 +741,15 @@ export const STREAM_ANALYSIS_DISCLAIMER =
 
 /** 流式分析的结束状态；`done` 事件携带，interrupted 另带 reason。 */
 export type StreamAnalysisStatus = "complete" | "truncated" | "interrupted";
-export type StreamAnalysisInterruptReason = "idle_timeout" | "total_timeout" | "upstream_error";
+/**
+ * `first_token_timeout` 与 `idle_timeout` 分开：首字慢与中途卡死是两回事，
+ * 观测上不应合并（ADR-0018）。
+ */
+export type StreamAnalysisInterruptReason =
+  | "first_token_timeout"
+  | "idle_timeout"
+  | "total_timeout"
+  | "upstream_error";
 
 /**
  * 需要短期匿名令牌保护的接口前缀。前后端共用同一份定义，避免两处漂移；

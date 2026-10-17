@@ -180,7 +180,8 @@ bash scripts/install-browser-deps.sh
 | `PM_LLM_WORKFLOW_VERSION` | `policymate-llm-v1.0.0` | 报告上的版本标注 |
 | `PM_LLM_RESPONSE_FORMAT` | `json_schema` | 结构化输出方式；接口不支持时设 `json_object` |
 | `PM_LLM_MAX_RESPONSE_BYTES` | `1048576` | 上游响应大小上限（字节） |
-| `PM_STREAM_IDLE_TIMEOUT_MS` | `30000` | 流式上游连续无新内容的空闲超时 |
+| `PM_STREAM_IDLE_TIMEOUT_MS` | `30000` | 流式上游首字之后连续无新内容的空闲超时 |
+| `PM_STREAM_FIRST_TOKEN_TIMEOUT_MS` | `60000` | 流式等待首字的独立预算（ADR-0018） |
 | `PM_STREAM_MAX_CHARS` | `12000` | 流式输出字符上限，到达即截断 |
 
 使用与数据说明中的服务提供者、联系人和数据处理说明未配置时，页面如实显示“尚未配置”，
