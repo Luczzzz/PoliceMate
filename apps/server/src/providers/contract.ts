@@ -1,14 +1,14 @@
 import { readFileSync } from "node:fs";
 import Ajv from "ajv";
-import type { DifyExtractionOutput, DifyReportOutput } from "./types";
+import type { ModelExtractionOutput, ModelReportOutput } from "./types";
 
-/** 共享的结构契约：Dify 与直连 LLM 两种提供者使用同一套提示词版本与输出校验。 */
-export const DIFY_PROMPT_VERSION = "actionable-analysis-v3";
+/** 共享的结构契约：分析服务提供者使用同一套提示词版本与输出校验。 */
+export const ANALYSIS_PROMPT_VERSION = "actionable-analysis-v3";
 const ajv = new Ajv({ allErrors: false, allowUnionTypes: true });
-const extractSchema = JSON.parse(readFileSync(new URL("./schemas/dify-extract.json", import.meta.url), "utf8"));
-const reportSchema = JSON.parse(readFileSync(new URL("./schemas/dify-report.json", import.meta.url), "utf8"));
-export const validateExtract = ajv.compile<DifyExtractionOutput>(extractSchema);
-export const validateReport = ajv.compile<DifyReportOutput>(reportSchema);
+const extractSchema = JSON.parse(readFileSync(new URL("./schemas/extract.json", import.meta.url), "utf8"));
+const reportSchema = JSON.parse(readFileSync(new URL("./schemas/report.json", import.meta.url), "utf8"));
+export const validateExtract = ajv.compile<ModelExtractionOutput>(extractSchema);
+export const validateReport = ajv.compile<ModelReportOutput>(reportSchema);
 
 export async function readJsonBounded(response: Response, maxBytes: number): Promise<unknown> {
   const declared = response.headers.get("content-length");

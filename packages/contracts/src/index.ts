@@ -468,7 +468,7 @@ export const EVIDENCE_HOLDING_STATUS_LABELS: Record<EvidenceHoldingStatus, strin
 
 /** 核心证据核查清单中的一条结构化项目。 */
 export interface ReportEvidenceChecklistItem {
-  /** 批次内稳定项目 ID，用于临时标记；不写入事实或 Dify 请求。 */
+  /** 批次内稳定项目 ID，用于临时标记；不写入事实或模型请求。 */
   itemId: string;
   text: string;
   purpose: string | null;
@@ -1050,10 +1050,10 @@ export interface FixtureCaseFocusStatusPatch {
 
 /**
  * 确定性替身控制请求。仅在启用测试控制（`PM_ENABLE_TEST_CONTROLS=1`）时挂载，
- * 用于浏览器黑盒测试替换外部 Dify 与受治理内容边界。
+ * 用于浏览器黑盒测试替换外部分析服务与受治理内容边界。
  */
 export interface FixtureControlRequest {
-  difyAvailable?: boolean;
+  analysisAvailable?: boolean;
   reportMode?: ReportFailureControls["reportMode"];
   /** 测试控制：重置全部文书范例的内容状态。 */
   exampleStatusAll?: ContentStatus;
@@ -1107,7 +1107,7 @@ export interface FixtureCaseFocusState {
 
 /** 替身当前可观测状态。`eligibleExampleCount` 由治理门控实时推导，不可直接设置。 */
 export interface FixtureControlResponse {
-  difyAvailable: boolean;
+  analysisAvailable: boolean;
   activeReleaseId: string;
   eligibleExampleCount: number;
   eligibleCaseFocusCount: number;

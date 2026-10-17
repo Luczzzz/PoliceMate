@@ -26,7 +26,7 @@ import type {
 /**
  * 外部边界提供者接口。
  *
- * 浏览器黑盒测试只在 Dify 与受治理内容两个外部边界使用确定性替身，
+ * 浏览器黑盒测试只在分析服务与受治理内容两个外部边界使用确定性替身，
  * 其余产品状态机、校验、隐私和失败处理保持在同一个可观测缝内。
  */
 
@@ -35,13 +35,6 @@ export interface ServiceAvailability {
   available: boolean;
   /** 面向民警的不可用原因；可用时为 `null`。 */
   reason: string | null;
-}
-
-/**
- * Dify 集成适配层的可用性边界。后续切片在此之上增加结构化结果契约。
- */
-export interface DifyProvider {
-  getAvailability(): Promise<ServiceAvailability>;
 }
 
 /* ---------- 案情分析外部边界 ---------- */
@@ -146,16 +139,18 @@ export interface ReportDraft {
 }
 
 /**
- * 案情分析边界：候选事实提取与报告生成。
- * 真实 Dify 接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
+ * 案情分析边界：候选事实提取、报告生成与可用性。
+ * 真实模型服务接入时替换实现；契约结构不变，后端仍然负责校验与状态机。
  */
 export interface CaseAnalysisProvider extends StreamAnalysisProvider {
+  /** 当前分析服务可用性；不可用时相关入口必须失败关闭。 */
+  getAvailability(): Promise<ServiceAvailability>;
   extractCaseFacts(request: CaseExtractionRequest, signal?: AbortSignal): Promise<CaseExtractionResult>;
   generateReport?(request: ReportGenerationRequest, signal?: AbortSignal): Promise<ReportGenerationResult>;
 }
 
-/** Dify 输出封装；提取不依赖快照，相关字段必须为 null。 */
-export interface DifyOutputMetadata {
+/** 模型输出封装；提取不依赖快照，相关字段必须为 null。 */
+export interface ModelOutputMetadata {
   contractVersion: "1.0";
   promptVersion: "actionable-analysis-v3";
   workflowVersion: string;
@@ -165,11 +160,11 @@ export interface DifyOutputMetadata {
   contentReleaseId: string | null;
 }
 
-export interface DifyExtractionOutput extends DifyOutputMetadata {
+export interface ModelExtractionOutput extends ModelOutputMetadata {
   result: CaseExtractionResult;
 }
 
-export interface DifyReportOutput extends DifyOutputMetadata {
+export interface ModelReportOutput extends ModelOutputMetadata {
   result: ReportDraft;
 }
 
@@ -258,11 +253,10 @@ export interface StreamAnalysisProvider {
 }
 
 export interface Providers {
-  dify: DifyProvider;
   analysis: CaseAnalysisProvider;
   content: GovernedContentProvider;
   /**
-   * 交通事故责任认定辅助边界；未提供时该入口失败关闭（例如 Dify 模式）。
+   * 交通事故责任认定辅助边界；未提供时该入口失败关闭（例如不支持多轮问答的分析服务）。
    */
   accidentLiability?: AccidentLiabilityProvider;
 }

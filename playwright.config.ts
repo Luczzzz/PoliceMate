@@ -33,7 +33,7 @@ const CROSS_BROWSER_MATCH = /cross-browser\.spec\.ts/;
  * 移动浏览器黑盒验收测试。
  *
  * H5 与 PoliceMate 后端在开发模式下一起启动，浏览器只访问 Vite 源站，
- * `/api` 由开发服务器代理到 PoliceMate 后端。外部 Dify 与受治理内容边界
+ * `/api` 由开发服务器代理到 PoliceMate 后端。外部分析服务与受治理内容边界
  * 由进程内的确定性替身替换，测试通过 `/api/test/fixtures` 控制替身状态。
  */
 export default defineConfig({

@@ -214,7 +214,7 @@ export async function registerAnalysisRoutes(
           let emitted = 0;
           let firstChunkMs: number | undefined;
           let iterator: AsyncIterator<string> | undefined;
-          armIdle();
+          let isFirstChunk = true;
           try {
             iterator = stream.provider({ caseText, legalSources }, upstream.signal)[Symbol.asyncIterator]();
             for (;;) {
@@ -222,7 +222,8 @@ export async function registerAnalysisRoutes(
               pending.catch(() => undefined);
               const next = await Promise.race([pending, aborted]);
               if (next.done) break;
-              armIdle();
+              if (!isFirstChunk) armIdle();
+              isFirstChunk = false;
               firstChunkMs ??= Math.round(performance.now() - startedAt);
               const chars = Array.from(next.value);
               const remaining = stream.maxChars - emitted;

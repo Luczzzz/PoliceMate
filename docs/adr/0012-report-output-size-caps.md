@@ -13,7 +13,7 @@ ADR-0011 之后单次 report 输出约 41k–47k 令牌，耗时 149–245 秒�
 
 ## 实现取舍
 
-- 上限写进 `dify-report-result.json`（模型输出 Schema，`maxItems`）与提示词；后端校验用的 `dify-report.json` 由 `scripts/dify-schema.ts` 去掉 `maxItems`，模型偶尔多出一条不让整份报告失败，由显示层折叠。字符数上限只在提示词里，不入 Schema。
+- 上限写进 `report-result.json`（模型输出 Schema，`maxItems`）与提示词；后端校验用的 `report.json` 由 `scripts/schemas.ts` 去掉 `maxItems`，模型偶尔多出一条不让整份报告失败，由显示层折叠。字符数上限只在提示词里，不入 Schema。
 - 提示词版本提升到 `actionable-analysis-v2`（Schema 变化，部署端需同步更新 Dify 节点，旧工作流在新后端下被拒）。
 - 代价：报告变短，法条原文只剩关键句；需要完整条文的人仍可按条号查原文。
 - 与之配套的前端超时天花板（420/410/360 秒）暂时保留，待实测稳定后再下调。

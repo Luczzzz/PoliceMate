@@ -19,7 +19,7 @@ import type { ReportGenerationRequest, ReportGenerationResult } from "../provide
 
 export const ASSAULT_REPORT_VERSION = "assault-actionable-v1";
 
-/** 殴打案的确定性速览：与 Dify 生成层输出同形，措辞按 ADR-0011 的样例。 */
+/** 殴打案的确定性速览：与模型生成层输出同形，措辞按 ADR-0011 的样例。 */
 function assaultQuickBrief({ injuryMissing, criminalInjury, reported, drinking }: {
   injuryMissing: boolean; criminalInjury: boolean; reported: boolean; drinking: boolean;
 }): ReportQuickBrief {

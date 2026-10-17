@@ -30,12 +30,12 @@ async function submitCase(page: Page, text: string): Promise<void> {
 }
 
 test.describe("案情输入页", () => {
-  test("常驻显示脱敏义务、Dify 处理提示与字符计数", async ({ page }) => {
+  test("常驻显示脱敏义务、模型服务处理提示与字符计数", async ({ page }) => {
     await gotoInput(page);
 
     const notice = page.getByTestId("deidentification-notice");
     await expect(notice).toContainText("请勿输入姓名、身份证号、手机号、精确住址");
-    await expect(notice).toContainText("发送至 Dify 处理");
+    await expect(notice).toContainText("发送至模型服务处理");
     await expect(notice).toContainText("只接受纯文本");
 
     await page.getByTestId("case-text-input").fill("测试内容");
@@ -187,7 +187,7 @@ test.describe("提交案情直达报告", () => {
 });
 
 test.describe("隐私边界", () => {
-  test("客户端资产不包含 Dify 密钥，页面请求仅访问同源 /api", async ({ page }) => {
+  test("客户端资产不包含模型服务密钥，页面请求仅访问同源 /api", async ({ page }) => {
     const apiRequests: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/")) apiRequests.push(request.url());
@@ -206,7 +206,7 @@ test.describe("隐私边界", () => {
     for (const src of scripts) {
       const response = await page.request.get(src);
       const body = await response.text();
-      expect(body).not.toMatch(/DIFY_[A-Z_]+|dify[-_]?api[-_]?key|sk-[A-Za-z0-9]{16,}/i);
+      expect(body).not.toMatch(/PM_LLM_API_KEY|llm[-_]?api[-_]?key|sk-[A-Za-z0-9]{16,}/i);
     }
 
     const origin = new URL(page.url()).origin;

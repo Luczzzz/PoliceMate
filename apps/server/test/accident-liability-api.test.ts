@@ -87,7 +87,7 @@ describe("交通事故责任认定问答接口", () => {
     const state = answered.json<AccidentLiabilitySessionState>();
     expect(state.stage).toBe("report_ready");
     expect(state.report).toBe(FIXTURE_ACCIDENT_REPORT);
-    for (const section of ["事故概况", "责任认定", "法律依据", "后续程序建议"]) {
+    for (const section of ["【责任认定】", "法律依据", "程序要点", "关键事实"]) {
       expect(state.report).toContain(section);
     }
     expect(state.turns.map((turn) => turn.speaker)).toEqual(["officer", "assistant", "officer"]);
@@ -181,7 +181,7 @@ describe("交通事故责任认定问答接口", () => {
     expect(offResponse.json<{ error: { code: string } }>().error.code).toBe("feature_disabled");
 
     const fixtures = createFixtureControls();
-    fixtures.updateState({ difyAvailable: false });
+    fixtures.updateState({ analysisAvailable: false });
     const down = await buildApp({ config: config(), fixtures });
     expect((await createSession(down)).statusCode).toBe(503);
   });

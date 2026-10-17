@@ -38,7 +38,7 @@ test.describe("交通事故责任认定辅助", () => {
 
     const report = page.getByTestId("accident-report");
     await expect(report).toBeVisible();
-    for (const section of ["事故概况", "责任认定", "法律依据", "后续程序建议"]) {
+    for (const section of ["【责任认定】", "法律依据", "程序要点", "关键事实"]) {
       await expect(report).toContainText(section);
     }
     await expect(page.getByTestId("accident-disclaimer")).toContainText("不构成正式法律意见");
@@ -68,7 +68,7 @@ test.describe("交通事故责任认定辅助", () => {
   });
 
   test("服务不可用时入口失败关闭，直接访问也显示暂不可用", async ({ page, request }) => {
-    await setFixture(request, { difyAvailable: false });
+    await setFixture(request, { analysisAvailable: false });
     await page.goto("/");
 
     await expect(page.getByTestId("entry-accidentLiability")).toHaveAttribute("data-available", "false");

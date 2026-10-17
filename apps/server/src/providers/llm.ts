@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { hydrateReportDraft } from "../analysis/report-draft";
 import type { AppConfig } from "../config";
 import { parseTolerantJson, pruneToSchema } from "./tolerant-json";
-import { DIFY_PROMPT_VERSION, readJsonBounded, validateExtract, validateReport } from "./contract";
+import { ANALYSIS_PROMPT_VERSION, readJsonBounded, validateExtract, validateReport } from "./contract";
 import type {
   AccidentLiabilityConsultOutput,
   AccidentLiabilityConsultRequest,
@@ -11,9 +11,8 @@ import type {
   CaseAnalysisProvider,
   CaseExtractionRequest,
   CaseExtractionResult,
-  DifyExtractionOutput,
-  DifyProvider,
-  DifyReportOutput,
+  ModelExtractionOutput,
+  ModelReportOutput,
   ReportGenerationRequest,
   ReportGenerationResult,
   ServiceAvailability,
@@ -32,8 +31,8 @@ const PROMPTS = {
   accident: read("./prompts/accident-liability-system.txt"),
 };
 const SCHEMAS = {
-  extract: JSON.parse(read("./schemas/dify-extract-result.json")) as object,
-  report: JSON.parse(read("./schemas/dify-report-result.json")) as object,
+  extract: JSON.parse(read("./schemas/extract-result.json")) as object,
+  report: JSON.parse(read("./schemas/report-result.json")) as object,
   accident: JSON.parse(read("./schemas/accident-liability-result.json")) as object,
 };
 
@@ -96,7 +95,7 @@ function completionContent(body: unknown): string {
 export function createLlmProvider(
   config: AppConfig,
   options: LlmProviderOptions = {},
-): DifyProvider & CaseAnalysisProvider & AccidentLiabilityProvider {
+): CaseAnalysisProvider & AccidentLiabilityProvider {
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxBytes = options.maxResponseBytes ?? config.llmMaxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   const workflowVersion = config.llmWorkflowVersion ?? DEFAULT_WORKFLOW_VERSION;
@@ -206,22 +205,22 @@ export function createLlmProvider(
     async extractCaseFacts(request: CaseExtractionRequest, signal?: AbortSignal): Promise<CaseExtractionResult> {
       const result = await complete("extract", { caseText: request.caseText }, signal);
       const envelope = {
-        contractVersion: "1.0", promptVersion: DIFY_PROMPT_VERSION, workflowVersion, requestId: randomUUID(),
+        contractVersion: "1.0", promptVersion: ANALYSIS_PROMPT_VERSION, workflowVersion, requestId: randomUUID(),
         snapshotVersion: null, snapshotHash: null, contentReleaseId: null, result,
       };
       if (!validateExtract(envelope)) throw new Error("模型输出未通过结构契约校验。");
-      return (envelope as unknown as DifyExtractionOutput).result;
+      return (envelope as unknown as ModelExtractionOutput).result;
     },
     async generateReport(request: ReportGenerationRequest, signal?: AbortSignal): Promise<ReportGenerationResult> {
       const result = await complete("report", request, signal);
       const envelope = {
-        contractVersion: "1.0", promptVersion: DIFY_PROMPT_VERSION, workflowVersion,
+        contractVersion: "1.0", promptVersion: ANALYSIS_PROMPT_VERSION, workflowVersion,
         requestId: request.requestId ?? randomUUID(),
         snapshotVersion: request.snapshot.snapshotVersion, snapshotHash: request.snapshot.snapshotHash,
         contentReleaseId: request.contentReleaseId ?? null, result,
       };
       if (!validateReport(envelope)) throw new Error("模型输出未通过结构契约校验。");
-      return hydrateReportDraft((envelope as unknown as DifyReportOutput).result, {
+      return hydrateReportDraft((envelope as unknown as ModelReportOutput).result, {
         facts: request.facts,
         legalSources: request.legalSources,
         contentReleaseId: request.contentReleaseId ?? "",

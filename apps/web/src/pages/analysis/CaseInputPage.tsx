@@ -11,7 +11,7 @@ import { InfoSection } from "../../components/InfoSection";
 /**
  * 案情输入页。
  *
- * 常驻显示脱敏义务和“内容将发送至 Dify 处理”的提示；只接受纯文本；
+ * 常驻显示脱敏义务和“内容将发送至模型服务处理”的提示；只接受纯文本；
  * 显示字符计数。超过上限或包含不支持内容时明确拒绝，不静默截断。
  */
 const BOUNDARY_SECTIONS: ReadonlyArray<{ title: string; paragraphs: string[] }> = [
@@ -76,7 +76,7 @@ export function CaseInputPage() {
               请勿输入姓名、身份证号、手机号、精确住址等真实身份信息；本产品不做自动脱敏，
               提交前请自行完成脱敏。
             </li>
-            <li>提交内容将经 PoliceMate 后端发送至 Dify 处理。</li>
+            <li>提交内容将经 PoliceMate 后端发送至模型服务处理。</li>
             <li>这里只接受纯文本：不支持文件、图片、语音或富文本格式。</li>
             <li>内容只保留在当前标签页，不自动保存草稿。</li>
           </ul>

@@ -153,7 +153,7 @@ describe("直连 LLM 提供者（ADR-0014）", () => {
   it("通过 API 端到端：提取与报告各调用一次模型", async () => {
     const transport = mockChat();
     const provider = createLlmProvider(config(), { fetchImpl: transport });
-    const app = await buildApp({ config: config(), providers: { analysis: provider, dify: provider, content: createGovernedContentProvider() } });
+    const app = await buildApp({ config: config(), providers: { analysis: provider, content: createGovernedContentProvider() } });
     try {
       const response = await app.inject({ method: "POST", url: "/api/v1/analysis/sessions", headers: headers(), payload: { caseText: text } });
       expect(response.statusCode).toBe(201);

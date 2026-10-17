@@ -77,7 +77,7 @@ describe("POST /api/v1/analysis/stream（ADR-0015）", () => {
     const off = await buildApp({ config: config({ analysisEnabled: false }), fixtures: createFixtureControls() });
     expect((await off.inject({ method: "POST", url: URL, headers: headers(), payload: { caseText } })).statusCode).toBe(503);
     const fixtures = createFixtureControls();
-    fixtures.updateState({ difyAvailable: false });
+    fixtures.updateState({ analysisAvailable: false });
     const down = await buildApp({ config: config(), fixtures });
     expect((await down.inject({ method: "POST", url: URL, headers: headers(), payload: { caseText } })).statusCode).toBe(503);
   });

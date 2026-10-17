@@ -10,8 +10,8 @@ import type { DataUseServiceInfo } from "@policymate/contracts";
 export interface AppConfig {
   host: string;
   port: number;
-  /** 真实 Dify 与开发测试替身显式分开，不自动回退。 */
-  providerMode: "fixture" | "dify" | "llm";
+  /** 真实模型与开发测试替身显式分开，不自动回退。 */
+  providerMode: "fixture" | "llm";
   /** 是否挂载测试用替身控制接口；生产环境必须关闭。 */
   enableTestControls: boolean;
   /** 后端总开关；关闭时所有入口均不可用。 */
@@ -44,12 +44,7 @@ export interface AppConfig {
   reportTimeoutMs?: number;
   /** 外部边界最多尝试次数（1 次自动重试 => 2）。 */
   maxProviderAttempts?: number;
-  /** 真实 Dify 适配层配置；密钥只存在于后端。 */
-  difyBaseUrl?: string | null;
-  difyApiKey?: string | null;
-  difyWorkflowVersion?: string | null;
-  difyMaxResponseBytes?: number;
-  /** 直连 OpenAI 兼容接口的适配层配置（ADR-0014）；密钥只存在于后端。 */
+  /** 真实模型接口配置；密钥只存在于后端。 */
   llmBaseUrl?: string | null;
   llmApiKey?: string | null;
   llmModel?: string | null;
@@ -155,8 +150,8 @@ function readNumber(raw: string | undefined, fallback: number): number {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const staticDirCandidate = readOptional(env.PM_WEB_DIST) ?? defaultStaticDir;
   const configuredOrigins = readList(env.PM_ALLOWED_ORIGINS);
-  const mode = readOptional(env.PM_PROVIDER_MODE) ?? (env.NODE_ENV === "production" ? "dify" : "fixture");
-  if (mode !== "fixture" && mode !== "dify" && mode !== "llm") throw new Error("PM_PROVIDER_MODE 必须为 fixture、dify 或 llm。");
+  const mode = readOptional(env.PM_PROVIDER_MODE) ?? (env.NODE_ENV === "production" ? "llm" : "fixture");
+  if (mode !== "fixture" && mode !== "llm") throw new Error("PM_PROVIDER_MODE 必须为 fixture 或 llm。");
   const llmFormat = readOptional(env.PM_LLM_RESPONSE_FORMAT) ?? "json_schema";
   if (llmFormat !== "json_schema" && llmFormat !== "json_object") throw new Error("PM_LLM_RESPONSE_FORMAT 必须为 json_schema 或 json_object。");
   const rawFormat = readOptional(env.PM_REPORT_FORMAT);
@@ -192,10 +187,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     analysisTimeoutMs: readNumber(env.PM_ANALYSIS_TIMEOUT_MS, 30 * 1000),
     reportTimeoutMs: readNumber(env.PM_REPORT_TIMEOUT_MS, 90 * 1000),
     maxProviderAttempts: readNumber(env.PM_MAX_PROVIDER_ATTEMPTS, 2),
-    difyBaseUrl: readOptional(env.PM_DIFY_BASE_URL),
-    difyApiKey: readOptional(env.PM_DIFY_API_KEY),
-    difyWorkflowVersion: readOptional(env.PM_DIFY_WORKFLOW_VERSION),
-    difyMaxResponseBytes: readNumber(env.PM_DIFY_MAX_RESPONSE_BYTES, 512 * 1024),
     llmBaseUrl: readOptional(env.PM_LLM_BASE_URL),
     llmApiKey: readOptional(env.PM_LLM_API_KEY),
     llmModel: readOptional(env.PM_LLM_MODEL),

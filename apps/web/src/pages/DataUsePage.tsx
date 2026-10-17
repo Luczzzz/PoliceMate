@@ -34,7 +34,7 @@ export function DataUsePage() {
           使用前请了解工具边界、脱敏义务、内容处理方式和当前标签页的会话生命周期。
         </p>
         <div className="command-tag">
-          <code>边界 · 脱敏 · Dify 处理 · 会话生命周期</code>
+          <code>边界 · 脱敏 · 模型服务处理 · 会话生命周期</code>
         </div>
       </header>
 

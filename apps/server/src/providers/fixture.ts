@@ -30,7 +30,6 @@ import type {
   CaseAnalysisProvider,
   CaseExtractionRequest,
   CaseExtractionResult,
-  DifyProvider,
   GovernedContentExampleIndex,
   GovernedContentExampleLookup,
   GovernedContentProvider,
@@ -41,13 +40,13 @@ import type {
 } from "./types";
 
 /**
- * Dify 与受治理内容边界的确定性替身。
+ * 分析服务与受治理内容边界的确定性替身。
  *
  * 受治理内容来自仅用于测试的确定性内容源；替身只维护治理开关，
  * 不读取案情内容，也不返回任何真实模型或真实法源数据。
  */
 export interface FixturePatch extends ReportFailureControls {
-  difyAvailable?: boolean;
+  analysisAvailable?: boolean;
   exampleStatusAll?: ContentStatus;
   exampleStatus?: { exampleId: string; status: ContentStatus };
   caseFocusStatusAll?: ContentStatus;
@@ -81,14 +80,26 @@ export const FIXTURE_ACCIDENT_QUESTION =
 
 /** 事故问答替身的固定报告：四个小节，内容为虚构、不依赖案情。 */
 export const FIXTURE_ACCIDENT_REPORT = [
-  "一、事故概况",
-  "本次为测试替身，仅复述虚构的事故概况，未提供或存在争议的事实一律写「待核实」。",
-  "二、责任认定",
-  "按虚构示例，机动车一方可能承担主要责任，非机动车一方可能承担次要责任；这只是研判意见，最终以官方认定为准。",
-  "三、法律依据",
+  "【责任认定】",
+  "机动车一方承担主要责任，非机动车一方承担次要责任。",
+  "",
+  "理由：",
+  "1. 机动车未按规定让行",
+  "2. 非机动车存在未在非机动车道行驶的违法行为",
+  "3. 这只是研判意见，最终以官方认定为准",
+  "",
+  "法律依据",
   "本次为测试替身，没有可引用的受治理法源。",
-  "四、后续程序建议",
-  "核对监控录像、当事人陈述与现场照片，必要时开展车辆技术检验。",
+  "",
+  "程序要点",
+  "1. 需制作《道路交通事故认定书》，10日内送达当事人",
+  "2. 告知当事人复核权利（3日内可申请复核）",
+  "3. 核对监控录像、当事人陈述与现场照片",
+  "",
+  "关键事实",
+  "• 机动车由东向西行驶，路口未让行",
+  "• 非机动车由南向北行驶，未在非机动车道内",
+  "• 碰撞发生在路口中心位置",
 ].join("\n");
 
 function delay(ms: number): Promise<void> {
@@ -103,13 +114,13 @@ export interface FixtureControls extends Providers {
 
 export function createFixtureControls(initial: FixturePatch = {}): FixtureControls {
   const store = createGovernedContentStore(createFixtureContent());
-  let difyAvailable = true;
+  let analysisAvailable = true;
   let reportMode: NonNullable<ReportFailureControls["reportMode"]> = "complete";
   let extractionMode: UpstreamFailureMode = "normal";
   let streamMode: FixtureStreamMode = "normal";
 
   const applyPatch = (patch: FixturePatch) => {
-    if (patch.difyAvailable !== undefined) difyAvailable = patch.difyAvailable;
+    if (patch.analysisAvailable !== undefined) analysisAvailable = patch.analysisAvailable;
     if (patch.reportMode !== undefined) reportMode = patch.reportMode;
     if (patch.extractionMode !== undefined) extractionMode = patch.extractionMode;
     if (patch.streamMode !== undefined) streamMode = patch.streamMode;
@@ -136,7 +147,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     const examples: FixtureExampleState[] = snapshot.examples.map((item) => ({ ...item }));
     const caseFocuses: FixtureCaseFocusState[] = snapshot.caseFocuses.map((item) => ({ ...item }));
     return {
-      difyAvailable,
+      analysisAvailable,
       activeReleaseId: snapshot.activeReleaseId,
       eligibleExampleCount: snapshot.eligibleExampleCount,
       eligibleCaseFocusCount: snapshot.eligibleCaseFocusCount,
@@ -151,19 +162,16 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
 
   applyPatch(initial);
 
-  const dify: DifyProvider = {
-    async getAvailability(): Promise<ServiceAvailability> {
-      return difyAvailable
-        ? { available: true, reason: null }
-        : { available: false, reason: "分析服务暂不可用" };
-    },
-  };
-
   /**
    * 案情分析边界替身：确定性提取与报告生成。
    * 后端负责结构校验、状态机、快照与紧急提示，替身不决定任何产品状态。
    */
   const analysis: CaseAnalysisProvider = {
+    async getAvailability(): Promise<ServiceAvailability> {
+      return analysisAvailable
+        ? { available: true, reason: null }
+        : { available: false, reason: "分析服务暂不可用" };
+    },
     async *streamAnalysis(_request, signal) {
       let index = 0;
       for (const piece of FIXTURE_STREAM_PIECES) {
@@ -404,7 +412,6 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
   };
 
   return {
-    dify,
     analysis,
     content,
     accidentLiability,
@@ -413,7 +420,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       return describe();
     },
     reset: () => {
-      difyAvailable = true;
+      analysisAvailable = true;
       reportMode = "complete";
       extractionMode = "normal";
       store.reset();

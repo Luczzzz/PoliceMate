@@ -13,8 +13,8 @@ const allAvailable: CapabilityInputs = {
   analysisEnabled: true,
   documentsEnabled: true,
   accidentLiabilityEnabled: true,
-  difyAvailable: true,
-  difyUnavailableReason: null,
+  analysisAvailable: true,
+  analysisUnavailableReason: null,
   eligibleExampleCount: 3,
   accidentLiabilitySupported: true,
 };
@@ -49,11 +49,11 @@ describe("入口可用性", () => {
     expect(resolveDocumentExamplesAvailability(inputs).available).toBe(true);
   });
 
-  it("Dify 不可用时代理提供者给出的原因", () => {
+  it("分析服务不可用时代理提供者给出的原因", () => {
     const inputs = {
       ...allAvailable,
-      difyAvailable: false,
-      difyUnavailableReason: "上游分析服务连接失败",
+      analysisAvailable: false,
+      analysisUnavailableReason: "上游分析服务连接失败",
     };
 
     expect(resolveCaseAnalysisAvailability(inputs)).toEqual({
@@ -64,7 +64,7 @@ describe("入口可用性", () => {
   });
 
   it("提供者未给出原因时回落为通用分析服务原因", () => {
-    const inputs = { ...allAvailable, difyAvailable: false };
+    const inputs = { ...allAvailable, analysisAvailable: false };
 
     expect(resolveCaseAnalysisAvailability(inputs).reason).toBe(
       UNAVAILABLE_REASONS.analysisService,
@@ -95,7 +95,7 @@ describe("入口可用性", () => {
     // 未明确声明支持多轮问答时失败关闭，不默认开放。
     const { accidentLiabilitySupported: _omitted, ...withoutSupport } = allAvailable;
     expect(resolveAccidentLiabilityAvailability(withoutSupport).available).toBe(false);
-    expect(resolveAccidentLiabilityAvailability({ ...allAvailable, difyAvailable: false }).available).toBe(false);
+    expect(resolveAccidentLiabilityAvailability({ ...allAvailable, analysisAvailable: false }).available).toBe(false);
     expect(resolveAccidentLiabilityAvailability({ ...allAvailable, masterSwitch: false })).toEqual({
       available: false,
       reason: UNAVAILABLE_REASONS.trialPaused,
