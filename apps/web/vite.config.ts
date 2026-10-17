@@ -11,7 +11,7 @@ export default defineConfig({
     port: webPort,
     strictPort: true,
     proxy: {
-      // H5 只与 PoliceMate 后端同源通信；Dify 凭据不进入客户端。
+      // H5 只与 PoliceMate 后端同源通信；模型服务凭据不进入客户端。
       "/api": { target: `http://127.0.0.1:${serverPort}`, changeOrigin: false },
     },
   },

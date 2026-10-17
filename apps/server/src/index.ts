@@ -1,21 +1,21 @@
 import { buildApp } from "./app";
 import { loadConfig } from "./config";
 import { createFixtureControls } from "./providers/fixture";
-import { createDifyProvider } from "./providers/dify";
 import { createLlmProvider } from "./providers/llm";
 import { createGovernedContentProvider } from "./providers/content";
 import type { AccidentLiabilityProvider, Providers } from "./providers/types";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const dify = config.providerMode === "dify" ? createDifyProvider(config)
-    : config.providerMode === "llm" ? createLlmProvider(config, { onRepair: (info) => console.warn(`[policymate-server] llm output tolerated: ${JSON.stringify(info)}`) }) : null;
+  const llm = config.providerMode === "llm"
+    ? createLlmProvider(config, { onRepair: (info) => console.warn(`[policymate-server] llm output tolerated: ${JSON.stringify(info)}`) })
+    : null;
   let providers: Providers | null = null;
-  if (dify !== null) {
-    providers = { dify, analysis: dify, content: createGovernedContentProvider() };
-    // 只有实现了多轮问答的边界才注入；Dify 适配层不实现，该入口因此失败关闭。
-    if (typeof (dify as Partial<AccidentLiabilityProvider>).consultAccidentLiability === "function") {
-      providers.accidentLiability = dify as unknown as AccidentLiabilityProvider;
+  if (llm !== null) {
+    providers = { analysis: llm, content: createGovernedContentProvider() };
+    // 只有实现了多轮问答的边界才注入；未实现时该入口失败关闭。
+    if (typeof (llm as Partial<AccidentLiabilityProvider>).consultAccidentLiability === "function") {
+      providers.accidentLiability = llm as unknown as AccidentLiabilityProvider;
     }
   }
   const app = providers === null

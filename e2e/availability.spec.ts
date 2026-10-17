@@ -26,7 +26,7 @@ test.describe("入口可用状态门控", () => {
   });
 
   test("案情分析不可用时文书范例仍可浏览", async ({ page, request }) => {
-    await setFixture(request, { difyAvailable: false });
+    await setFixture(request, { analysisAvailable: false });
     await page.goto("/");
 
     await expect(page.getByTestId("entry-caseAnalysis")).toHaveAttribute("data-available", "false");
@@ -42,7 +42,7 @@ test.describe("入口可用状态门控", () => {
   });
 
   test("两个入口可以同时不可用", async ({ page, request }) => {
-    await setFixture(request, { difyAvailable: false, exampleStatusAll: "withdrawn" });
+    await setFixture(request, { analysisAvailable: false, exampleStatusAll: "withdrawn" });
     await page.goto("/");
 
     await expect(page.getByTestId("entry-caseAnalysis")).toHaveAttribute("data-available", "false");
@@ -53,7 +53,7 @@ test.describe("入口可用状态门控", () => {
   });
 
   test("直接访问不可用入口时显示功能暂不可用状态和可执行下一步", async ({ page, request }) => {
-    await setFixture(request, { difyAvailable: false });
+    await setFixture(request, { analysisAvailable: false });
     await page.goto("/analysis");
 
     const panel = page.getByTestId("capability-unavailable");

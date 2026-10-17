@@ -360,6 +360,11 @@ PM_MASTER_SWITCH=on
 PM_ANALYSIS_ENABLED=off
 PM_DOCUMENTS_ENABLED=on
 PM_ENABLE_TEST_CONTROLS=0
+# 开启案情分析（PM_ANALYSIS_ENABLED=on）前必须填写下面的真实模型接口配置。
+PM_PROVIDER_MODE=llm
+PM_LLM_BASE_URL=
+PM_LLM_API_KEY=
+PM_LLM_MODEL=
 PM_ALLOWED_ORIGINS="https://$(env_escape "$DOMAIN")"
 PM_SERVICE_PROVIDER="$(env_escape "$PM_SERVICE_PROVIDER")"
 PM_SERVICE_CONTACT="$(env_escape "$PM_SERVICE_CONTACT")"
@@ -449,7 +454,7 @@ curl --fail --show-error --silent --max-time 20 "https://${DOMAIN}/api/v1/health
 printf '\n'
 step "正在打开已部署的网站。"
 open_url "https://${DOMAIN}"
-say "请检查首页、“文书范例”和“使用与数据说明”。在真实 Dify 适配层完成前，“案情分析”应显示为不可用。"
+say "请检查首页、“文书范例”和“使用与数据说明”。在模型接口配置完成前，“案情分析”应显示为不可用。"
 note "查看服务器日志：ssh ${SSH_TARGET} 'sudo journalctl -u policemate -f'"
 note "重启服务：    ssh ${SSH_TARGET} 'sudo systemctl restart policemate'"
 note "检查 Nginx：   ssh ${SSH_TARGET} 'sudo nginx -t'"

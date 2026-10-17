@@ -15,8 +15,8 @@
     "release:check": "tsx scripts/release-check.ts",
     "release:acceptance": "tsx scripts/release-acceptance.ts",
     "content:assets": "tsx scripts/content-assets.ts",
-    "dify:schema": "tsx scripts/dify-schema.ts",
-    "dify:smoke": "tsx scripts/dify-smoke.ts",
+    "schemas:generate": "tsx scripts/schemas.ts",
+    "llm:smoke": "tsx scripts/llm-smoke.ts",
     "verify": "npm run typecheck && npm run test && npm run build && npm run test:e2e"
   },
   "devDependencies": {

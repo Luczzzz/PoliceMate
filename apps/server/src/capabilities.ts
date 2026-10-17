@@ -26,8 +26,8 @@ export interface CapabilityConfig {
 
 /** 计算各入口可用性所需的全部输入。 */
 export interface CapabilityInputs extends CapabilityConfig {
-  difyAvailable: boolean;
-  difyUnavailableReason: string | null;
+  analysisAvailable: boolean;
+  analysisUnavailableReason: string | null;
   eligibleExampleCount: number;
   /** 当前外部边界是否实现了多轮问答；未实现时该入口失败关闭。 */
   accidentLiabilitySupported?: boolean;
@@ -41,8 +41,8 @@ export async function loadCapabilityInputs(
   config: CapabilityConfig,
   providers: Providers,
 ): Promise<CapabilityInputs> {
-  const [dify, release] = await Promise.all([
-    providers.dify.getAvailability(),
+  const [analysis, release] = await Promise.all([
+    providers.analysis.getAvailability(),
     providers.content.getActiveRelease(),
   ]);
 
@@ -51,8 +51,8 @@ export async function loadCapabilityInputs(
     analysisEnabled: config.analysisEnabled,
     documentsEnabled: config.documentsEnabled,
     accidentLiabilityEnabled: config.accidentLiabilityEnabled ?? true,
-    difyAvailable: dify.available,
-    difyUnavailableReason: dify.reason,
+    analysisAvailable: analysis.available,
+    analysisUnavailableReason: analysis.reason,
     eligibleExampleCount: release.eligibleExampleCount,
     accidentLiabilitySupported: providers.accidentLiability?.consultAccidentLiability !== undefined,
   };
@@ -65,10 +65,10 @@ export function resolveCaseAnalysisAvailability(inputs: CapabilityInputs): Entry
   if (!inputs.analysisEnabled) {
     return { available: false, reason: UNAVAILABLE_REASONS.analysisDisabled };
   }
-  if (!inputs.difyAvailable) {
+  if (!inputs.analysisAvailable) {
     return {
       available: false,
-      reason: inputs.difyUnavailableReason ?? UNAVAILABLE_REASONS.analysisService,
+      reason: inputs.analysisUnavailableReason ?? UNAVAILABLE_REASONS.analysisService,
     };
   }
   return { available: true, reason: null };
@@ -101,10 +101,10 @@ export function resolveAccidentLiabilityAvailability(inputs: CapabilityInputs): 
   if (inputs.accidentLiabilitySupported !== true) {
     return { available: false, reason: UNAVAILABLE_REASONS.accidentLiabilityUnsupported };
   }
-  if (!inputs.difyAvailable) {
+  if (!inputs.analysisAvailable) {
     return {
       available: false,
-      reason: inputs.difyUnavailableReason ?? UNAVAILABLE_REASONS.analysisService,
+      reason: inputs.analysisUnavailableReason ?? UNAVAILABLE_REASONS.analysisService,
     };
   }
   return { available: true, reason: null };

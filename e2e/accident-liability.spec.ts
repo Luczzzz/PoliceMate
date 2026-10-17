@@ -68,7 +68,7 @@ test.describe("交通事故责任认定辅助", () => {
   });
 
   test("服务不可用时入口失败关闭，直接访问也显示暂不可用", async ({ page, request }) => {
-    await setFixture(request, { difyAvailable: false });
+    await setFixture(request, { analysisAvailable: false });
     await page.goto("/");
 
     await expect(page.getByTestId("entry-accidentLiability")).toHaveAttribute("data-available", "false");

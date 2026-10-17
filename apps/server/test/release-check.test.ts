@@ -162,7 +162,7 @@ describe("受控试行发布检查", () => {
       testConfig({
         environment: "production",
         enableTestControls: true,
-        difyBaseUrl: "http://dify.internal/v1",
+        llmBaseUrl: "http://llm.internal/v1",
         allowedOrigins: ["http://trial.example"],
       }),
     );

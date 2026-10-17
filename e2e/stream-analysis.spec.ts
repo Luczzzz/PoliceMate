@@ -76,7 +76,7 @@ test("上游中途失败：保留已出文字，标明生成中断，不自动�
 });
 
 test("分析服务不可用时入口失败关闭，不显示输入框", async ({ page, request }) => {
-  await request.post("/api/test/fixtures", { data: { difyAvailable: false } });
+  await request.post("/api/test/fixtures", { data: { analysisAvailable: false } });
   await page.goto("/analysis");
   await expect(page.getByTestId("capability-unavailable")).toBeVisible();
   await expect(page.getByTestId("stream-case-input")).toHaveCount(0);

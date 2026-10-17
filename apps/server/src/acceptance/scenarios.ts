@@ -87,7 +87,7 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
   },
   {
     id: "AC-07",
-    title: "Dify 空结果、无效结构或无法匹配的条款时最多重试一次后失败关闭",
+    title: "分析服务空结果、无效结构或无法匹配的条款时最多重试一次后失败关闭",
     specSections: ["10.3", "12.1"],
     automated: [
       { file: "apps/server/test/failure-modes.test.ts", title: "提取超时：重试一次后失败关闭并返回请求编号" },
@@ -134,7 +134,7 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
   },
   {
     id: "AC-11",
-    title: "标记本次已核对只改变本地展示状态，不改变事实、报告、Dify 输入或完成率",
+    title: "标记本次已核对只改变本地展示状态，不改变事实、报告、分析服务输入或完成率",
     specSections: ["8"],
     automated: [
       { file: "e2e/report-workbench.spec.ts", title: "标记与筛选不写入 URL、不触发后端请求、不改变报告结论" },
@@ -189,7 +189,7 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
   },
   {
     id: "AC-16",
-    title: "Dify 故障但文书内容有效时案情分析暂不可用而文书范例仍可浏览",
+    title: "分析服务故障但文书内容有效时案情分析暂不可用而文书范例仍可浏览",
     specSections: ["12.4"],
     automated: [
       { file: "apps/server/test/app.test.ts", title: "在替身状态下反映分析服务不可用，但保持文书范例可用" },
@@ -223,7 +223,7 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
       { file: "apps/server/test/privacy.test.ts", title: "案情、事实与回答不进入遥测记录" },
       { file: "apps/server/test/privacy-canary.test.ts", title: "合成 canary 不进入遥测、日志、缓存或第三方工具" },
       { file: "e2e/privacy.spec.ts", title: "案情不进入浏览器存储、URL、Service Worker 缓存或控制台输出" },
-      { file: "e2e/analysis-flow.spec.ts", title: "常驻显示脱敏义务、Dify 处理提示与字符计数" },
+      { file: "e2e/analysis-flow.spec.ts", title: "常驻显示脱敏义务、模型服务处理提示与字符计数" },
     ],
     manual: [],
     drills: ["drill-privacy-canary"],

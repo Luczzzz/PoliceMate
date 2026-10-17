@@ -122,7 +122,7 @@ describe("短期匿名令牌", () => {
     const body = response.json();
     expect(body.token).toMatch(/^[A-Za-z0-9_-]{16,}$/);
     expect(body.expiresAt).toBeTruthy();
-    expect(JSON.stringify(body)).not.toMatch(/dify|api[_-]?key|sk-/i);
+    expect(JSON.stringify(body)).not.toMatch(/api[_-]?key|sk-|bearer/i);
     await app.close();
   });
 });
@@ -280,8 +280,8 @@ describe("安全渲染与密钥隔离", () => {
   });
 
   it("用户响应不暴露密钥、模型名或内部信息", async () => {
-    const secret = "sk-canary-dify-secret-value";
-    const { app } = await makeApp({ difyApiKey: secret, difyBaseUrl: "https://dify.internal/v1" });
+    const secret = "sk-canary-llm-secret-value";
+    const { app } = await makeApp({ llmApiKey: secret, llmBaseUrl: "https://llm.internal/v1" });
 
     const responses = await Promise.all([
       app.inject({ method: "GET", url: "/api/v1/shell", headers: contractHeaders }),

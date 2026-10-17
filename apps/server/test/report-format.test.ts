@@ -10,10 +10,9 @@ import { anonymousTokens } from "../src/security";
 const headers = () => ({ "x-pm-contract-version": CONTRACT_VERSION, "x-pm-anonymous-token": anonymousTokens.issue().token });
 
 describe("PM_REPORT_FORMAT 配置（ADR-0015）", () => {
-  it("未设置时：llm 默认 stream，fixture 与 dify 默认 structured", () => {
+  it("未设置时：llm 默认 stream，fixture 默认 structured", () => {
     expect(loadConfig({ PM_PROVIDER_MODE: "llm" }).reportFormat).toBe("stream");
     expect(loadConfig({ PM_PROVIDER_MODE: "fixture" }).reportFormat).toBe("structured");
-    expect(loadConfig({ PM_PROVIDER_MODE: "dify" }).reportFormat).toBe("structured");
   });
 
   it("显式设置优先于默认值；非法值直接报错", () => {
@@ -45,14 +44,14 @@ describe("首页入口与流式能力", () => {
     expect((await shell(baseConfig({ reportFormat: "structured" }))).reportFormat).toBe("structured");
   });
 
-  it("选了 stream 但提供者不支持流式（如 dify）时，案情分析入口失败关闭，不静默回退", async () => {
+  it("选了 stream 但边界不支持流式时，案情分析入口失败关闭，不静默回退", async () => {
     const fixtures = createFixtureControls();
     const { streamAnalysis: _unused, ...analysisWithoutStream } = fixtures.analysis;
-    const providers: Providers = { dify: fixtures.dify, analysis: analysisWithoutStream, content: createGovernedContentProvider() };
-    const body = await shell(baseConfig({ reportFormat: "stream", providerMode: "dify" }), providers);
+    const providers: Providers = { analysis: analysisWithoutStream, content: createGovernedContentProvider() };
+    const body = await shell(baseConfig({ reportFormat: "stream", providerMode: "fixture" }), providers);
     expect(body.entries.caseAnalysis.available).toBe(false);
     expect(body.entries.caseAnalysis.reason).toContain("流式");
-    const structured = await shell(baseConfig({ reportFormat: "structured", providerMode: "dify" }), providers);
+    const structured = await shell(baseConfig({ reportFormat: "structured", providerMode: "fixture" }), providers);
     expect(structured.entries.caseAnalysis.available).toBe(true);
   });
 });

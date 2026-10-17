@@ -181,7 +181,7 @@ describe("交通事故责任认定问答接口", () => {
     expect(offResponse.json<{ error: { code: string } }>().error.code).toBe("feature_disabled");
 
     const fixtures = createFixtureControls();
-    fixtures.updateState({ difyAvailable: false });
+    fixtures.updateState({ analysisAvailable: false });
     const down = await buildApp({ config: config(), fixtures });
     expect((await createSession(down)).statusCode).toBe(503);
   });

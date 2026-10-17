@@ -117,15 +117,15 @@ export function checkReleaseReadiness(input: ReleaseCheckInput): ReleaseCheckRes
   }
 
   if (input.config.environment === "production" && input.config.analysisEnabled) {
-    if (input.config.providerMode !== "dify") failures.push("生产分析必须使用真实 Dify，不能使用 fixture。");
-    if (!input.config.difyBaseUrl || !input.config.difyApiKey || !input.config.difyWorkflowVersion) {
-      failures.push("真实分析缺少 Dify 地址、应用密钥或允许的工作流版本。");
+    if (input.config.providerMode !== "llm") failures.push("生产分析必须使用真实模型服务，不能使用 fixture。");
+    if (!input.config.llmBaseUrl || !input.config.llmApiKey || !input.config.llmModel) {
+      failures.push("真实分析缺少模型接口地址、密钥或模型名称。");
     }
   }
 
-  if (input.config.difyBaseUrl !== null && input.config.difyBaseUrl !== undefined) {
-    if (!input.config.difyBaseUrl.startsWith("https://")) {
-      failures.push("Dify 基地址必须使用 HTTPS。");
+  if (input.config.llmBaseUrl !== null && input.config.llmBaseUrl !== undefined) {
+    if (!input.config.llmBaseUrl.startsWith("https://")) {
+      failures.push("模型接口地址必须使用 HTTPS。");
     }
   }
 

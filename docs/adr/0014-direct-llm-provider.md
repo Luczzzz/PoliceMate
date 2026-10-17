@@ -1,6 +1,6 @@
 # ADR-0014：新增直连模型模式，逐步替代 Dify
 
-- 状态：已接受（Dify 模式暂时保留作回退，验收通过后另行移除）
+- 状态：已接受；其中“Dify 模式暂时保留作回退”已被 ADR-0017 取代（Dify 已移除）
 - 关联：ADR-0010 第 1 条（“接入真实 Dify Workflow”）被部分取代；ADR-0012、ADR-0013。
 
 ## 背景
@@ -10,7 +10,7 @@ Dify 在这套系统里只承担转发：工作流只有拆包、分支、两个
 ## 决策
 
 1. 新增 `PM_PROVIDER_MODE=llm`，由 `providers/llm.ts` 直接调用 OpenAI 兼容的 `chat/completions`。`dify` 与 `fixture` 模式不变，三者显式分离，缺配置时失败关闭，不自动回退。
-2. 提示词与输出 Schema 只来自仓库：`npm run dify:schema` 把 `docs/deployment/dify-prompts/*.md` 截取为 `providers/prompts/*.txt`（与 Schema 一样需随代码提交），运行时读取，不再有第二份。
+2. 提示词与输出 Schema 只来自仓库：`providers/prompts/*.txt` 直接作为提示词真源，输出 Schema 由 `npm run schemas:generate` 生成（两者都需随代码提交），运行时读取，不再有第二份。
 3. 沿用同一模型与供应商，`temperature=0.2`。结构化输出默认用 `response_format: json_schema`；接口不支持时设 `PM_LLM_RESPONSE_FORMAT=json_object`，仍由后端 Schema 校验。
 4. 与 Dify 模式共用同一套结构契约与 ADR-0013 的补全：模型只写提取结果或报告草稿，后端封装元数据、校验、补全。提示词版本沿用 `actionable-analysis-v3`。
 5. 可用性只做本地配置检查（地址须为以 `/v1` 结尾的 HTTPS、密钥、模型名），不再探测上游，因此“可用”不保证上游当前可达，由请求时失败关闭兜底。
@@ -30,4 +30,4 @@ Dify 在这套系统里只承担转发：工作流只有拆包、分支、两个
 
 ## 后续
 
-验收通过后删除 Dify 模式、工作流文档与 DSL 留档要求（日志第 4 项随之作废）；再评估分段并行与按段重试。
+Dify 模式、工作流文档与 DSL 留档要求已由 ADR-0017 删除；再评估分段并行与按段重试。

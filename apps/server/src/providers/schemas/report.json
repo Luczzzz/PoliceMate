@@ -1,7 +1,58 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$ref": "#/definitions/ReportDraft",
+  "$ref": "#/definitions/ModelReportOutput",
   "definitions": {
+    "ModelReportOutput": {
+      "type": "object",
+      "properties": {
+        "contractVersion": {
+          "type": "string",
+          "const": "1.0"
+        },
+        "promptVersion": {
+          "type": "string",
+          "const": "actionable-analysis-v3"
+        },
+        "workflowVersion": {
+          "type": "string"
+        },
+        "requestId": {
+          "type": "string"
+        },
+        "snapshotVersion": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "snapshotHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "contentReleaseId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "result": {
+          "$ref": "#/definitions/ReportDraft"
+        }
+      },
+      "required": [
+        "contentReleaseId",
+        "contractVersion",
+        "promptVersion",
+        "requestId",
+        "result",
+        "snapshotHash",
+        "snapshotVersion",
+        "workflowVersion"
+      ],
+      "additionalProperties": false
+    },
     "ReportDraft": {
       "type": "object",
       "properties": {
@@ -15,15 +66,13 @@
           "type": "array",
           "items": {
             "$ref": "#/definitions/ReportParticipantBehaviorSummary"
-          },
-          "maxItems": 6
+          }
         },
         "factLimitations": {
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "maxItems": 5
+          }
         },
         "modules": {
           "type": "array",
@@ -74,8 +123,7 @@
               "caseTags"
             ],
             "additionalProperties": false
-          },
-          "maxItems": 5
+          }
         },
         "quickBrief": {
           "$ref": "#/definitions/ReportQuickBrief",
@@ -150,15 +198,13 @@
           "type": "array",
           "items": {
             "type": "string"
-          },
-          "maxItems": 6
+          }
         },
         "traceLinks": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/ReportDraftTraceLink"
-          },
-          "maxItems": 4
+          }
         },
         "failureReason": {
           "type": [
@@ -173,7 +219,7 @@
             "properties": {
               "itemId": {
                 "type": "string",
-                "description": "批次内稳定项目 ID，用于临时标记；不写入事实或 Dify 请求。"
+                "description": "批次内稳定项目 ID，用于临时标记；不写入事实或模型请求。"
               },
               "text": {
                 "type": "string"
@@ -213,15 +259,13 @@
               "holdingStatus"
             ],
             "additionalProperties": false
-          },
-          "maxItems": 8
+          }
         },
         "interviewItems": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/ReportInterviewPointItem"
-          },
-          "maxItems": 12
+          }
         }
       },
       "required": [

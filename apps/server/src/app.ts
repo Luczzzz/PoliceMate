@@ -190,9 +190,9 @@ function readFixturePatch(body: unknown): FixturePatch | null {
     patch.streamMode = candidate.streamMode;
   }
 
-  if ("difyAvailable" in candidate) {
-    if (typeof candidate.difyAvailable !== "boolean") return null;
-    patch.difyAvailable = candidate.difyAvailable;
+  if ("analysisAvailable" in candidate) {
+    if (typeof candidate.analysisAvailable !== "boolean") return null;
+    patch.analysisAvailable = candidate.analysisAvailable;
   }
 
   if ("exampleStatusAll" in candidate) {
@@ -338,7 +338,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const analysisBoundary = async (): Promise<ServiceAvailability> =>
     reportFormat === "stream" && providers.analysis.streamAnalysis === undefined
       ? { available: false, reason: UNAVAILABLE_REASONS.streamUnsupported }
-      : providers.dify.getAvailability();
+      : providers.analysis.getAvailability();
 
   const app = Fastify({
     logger: false,
@@ -470,7 +470,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         documentsEnabled: config.documentsEnabled,
         accidentLiabilityEnabled: config.accidentLiabilityEnabled,
       },
-      { ...providers, dify: { getAvailability: analysisBoundary } },
+      { ...providers, analysis: { ...providers.analysis, getAvailability: analysisBoundary } },
     );
     return buildProductShell(inputs, CONTRACT_VERSION, new Date(), reportFormat);
   });

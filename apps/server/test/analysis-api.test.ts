@@ -146,7 +146,7 @@ describe("POST /api/v1/analysis/sessions", () => {
       method: "POST",
       url: "/api/test/fixtures",
       headers: contractHeaders,
-      payload: { difyAvailable: false },
+      payload: { analysisAvailable: false },
     });
     const response = await app.inject({
       method: "POST",

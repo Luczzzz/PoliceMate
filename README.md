@@ -24,7 +24,7 @@ scripts             环境辅助脚本
 
 ## 案情分析流程（#39）
 
-1. **案情输入**（`/analysis`）：常驻脱敏与 Dify 处理提示，只接受纯文本，
+1. **案情输入**（`/analysis`）：常驻脱敏与模型服务处理提示，只接受纯文本，
    显示字符计数；超过 10,000 字符或包含不支持内容时明确拒绝，不截断。
 2. **分析报告**（`/analysis/report`）：提交后一次请求内提取候选事实、形成
    不可变事实快照（版本 + 哈希）并生成六模块报告。报告页提供报告文书任务、
@@ -63,15 +63,12 @@ scripts             环境辅助脚本
 
 ## 腾讯云部署
 
-Ubuntu 22.04/24.04、4 核 4 GB 单机部署 PoliceMate 与 Dify，见
-[详细部署与服务器 AI 交接指南](docs/deployment/tencent-cloud-policymate-dify.md)。
-包括国内软件源与镜像加速、资源检查、Swap、Docker、systemd、Nginx/HTTPS、
-工作流 API 验证、备份与回滚。
-当前真实 Dify 适配器已实现（见 [Dify 真实分析接入](docs/deployment/dify-integration.md)）；
-Dify 端的搭建任务、Prompt 与验收步骤见
-[Dify 工作流搭建任务](docs/deployment/dify-workflow-build.md)。
-生产式部署默认 `PM_PROVIDER_MODE=dify` 且案情分析关闭，需要显式配置 Dify 地址、应用密钥与
-允许的工作流版本并验收后再开启。
+Ubuntu 22.04/24.04、4 核 4 GB 单机部署 PoliceMate，可使用
+[`scripts/deploy-tencent-cloud.sh`](scripts/deploy-tencent-cloud.sh) 完成打包、上传、
+systemd 与 Nginx/HTTPS 配置。它默认关闭案情分析（`PM_ANALYSIS_ENABLED=off`）并启用文书范例。
+真实分析使用直连模型：设置 `PM_PROVIDER_MODE=llm` 并配置 `PM_LLM_BASE_URL`、`PM_LLM_API_KEY`、
+`PM_LLM_MODEL` 后再开启。流式部署与缓冲检查见
+[流式纯文本分析部署说明](docs/deployment/streaming-analysis.md)。
 
 ## 安装
 
@@ -87,7 +84,7 @@ npm run dev
 
 - H5 开发服务器：<http://127.0.0.1:5173>
 - PoliceMate 后端：<http://127.0.0.1:8787>
-- H5 只与 PoliceMate 后端同源通信；开发服务器把 `/api` 代理到后端，Dify 凭据不进入客户端。
+- H5 只与 PoliceMate 后端同源通信；开发服务器把 `/api` 代理到后端，模型服务凭据不进入客户端。
 
 ## 生产式本地运行
 
@@ -175,11 +172,16 @@ bash scripts/install-browser-deps.sh
 | `PM_SERVICE_CONTACT` | 未配置 | 试行反馈联系人 |
 | `PM_DATA_PROCESSING_STATEMENT` | 未配置 | 适用的数据处理说明 |
 | `PM_TECHNICAL_LOGGING_BOUNDARY` | 空 | 技术日志边界，多行文本 |
-| `PM_PROVIDER_MODE` | 开发 `fixture`／生产 `dify` | 外部边界提供者模式；`dify` 不回退替身 |
-| `PM_DIFY_BASE_URL` | 未配置 | 真实 Dify 基地址，必须是以 `/v1` 结尾的 HTTPS 地址 |
-| `PM_DIFY_API_KEY` | 未配置 | Dify 应用密钥，只存在于后端 |
-| `PM_DIFY_WORKFLOW_VERSION` | 未配置 | 允许的工作流版本；与上游返回值不一致时丢弃响应 |
-| `PM_DIFY_MAX_RESPONSE_BYTES` | `524288` | 上游响应大小上限（字节） |
+| `PM_PROVIDER_MODE` | 开发 `fixture`／生产 `llm` | 外部边界提供者模式；缺配置时失败关闭，不回退 |
+| `PM_REPORT_FORMAT` | `llm` 为 `stream`，`fixture` 为 `structured` | 分析输出形态；设为 `structured` 即回退结构化报告 |
+| `PM_LLM_BASE_URL` | 未配置 | 模型接口基地址，必须是以 `/v1` 结尾的 HTTPS 地址 |
+| `PM_LLM_API_KEY` | 未配置 | 模型接口密钥，只存在于后端 |
+| `PM_LLM_MODEL` | 未配置 | 模型名称 |
+| `PM_LLM_WORKFLOW_VERSION` | `policymate-llm-v1.0.0` | 报告上的版本标注 |
+| `PM_LLM_RESPONSE_FORMAT` | `json_schema` | 结构化输出方式；接口不支持时设 `json_object` |
+| `PM_LLM_MAX_RESPONSE_BYTES` | `1048576` | 上游响应大小上限（字节） |
+| `PM_STREAM_IDLE_TIMEOUT_MS` | `30000` | 流式上游连续无新内容的空闲超时 |
+| `PM_STREAM_MAX_CHARS` | `12000` | 流式输出字符上限，到达即截断 |
 
 使用与数据说明中的服务提供者、联系人和数据处理说明未配置时，页面如实显示“尚未配置”，
 不得使用虚构主体；受控试行前必须填写实际信息。可参考

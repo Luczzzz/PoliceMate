@@ -30,7 +30,6 @@ import type {
   CaseAnalysisProvider,
   CaseExtractionRequest,
   CaseExtractionResult,
-  DifyProvider,
   GovernedContentExampleIndex,
   GovernedContentExampleLookup,
   GovernedContentProvider,
@@ -41,13 +40,13 @@ import type {
 } from "./types";
 
 /**
- * Dify 与受治理内容边界的确定性替身。
+ * 分析服务与受治理内容边界的确定性替身。
  *
  * 受治理内容来自仅用于测试的确定性内容源；替身只维护治理开关，
  * 不读取案情内容，也不返回任何真实模型或真实法源数据。
  */
 export interface FixturePatch extends ReportFailureControls {
-  difyAvailable?: boolean;
+  analysisAvailable?: boolean;
   exampleStatusAll?: ContentStatus;
   exampleStatus?: { exampleId: string; status: ContentStatus };
   caseFocusStatusAll?: ContentStatus;
@@ -103,13 +102,13 @@ export interface FixtureControls extends Providers {
 
 export function createFixtureControls(initial: FixturePatch = {}): FixtureControls {
   const store = createGovernedContentStore(createFixtureContent());
-  let difyAvailable = true;
+  let analysisAvailable = true;
   let reportMode: NonNullable<ReportFailureControls["reportMode"]> = "complete";
   let extractionMode: UpstreamFailureMode = "normal";
   let streamMode: FixtureStreamMode = "normal";
 
   const applyPatch = (patch: FixturePatch) => {
-    if (patch.difyAvailable !== undefined) difyAvailable = patch.difyAvailable;
+    if (patch.analysisAvailable !== undefined) analysisAvailable = patch.analysisAvailable;
     if (patch.reportMode !== undefined) reportMode = patch.reportMode;
     if (patch.extractionMode !== undefined) extractionMode = patch.extractionMode;
     if (patch.streamMode !== undefined) streamMode = patch.streamMode;
@@ -136,7 +135,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     const examples: FixtureExampleState[] = snapshot.examples.map((item) => ({ ...item }));
     const caseFocuses: FixtureCaseFocusState[] = snapshot.caseFocuses.map((item) => ({ ...item }));
     return {
-      difyAvailable,
+      analysisAvailable,
       activeReleaseId: snapshot.activeReleaseId,
       eligibleExampleCount: snapshot.eligibleExampleCount,
       eligibleCaseFocusCount: snapshot.eligibleCaseFocusCount,
@@ -151,19 +150,16 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
 
   applyPatch(initial);
 
-  const dify: DifyProvider = {
-    async getAvailability(): Promise<ServiceAvailability> {
-      return difyAvailable
-        ? { available: true, reason: null }
-        : { available: false, reason: "分析服务暂不可用" };
-    },
-  };
-
   /**
    * 案情分析边界替身：确定性提取与报告生成。
    * 后端负责结构校验、状态机、快照与紧急提示，替身不决定任何产品状态。
    */
   const analysis: CaseAnalysisProvider = {
+    async getAvailability(): Promise<ServiceAvailability> {
+      return analysisAvailable
+        ? { available: true, reason: null }
+        : { available: false, reason: "分析服务暂不可用" };
+    },
     async *streamAnalysis(_request, signal) {
       let index = 0;
       for (const piece of FIXTURE_STREAM_PIECES) {
@@ -404,7 +400,6 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
   };
 
   return {
-    dify,
     analysis,
     content,
     accidentLiability,
@@ -413,7 +408,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       return describe();
     },
     reset: () => {
-      difyAvailable = true;
+      analysisAvailable = true;
       reportMode = "complete";
       extractionMode = "normal";
       store.reset();

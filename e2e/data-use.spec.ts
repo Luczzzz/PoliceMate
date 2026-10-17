@@ -8,7 +8,7 @@ test.describe("使用与数据说明", () => {
     for (const id of [
       "purpose",
       "desensitization",
-      "dify",
+      "model_service",
       "lifetime",
       "metadata",
       "distribution",
@@ -20,7 +20,7 @@ test.describe("使用与数据说明", () => {
     await expect(page.getByTestId("data-use-section-desensitization")).toContainText(
       "请勿输入姓名",
     );
-    await expect(page.getByTestId("data-use-section-dify")).toContainText("Dify");
+    await expect(page.getByTestId("data-use-section-model_service")).toContainText("模型服务");
     await expect(page.getByTestId("data-use-section-lifetime")).toContainText("30 分钟");
     await expect(page.getByTestId("data-use-section-metadata")).toContainText("随机请求编号");
   });

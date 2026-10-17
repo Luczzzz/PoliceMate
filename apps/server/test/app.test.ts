@@ -85,7 +85,7 @@ describe("GET /api/v1/shell", () => {
     await app.inject({
       method: "POST",
       url: "/api/test/fixtures",
-      payload: { difyAvailable: false },
+      payload: { analysisAvailable: false },
     });
 
     const body = (await getShell(app)).json<ProductShellResponse>();
@@ -171,12 +171,12 @@ describe("替身控制接口", () => {
     await app.inject({
       method: "POST",
       url: "/api/test/fixtures",
-      payload: { difyAvailable: false, exampleStatusAll: "withdrawn" },
+      payload: { analysisAvailable: false, exampleStatusAll: "withdrawn" },
     });
     const reset = await app.inject({ method: "POST", url: "/api/test/fixtures/reset" });
     const body = reset.json<FixtureControlResponse>();
 
-    expect(body.difyAvailable).toBe(true);
+    expect(body.analysisAvailable).toBe(true);
     expect(body.eligibleExampleCount).toBeGreaterThanOrEqual(1);
     expect(body.examples.every((item) => item.contentStatus === "trial" && item.eligible)).toBe(
       true,
@@ -218,7 +218,7 @@ describe("GET /api/v1/data-use", () => {
     for (const required of [
       "purpose",
       "desensitization",
-      "dify",
+      "model_service",
       "lifetime",
       "metadata",
       "distribution",

@@ -85,7 +85,7 @@ function kindForStatus(status: number, code: string | null): ApiFailureKind {
 }
 
 /**
- * 短期匿名令牌只保存在当前页面内存。H5 不直接连接 Dify，令牌也不编码
+ * 短期匿名令牌只保存在当前页面内存。H5 不直接连接模型服务，令牌也不编码
  * 案情或身份；页面刷新后重新获取。
  */
 let anonymousToken: string | null = null;
