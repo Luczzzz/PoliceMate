@@ -3024,3 +3024,20 @@ svg {
 .stream-analysis__status { margin: 0; font-weight: 600; }
 .stream-analysis__output { margin: 0; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font: inherit; line-height: 1.7; min-height: 4rem; }
 .stream-analysis__disclaimer { margin: 0; padding: 10px 12px; border-radius: 8px; font-size: 0.9rem; background: rgba(217, 119, 6, 0.1); }
+
+/* 交通事故责任认定辅助页（ADR-0016） */
+.accident-liability { display: flex; flex-direction: column; gap: 14px; }
+.accident-liability__actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.accident-liability__compose,
+.accident-liability__dialog { display: flex; flex-direction: column; gap: 12px; }
+.accident-turns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.accident-turn { display: flex; flex-direction: column; gap: 4px; padding: 12px; border: 1px solid var(--hairline); border-radius: var(--radius-lg); background: var(--surface-soft); }
+.accident-turn--officer { background: var(--canvas); }
+.accident-turn__who { font-size: 0.85rem; font-weight: 600; color: var(--charcoal); }
+.accident-turn__text { margin: 0; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; line-height: 1.7; }
+.accident-liability__answer { display: flex; flex-direction: column; gap: 10px; }
+.accident-liability__report { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-lg); background: var(--canvas); }
+.accident-liability__report-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.accident-liability__title { margin: 0; font-size: 1.05rem; }
+.accident-liability__output { margin: 0; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font: inherit; line-height: 1.7; }
+.accident-liability__boundary { margin: 0; padding: 10px 12px; border-radius: var(--radius-md); font-size: 0.9rem; background: rgba(217, 119, 6, 0.1); }

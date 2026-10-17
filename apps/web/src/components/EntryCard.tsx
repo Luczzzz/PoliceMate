@@ -13,7 +13,7 @@ export interface EntryCardProps {
 }
 
 /**
- * 首页主入口卡片。两个入口使用完全相同的结构和视觉强度，
+ * 首页主入口卡片。各入口使用完全相同的结构和视觉强度，
  * 不区分主次；不可用时在点击前显示“暂不可用”和原因。
  */
 export function EntryCard({

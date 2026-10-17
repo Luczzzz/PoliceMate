@@ -6,9 +6,10 @@
 
 当前实现对应 `#27 建立松警伴侣可运行产品基线`、`#28 交付受治理的文书范例功能`、
 `#29 从自由案情形成分析前事实快照` 与 `#39 提交案情直接生成报告`：可运行的移动端外壳、
-PoliceMate 后端、两个同级主入口的可用状态门控、使用与数据说明、通用失败状态、
-受治理文书范例，以及从脱敏案情输入直接形成不可变事实快照并生成分析报告的完整流程
-（无需事实确认与决定性追问；报告补充与纠正在报告页完成）。
+PoliceMate 后端、三个同级主入口的可用状态门控、使用与数据说明、通用失败状态、
+受治理文书范例，从脱敏案情输入直接形成不可变事实快照并生成分析报告的完整流程
+（无需事实确认与决定性追问；报告补充与纠正在报告页完成），以及按问答方式进行的
+交通事故责任认定辅助（见 [ADR-0016](docs/adr/0016-accident-liability-interactive-aid.md)）。
 
 ## 目录结构
 
@@ -41,6 +42,19 @@ scripts             环境辅助脚本
 [`docs/adr/0008-direct-analysis-without-pre-confirmation.md`](docs/adr/0008-direct-analysis-without-pre-confirmation.md)；
 会话生命周期、快照不可变与输入约束仍沿用
 [`docs/adr/0003-pre-analysis-fact-snapshot.md`](docs/adr/0003-pre-analysis-fact-snapshot.md)。
+
+## 交通事故责任认定辅助（#40 / ADR-0016）
+
+1. **事故概况**（`/accident-liability`）：常驻脱敏与模型处理提示，只接受纯文本，
+   显示字符计数；超过 10,000 字符或含不支持内容时明确拒绝，不截断。
+2. **事故问答**：模型根据已有信息逐轮提出一个关键追问，民警逐轮回答（每条上限 2,000 字符），
+   可随时点击“直接生成研判意见”。追问顺序由模型判断，后端不预设问题树。
+3. **事故责任研判意见**：纯文本，按“事故概况／责任认定／法律依据／后续程序建议”四小节组织，
+   与完整问答记录一起展示；“复制研判意见”是唯一留存方式。
+
+会话只存在于当前标签页内存与后端短暂运行内存（30 分钟空闲过期），不写数据库、日志或 URL，
+也不写 sessionStorage。边界返回非法结构或在要求直接出报告时仍返回追问，整体失败关闭为 503，
+且不把这一轮写入会话。
 
 ## 环境要求
 
@@ -138,7 +152,7 @@ bash scripts/install-browser-deps.sh
 第一版只有一条产品级测试缝：浏览器驱动 H5，H5 只访问 PoliceMate 后端。
 仅在两个外部边界使用确定性替身：
 
-- **Dify 集成适配层**：提供分析服务可用性、案情提取与报告生成；
+- **分析服务适配层**：提供分析服务可用性、案情提取、报告生成与多轮事故问答；
 - **受治理内容源**：提供当前激活的内容发布批次摘要。
 
 替身状态由 `/api/test/fixtures` 控制，仅在 `PM_ENABLE_TEST_CONTROLS=1` 时挂载。
@@ -151,9 +165,10 @@ bash scripts/install-browser-deps.sh
 | `PM_WEB_PORT` | `5173` | H5 开发服务器端口 |
 | `PM_SERVER_PORT` | `8787` | PoliceMate 后端端口 |
 | `PM_HOST` | `127.0.0.1` | 后端监听地址 |
-| `PM_MASTER_SWITCH` | `on` | 后端总开关；关闭时两个入口均不可用 |
+| `PM_MASTER_SWITCH` | `on` | 后端总开关；关闭时所有入口均不可用 |
 | `PM_ANALYSIS_ENABLED` | `on` | 案情分析功能开关 |
 | `PM_DOCUMENTS_ENABLED` | `on` | 文书范例功能开关 |
+| `PM_ACCIDENT_LIABILITY_ENABLED` | `on` | 交通事故责任认定辅助功能开关 |
 | `PM_ENABLE_TEST_CONTROLS` | `off` | 是否挂载替身控制接口（仅测试使用） |
 | `PM_WEB_DIST` | `apps/web/dist` | 后端提供的 H5 构建产物目录；不存在时后端仅提供 API |
 | `PM_SERVICE_PROVIDER` | 未配置 | 使用与数据说明中的实际服务提供者 |

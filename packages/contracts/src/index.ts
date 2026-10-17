@@ -8,8 +8,8 @@
 /** 当前结构契约版本。不兼容变更必须提升该版本。 */
 export const CONTRACT_VERSION = "1.0";
 
-/** 产品外壳中的两个同级能力入口。 */
-export type CapabilityId = "caseAnalysis" | "documentExamples";
+/** 产品外壳中的同级能力入口。 */
+export type CapabilityId = "caseAnalysis" | "documentExamples" | "accidentLiability";
 
 /** 单个入口的可用状态。`reason` 仅在不可用时给出面向民警的说明。 */
 export interface EntryAvailability {
@@ -749,6 +749,7 @@ export type StreamAnalysisInterruptReason = "idle_timeout" | "total_timeout" | "
  */
 export const PROTECTED_API_PREFIXES = [
   "/api/v1/analysis/",
+  "/api/v1/accident-liability/",
   "/api/v1/document-examples",
   "/api/v1/feedback",
 ] as const;
@@ -1163,3 +1164,61 @@ export interface FeedbackResponse {
   accepted: true;
   categoryLabel: string;
 }
+
+/* ---------- 交通事故责任认定辅助 ---------- */
+
+/**
+ * 交通事故责任认定辅助：民警先提交脱敏的事故概况，模型据此逐轮追问关键事实，
+ * 民警也可随时要求直接生成研判报告。产物是一段纯文本研判意见，不是
+ * 《道路交通事故认定书》，也不构成官方责任认定或法律结论。
+ */
+
+/** 一次问答发言的来源。 */
+export type AccidentLiabilitySpeaker = "officer" | "assistant";
+
+/** 事故问答中的一轮发言；发言人只有民警与系统两种。 */
+export interface AccidentLiabilityTurn {
+  turnId: string;
+  speaker: AccidentLiabilitySpeaker;
+  text: string;
+  createdAt: string;
+}
+
+/** 会话阶段：`questioning` 仍在追问；`report_ready` 已生成研判报告。 */
+export type AccidentLiabilityStage = "questioning" | "report_ready";
+
+/**
+ * 事故责任认定辅助接口的统一响应。`turns` 是完整问答记录，作为研判报告的
+ * 事实来源随报告一起展示；报告本身只是一段纯文本。
+ */
+export interface AccidentLiabilitySessionState {
+  contractVersion: string;
+  sessionId: string;
+  stage: AccidentLiabilityStage;
+  turns: AccidentLiabilityTurn[];
+  /** 事故责任研判报告（纯文本）；尚未生成时为 `null`。 */
+  report: string | null;
+  /** 固定边界声明；由后端附带，不经过模型。 */
+  disclaimer: string;
+}
+
+/** 事故概况与追问答案的锁定上限。 */
+export const ACCIDENT_LIABILITY_CASE_MAX_CHARACTERS = 10_000;
+export const ACCIDENT_LIABILITY_ANSWER_MAX_CHARACTERS = 2_000;
+
+/** 研判报告与问答记录下方的固定边界声明；由后端附带，不经过模型。 */
+export const ACCIDENT_LIABILITY_DISCLAIMER =
+  "本功能由AI按对话生成研判意见，仅供基层所队内部办案参考，不构成正式法律意见，也不是《道路交通事故认定书》。责任划分、法条与事实请自行核对现行规定，重大或有争议的事故请请示所队领导及法制部门审核。";
+
+/** `POST /api/v1/accident-liability/sessions` 请求：提交脱敏的事故概况。 */
+export interface CreateAccidentLiabilitySessionRequest {
+  caseText: string;
+}
+
+/** `POST …/sessions/:sessionId/answers` 请求：回答一轮追问。 */
+export interface AccidentLiabilityAnswerRequest {
+  answer: string;
+}
+
+/** 研判报告长度上限；超出即截断并显式标注（沿用 ADR-0012/0015 的思路）。 */
+export const ACCIDENT_LIABILITY_REPORT_MAX_CHARACTERS = 12_000;

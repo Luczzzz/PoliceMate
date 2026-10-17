@@ -16,11 +16,12 @@ test.beforeEach(async ({ request }) => {
 });
 
 test("核心流程在目标移动浏览器引擎下可用", async ({ page }) => {
-  // 首页：两个同级主入口都可用且可点击。
+  // 首页：各同级主入口都可用且可点击。
   await page.goto("/");
   await expect(page.getByTestId("primary-entries")).toBeVisible();
   await expect(page.getByTestId("entry-action-caseAnalysis")).toBeVisible();
   await expect(page.getByTestId("entry-action-documentExamples")).toBeVisible();
+  await expect(page.getByTestId("entry-action-accidentLiability")).toBeVisible();
 
   // 文书范例：可进入分类浏览并打开详情。
   await page.getByTestId("entry-action-documentExamples").click();

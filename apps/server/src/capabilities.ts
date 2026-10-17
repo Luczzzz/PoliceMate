@@ -12,19 +12,25 @@ export const UNAVAILABLE_REASONS = {
   documentsDisabled: "文书范例入口已临时停用",
   streamUnsupported: "当前分析服务不支持流式输出，请联系维护者调整配置",
   noVerifiedExamples: "当前没有可用的已核验文书范例",
+  accidentLiabilityDisabled: "交通事故责任认定入口已临时停用",
+  accidentLiabilityUnsupported: "当前分析服务不支持多轮问答，请联系维护者调整配置",
 } as const;
 
 export interface CapabilityConfig {
   masterSwitch: boolean;
   analysisEnabled: boolean;
   documentsEnabled: boolean;
+  /** 交通事故责任认定辅助开关；未显式配置时默认开启。 */
+  accidentLiabilityEnabled?: boolean;
 }
 
-/** 计算两个入口可用性所需的全部输入。 */
+/** 计算各入口可用性所需的全部输入。 */
 export interface CapabilityInputs extends CapabilityConfig {
   difyAvailable: boolean;
   difyUnavailableReason: string | null;
   eligibleExampleCount: number;
+  /** 当前外部边界是否实现了多轮问答；未实现时该入口失败关闭。 */
+  accidentLiabilitySupported?: boolean;
 }
 
 /**
@@ -44,9 +50,11 @@ export async function loadCapabilityInputs(
     masterSwitch: config.masterSwitch,
     analysisEnabled: config.analysisEnabled,
     documentsEnabled: config.documentsEnabled,
+    accidentLiabilityEnabled: config.accidentLiabilityEnabled ?? true,
     difyAvailable: dify.available,
     difyUnavailableReason: dify.reason,
     eligibleExampleCount: release.eligibleExampleCount,
+    accidentLiabilitySupported: providers.accidentLiability?.consultAccidentLiability !== undefined,
   };
 }
 
@@ -80,6 +88,29 @@ export function resolveDocumentExamplesAvailability(inputs: CapabilityInputs): E
 }
 
 /**
+ * 交通事故责任认定辅助入口可用性。总开关、入口开关、边界是否支持多轮问答
+ * 以及分析服务可用性都满足时才开放；任一不满足都失败关闭。
+ */
+export function resolveAccidentLiabilityAvailability(inputs: CapabilityInputs): EntryAvailability {
+  if (!inputs.masterSwitch) {
+    return { available: false, reason: UNAVAILABLE_REASONS.trialPaused };
+  }
+  if (inputs.accidentLiabilityEnabled === false) {
+    return { available: false, reason: UNAVAILABLE_REASONS.accidentLiabilityDisabled };
+  }
+  if (inputs.accidentLiabilitySupported !== true) {
+    return { available: false, reason: UNAVAILABLE_REASONS.accidentLiabilityUnsupported };
+  }
+  if (!inputs.difyAvailable) {
+    return {
+      available: false,
+      reason: inputs.difyUnavailableReason ?? UNAVAILABLE_REASONS.analysisService,
+    };
+  }
+  return { available: true, reason: null };
+}
+
+/**
  * 文书范例正文是否允许检索与打开。总开关或入口开关关闭时必须失败关闭：
  * 只让首页入口卡片降级不足以保证旧链接无法访问正文。
  */
@@ -99,6 +130,7 @@ export function buildProductShell(
     entries: {
       caseAnalysis: resolveCaseAnalysisAvailability(inputs),
       documentExamples: resolveDocumentExamplesAvailability(inputs),
+      accidentLiability: resolveAccidentLiabilityAvailability(inputs),
     },
     reportFormat,
   };

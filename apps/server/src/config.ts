@@ -14,10 +14,12 @@ export interface AppConfig {
   providerMode: "fixture" | "dify" | "llm";
   /** 是否挂载测试用替身控制接口；生产环境必须关闭。 */
   enableTestControls: boolean;
-  /** 后端总开关；关闭时两个入口均不可用。 */
+  /** 后端总开关；关闭时所有入口均不可用。 */
   masterSwitch: boolean;
   analysisEnabled: boolean;
   documentsEnabled: boolean;
+  /** 交通事故责任认定辅助开关；未设置时默认开启。 */
+  accidentLiabilityEnabled?: boolean;
   /** 构建后的 H5 静态资源目录；不存在时仅为 null（后端只提供 API）。 */
   staticDir: string | null;
   /**
@@ -173,6 +175,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     masterSwitch: readBoolean(env.PM_MASTER_SWITCH, true),
     analysisEnabled: readBoolean(env.PM_ANALYSIS_ENABLED, env.NODE_ENV !== "production"),
     documentsEnabled: readBoolean(env.PM_DOCUMENTS_ENABLED, true),
+    accidentLiabilityEnabled: readBoolean(env.PM_ACCIDENT_LIABILITY_ENABLED, true),
     staticDir: existsSync(resolve(staticDirCandidate, "index.html")) ? staticDirCandidate : null,
     service: {
       provider: readOptional(env.PM_SERVICE_PROVIDER),

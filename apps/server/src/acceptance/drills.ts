@@ -9,6 +9,7 @@ import { extractCaseFactsFixture } from "../analysis/fixture-extract";
 import {
   isDocumentRetrievalEnabled,
   loadCapabilityInputs,
+  resolveAccidentLiabilityAvailability,
   resolveCaseAnalysisAvailability,
   resolveDocumentExamplesAvailability,
   type CapabilityConfig,
@@ -41,6 +42,7 @@ const DRILL_RUNNERS: { id: string; run: () => DrillResult | Promise<DrillResult>
   { id: "drill-master-switch", run: drillMasterSwitch },
   { id: "drill-analysis-entry-disabled", run: drillAnalysisEntryDisabled },
   { id: "drill-documents-entry-disabled", run: drillDocumentsEntryDisabled },
+  { id: "drill-accident-liability-entry-disabled", run: drillAccidentLiabilityEntryDisabled },
   { id: "drill-legal-source-repealed", run: () => drillLegalSourceStatus("repealed") },
   { id: "drill-legal-source-uncertain", run: () => drillLegalSourceStatus("uncertain") },
   { id: "drill-single-example-withdrawn", run: drillSingleExampleWithdrawn },
@@ -88,11 +90,13 @@ async function capabilityAvailability(
 ): Promise<{
   analysis: ReturnType<typeof resolveCaseAnalysisAvailability>;
   documents: ReturnType<typeof resolveDocumentExamplesAvailability>;
+  accidentLiability: ReturnType<typeof resolveAccidentLiabilityAvailability>;
 }> {
   const inputs = await loadCapabilityInputs(config, fixtures);
   return {
     analysis: resolveCaseAnalysisAvailability(inputs),
     documents: resolveDocumentExamplesAvailability(inputs),
+    accidentLiability: resolveAccidentLiabilityAvailability(inputs),
   };
 }
 
@@ -113,9 +117,10 @@ function baseCapabilityConfig(overrides: Partial<CapabilityConfig> = {}): Capabi
 async function drillMasterSwitch(): Promise<DrillResult> {
   const fixtures = createFixtureControls();
   const availability = await capabilityAvailability(fixtures, baseCapabilityConfig({ masterSwitch: false }));
-  return result("drill-master-switch", "后端总开关关闭时两个入口同时不可用且正文检索失败关闭", [
+  return result("drill-master-switch", "后端总开关关闭时各入口同时不可用且正文检索失败关闭", [
     ["案情分析入口不可用", availability.analysis.available === false],
     ["文书范例入口不可用", availability.documents.available === false],
+    ["交通事故责任认定入口不可用", availability.accidentLiability.available === false],
     ["文书正文检索失败关闭", isDocumentRetrievalEnabled(baseCapabilityConfig({ masterSwitch: false })) === false],
   ]);
 }
@@ -123,19 +128,31 @@ async function drillMasterSwitch(): Promise<DrillResult> {
 async function drillAnalysisEntryDisabled(): Promise<DrillResult> {
   const fixtures = createFixtureControls();
   const availability = await capabilityAvailability(fixtures, baseCapabilityConfig({ analysisEnabled: false }));
-  return result("drill-analysis-entry-disabled", "案情分析入口停用时文书范例仍可用", [
+  return result("drill-analysis-entry-disabled", "案情分析入口停用时其余入口仍可用", [
     ["案情分析入口不可用", availability.analysis.available === false],
     ["文书范例入口仍可用", availability.documents.available === true],
+    ["交通事故责任认定入口仍可用", availability.accidentLiability.available === true],
   ]);
 }
 
 async function drillDocumentsEntryDisabled(): Promise<DrillResult> {
   const fixtures = createFixtureControls();
   const availability = await capabilityAvailability(fixtures, baseCapabilityConfig({ documentsEnabled: false }));
-  return result("drill-documents-entry-disabled", "文书范例入口停用时正文检索失败关闭而案情分析不受影响", [
+  return result("drill-documents-entry-disabled", "文书范例入口停用时正文检索失败关闭而其余入口不受影响", [
     ["文书范例入口不可用", availability.documents.available === false],
     ["文书正文检索失败关闭", isDocumentRetrievalEnabled(baseCapabilityConfig({ documentsEnabled: false })) === false],
     ["案情分析入口仍可用", availability.analysis.available === true],
+    ["交通事故责任认定入口仍可用", availability.accidentLiability.available === true],
+  ]);
+}
+
+async function drillAccidentLiabilityEntryDisabled(): Promise<DrillResult> {
+  const fixtures = createFixtureControls();
+  const availability = await capabilityAvailability(fixtures, baseCapabilityConfig({ accidentLiabilityEnabled: false }));
+  return result("drill-accident-liability-entry-disabled", "交通事故责任认定入口停用时其余入口不受影响", [
+    ["交通事故责任认定入口不可用", availability.accidentLiability.available === false],
+    ["案情分析入口仍可用", availability.analysis.available === true],
+    ["文书范例入口仍可用", availability.documents.available === true],
   ]);
 }
 

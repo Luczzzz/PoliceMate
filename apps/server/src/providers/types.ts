@@ -1,4 +1,5 @@
 import type {
+  AccidentLiabilityTurn,
   AnalysisReport,
   CandidateFact,
   DocumentExampleFacets,
@@ -260,4 +261,37 @@ export interface Providers {
   dify: DifyProvider;
   analysis: CaseAnalysisProvider;
   content: GovernedContentProvider;
+  /**
+   * 交通事故责任认定辅助边界；未提供时该入口失败关闭（例如 Dify 模式）。
+   */
+  accidentLiability?: AccidentLiabilityProvider;
+}
+
+/* ---------- 交通事故责任认定辅助外部边界 ---------- */
+
+/** 一次事故问答模型调用的输入。 */
+export interface AccidentLiabilityConsultRequest {
+  /** 完整问答记录（首轮为民警的事故概况），模型据此决定追问或直接给报告。 */
+  turns: AccidentLiabilityTurn[];
+  /** 民警主动要求本次直接产出报告；为 `true` 时模型必须给报告而不是追问。 */
+  forceReport: boolean;
+  /** 本次适用的受治理法源；模型只能引用其中条文。 */
+  legalSources: LegalSourceReference[];
+  requestId: string;
+}
+
+/**
+ * 模型的一次输出：继续追问一个问题，或给出完整研判报告。
+ * 后端不预设问题分支，只转述、校验并保存会话。
+ */
+export type AccidentLiabilityConsultOutput =
+  | { kind: "question"; text: string }
+  | { kind: "report"; text: string };
+
+/** 支持多轮事故问答的外部边界；未实现时入口失败关闭。 */
+export interface AccidentLiabilityProvider {
+  consultAccidentLiability?(
+    request: AccidentLiabilityConsultRequest,
+    signal?: AbortSignal,
+  ): Promise<AccidentLiabilityConsultOutput>;
 }

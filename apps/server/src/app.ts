@@ -32,6 +32,8 @@ import { buildDataUseResponse } from "./data-use";
 import { buildFacets } from "./content/gating";
 import { AnalysisEngine } from "./analysis/engine";
 import { registerAnalysisRoutes } from "./analysis/routes";
+import { AccidentLiabilityEngine } from "./accident-liability/engine";
+import { registerAccidentLiabilityRoutes } from "./accident-liability/routes";
 import type { FixtureControls, FixturePatch } from "./providers/fixture";
 import type { Providers, ServiceAvailability } from "./providers/types";
 import {
@@ -466,6 +468,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         masterSwitch: config.masterSwitch,
         analysisEnabled: config.analysisEnabled,
         documentsEnabled: config.documentsEnabled,
+        accidentLiabilityEnabled: config.accidentLiabilityEnabled,
       },
       { ...providers, dify: { getAvailability: analysisBoundary } },
     );
@@ -652,6 +655,31 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
           telemetry,
         }
       : undefined,
+  });
+
+  // 交通事故责任认定辅助：多轮问答。会话存于短暂运行内存；边界不支持时
+  // 能力入口失败关闭（首页与 API 两层都拒绝），不静默回退。
+  const consultAccidentLiability = providers.accidentLiability?.consultAccidentLiability;
+  const accidentLiabilityEngine = new AccidentLiabilityEngine(
+    consultAccidentLiability === undefined
+      ? async () => {
+          throw new Error("当前分析服务不支持多轮问答。");
+        }
+      : (request, signal) => consultAccidentLiability(request, signal),
+    {
+      timeoutMs: runtime.reportTimeoutMs,
+      maxAttempts: runtime.maxProviderAttempts,
+      telemetry,
+    },
+  );
+  await registerAccidentLiabilityRoutes(app, {
+    engine: accidentLiabilityEngine,
+    // 与案情分析一致：只把当前有效（current）的法源交给模型，不得让废止或
+    // 效力不明的条目进入研判依据。
+    legalSources: async () => (await legalSources()).filter((source) => source.status === "current"),
+    capabilityEnabled: () => config.masterSwitch && config.accidentLiabilityEnabled !== false,
+    boundaryAvailable: analysisBoundary,
+    concurrencyGate,
   });
 
   app.setErrorHandler(async (error: FastifyError, request, reply) => {

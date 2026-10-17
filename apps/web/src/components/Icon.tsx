@@ -3,6 +3,7 @@ export type IconName =
   | "shield"
   | "analysis"
   | "document"
+  | "traffic"
   | "check"
   | "alert"
   | "arrowRight"
@@ -82,6 +83,16 @@ export function Icon({ name, size = 24, strokeWidth = 1.8, className }: IconProp
         <svg {...common}>
           <path d="M6 3h8l4 4v14H6z" />
           <path d="M14 3v5h5M9 12h6M9 16h6" />
+        </svg>
+      );
+    case "traffic":
+      return (
+        <svg {...common}>
+          <path d="M5 16.5V11l1.8-4.2A1.6 1.6 0 0 1 8.3 6h7.4a1.6 1.6 0 0 1 1.5 1.8L19 11v5.5" />
+          <path d="M3.5 16.5h17" />
+          <circle cx="7.5" cy="17.5" r="1.6" />
+          <circle cx="16.5" cy="17.5" r="1.6" />
+          <path d="M6.5 11h11" />
         </svg>
       );
     case "check":

@@ -194,9 +194,14 @@ export const ACCEPTANCE_SCENARIOS: AcceptanceScenario[] = [
     automated: [
       { file: "apps/server/test/app.test.ts", title: "在替身状态下反映分析服务不可用，但保持文书范例可用" },
       { file: "e2e/availability.spec.ts", title: "案情分析不可用时文书范例仍可浏览" },
+      { file: "apps/server/test/accident-liability-api.test.ts", title: "入口开关关闭或边界不支持多轮问答时失败关闭" },
     ],
     manual: [],
-    drills: ["drill-analysis-entry-disabled", "drill-master-switch"],
+    drills: [
+      "drill-analysis-entry-disabled",
+      "drill-master-switch",
+      "drill-accident-liability-entry-disabled",
+    ],
   },
   {
     id: "AC-17",

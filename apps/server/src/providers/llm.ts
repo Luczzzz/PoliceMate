@@ -5,6 +5,9 @@ import type { AppConfig } from "../config";
 import { parseTolerantJson, pruneToSchema } from "./tolerant-json";
 import { DIFY_PROMPT_VERSION, readJsonBounded, validateExtract, validateReport } from "./contract";
 import type {
+  AccidentLiabilityConsultOutput,
+  AccidentLiabilityConsultRequest,
+  AccidentLiabilityProvider,
   CaseAnalysisProvider,
   CaseExtractionRequest,
   CaseExtractionResult,
@@ -26,17 +29,21 @@ const PROMPTS = {
   extract: read("./prompts/extract-system.txt"),
   report: read("./prompts/report-system.txt"),
   stream: read("./prompts/stream-system.txt"),
+  accident: read("./prompts/accident-liability-system.txt"),
 };
 const SCHEMAS = {
   extract: JSON.parse(read("./schemas/dify-extract-result.json")) as object,
   report: JSON.parse(read("./schemas/dify-report-result.json")) as object,
+  accident: JSON.parse(read("./schemas/accident-liability-result.json")) as object,
 };
+
+type LlmOperation = "extract" | "report" | "accident";
 
 export interface LlmProviderOptions {
   fetchImpl?: typeof fetch;
   maxResponseBytes?: number;
   /** 容忍了末尾逗号或丢弃了自创字段时回调；只含操作名、是否修复和字段名，不含内容。 */
-  onRepair?: (info: { operation: "extract" | "report"; trailingCommas: boolean; droppedKeys: string[] }) => void;
+  onRepair?: (info: { operation: LlmOperation; trailingCommas: boolean; droppedKeys: string[] }) => void;
 }
 
 function configured(config: AppConfig): ServiceAvailability {
@@ -86,12 +93,15 @@ function completionContent(body: unknown): string {
  * 提示词与输出 Schema 只来自仓库；模型只输出提取结果或报告草稿，封装元数据、
  * 补全与校验仍由后端完成。响应正文不写日志，密钥只存在于此闭包。
  */
-export function createLlmProvider(config: AppConfig, options: LlmProviderOptions = {}): DifyProvider & CaseAnalysisProvider {
+export function createLlmProvider(
+  config: AppConfig,
+  options: LlmProviderOptions = {},
+): DifyProvider & CaseAnalysisProvider & AccidentLiabilityProvider {
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxBytes = options.maxResponseBytes ?? config.llmMaxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   const workflowVersion = config.llmWorkflowVersion ?? DEFAULT_WORKFLOW_VERSION;
 
-  const complete = async (operation: "extract" | "report", payload: unknown, signal?: AbortSignal): Promise<unknown> => {
+  const complete = async (operation: LlmOperation, payload: unknown, signal?: AbortSignal): Promise<unknown> => {
     const availability = configured(config);
     if (!availability.available) throw new Error(availability.reason ?? "模型接口不可用。");
     const responseFormat = config.llmResponseFormat === "json_object"
@@ -217,6 +227,42 @@ export function createLlmProvider(config: AppConfig, options: LlmProviderOptions
         contentReleaseId: request.contentReleaseId ?? "",
         workflowVersion,
       });
+    },
+    /**
+     * 事故责任认定辅助：把完整问答记录交给模型，由模型决定追问还是给报告。
+     * 后端不预设问题分支；只校验输出形状（ADR-0016）。
+     */
+    async consultAccidentLiability(
+      request: AccidentLiabilityConsultRequest,
+      signal?: AbortSignal,
+    ): Promise<AccidentLiabilityConsultOutput> {
+      const result = (await complete(
+        "accident",
+        {
+          forceReport: request.forceReport,
+          turns: request.turns.map((turn) => ({ speaker: turn.speaker, text: turn.text })),
+          legalSources: request.legalSources.map((source) => ({
+            sourceId: source.sourceId,
+            title: source.title,
+            version: source.version,
+            issuingAuthority: source.issuingAuthority,
+            articles: source.articles.map((article) => ({
+              location: article.location,
+              text: article.minimalText,
+            })),
+          })),
+        },
+        signal,
+      )) as { kind?: unknown; text?: unknown } | null;
+      if (
+        result === null ||
+        (result.kind !== "question" && result.kind !== "report") ||
+        typeof result.text !== "string" ||
+        result.text.trim() === ""
+      ) {
+        throw new Error("模型输出未通过事故问答结构校验。");
+      }
+      return { kind: result.kind, text: result.text };
     },
   };
 }

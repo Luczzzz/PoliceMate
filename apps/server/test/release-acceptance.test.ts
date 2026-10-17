@@ -68,7 +68,7 @@ describe("受控试行发布检查", () => {
     expect(report.blocked).toBe(false);
     expect(report.checks.every((check) => check.passed)).toBe(true);
     expect(report.scenarios).toHaveLength(34);
-    expect(report.drills).toHaveLength(15);
+    expect(report.drills).toHaveLength(16);
   });
 
   it("默认要求真实设备/浏览器记录，未完成时阻断发布", async () => {

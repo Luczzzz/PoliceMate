@@ -1,5 +1,11 @@
 import { CONTRACT_VERSION, PROTECTED_API_PREFIXES, STREAM_ANALYSIS_DISCLAIMER } from "@policymate/contracts";
-import type { StreamAnalysisInterruptReason, StreamAnalysisStatus } from "@policymate/contracts";
+import type {
+  AccidentLiabilityAnswerRequest,
+  AccidentLiabilitySessionState,
+  CreateAccidentLiabilitySessionRequest,
+  StreamAnalysisInterruptReason,
+  StreamAnalysisStatus,
+} from "@policymate/contracts";
 
 /** 客户端可区分的失败类型；用于映射到具体的用户可见状态。 */
 export type ApiFailureKind =
@@ -253,6 +259,64 @@ export async function getJson<T>(
   options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<T> {
   return requestJson<T>(path, options);
+}
+
+/* ---------- 交通事故责任认定辅助 ---------- */
+
+/**
+ * 一次事故问答边界调用可能需要等待模型生成报告。后端单次超时 90 秒、最多重试
+ * `PM_MAX_PROVIDER_ATTEMPTS`（默认 2）次，客户端上限必须大于两者乘积。
+ */
+export const ACCIDENT_LIABILITY_TIMEOUT_MS = 200 * 1000;
+
+const ACCIDENT_LIABILITY_BASE = "/api/v1/accident-liability/sessions";
+
+/** 新建事故问答会话：提交脱敏的事故概况。 */
+export async function createAccidentLiabilitySession(
+  caseText: string,
+  signal?: AbortSignal,
+): Promise<AccidentLiabilitySessionState> {
+  return requestJson<AccidentLiabilitySessionState>(ACCIDENT_LIABILITY_BASE, {
+    method: "POST",
+    body: { caseText } satisfies CreateAccidentLiabilitySessionRequest,
+    signal,
+    timeoutMs: ACCIDENT_LIABILITY_TIMEOUT_MS,
+  });
+}
+
+/** 回答一轮追问，返回下一轮追问或研判报告。 */
+export async function answerAccidentLiability(
+  sessionId: string,
+  answer: string,
+  signal?: AbortSignal,
+): Promise<AccidentLiabilitySessionState> {
+  return requestJson<AccidentLiabilitySessionState>(
+    `${ACCIDENT_LIABILITY_BASE}/${encodeURIComponent(sessionId)}/answers`,
+    {
+      method: "POST",
+      body: { answer } satisfies AccidentLiabilityAnswerRequest,
+      signal,
+      timeoutMs: ACCIDENT_LIABILITY_TIMEOUT_MS,
+    },
+  );
+}
+
+/** 民警主动要求：直接产出研判报告。 */
+export async function requestAccidentLiabilityReport(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<AccidentLiabilitySessionState> {
+  return requestJson<AccidentLiabilitySessionState>(
+    `${ACCIDENT_LIABILITY_BASE}/${encodeURIComponent(sessionId)}/report`,
+    { method: "POST", signal, timeoutMs: ACCIDENT_LIABILITY_TIMEOUT_MS },
+  );
+}
+
+/** 丢弃服务端会话；破坏性操作，失败不影响本地清除。 */
+export async function clearAccidentLiabilitySession(sessionId: string): Promise<void> {
+  await requestJson<unknown>(`${ACCIDENT_LIABILITY_BASE}/${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+  });
 }
 
 /** 流式分析的结束信息；`interrupted` 与 `truncated` 都表示文本不完整。 */

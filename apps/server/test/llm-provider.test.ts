@@ -165,3 +165,35 @@ describe("直连 LLM 提供者（ADR-0014）", () => {
     }
   });
 });
+
+describe("直连 LLM 提供者：交通事故责任认定（ADR-0016）", () => {
+  const accidentTransport = (payload: unknown) =>
+    vi.fn<typeof fetch>(async () =>
+      Response.json({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(payload) } }] }),
+    );
+
+  it("把完整问答记录、forceReport 与受治理法源交给模型，并返回校验后的输出", async () => {
+    const transport = accidentTransport({ kind: "question", text: "请说明路口信号灯状态。" });
+    const provider = createLlmProvider(config(), { fetchImpl: transport });
+    const output = await provider.consultAccidentLiability!({
+      turns: [{ turnId: "t1", speaker: "officer", text: "两车相撞。", createdAt: new Date().toISOString() }],
+      forceReport: false,
+      legalSources: [],
+      requestId: "r1",
+    });
+    expect(output).toEqual({ kind: "question", text: "请说明路口信号灯状态。" });
+    const sent = JSON.parse(String(transport.mock.calls[0][1]?.body));
+    expect(sent.response_format.json_schema.name).toBe("policymate_accident");
+    expect(sent.response_format.json_schema.schema.properties.kind.enum).toEqual(["question", "report"]);
+    const user = JSON.parse(sent.messages[1].content);
+    expect(user.forceReport).toBe(false);
+    expect(user.turns).toEqual([{ speaker: "officer", text: "两车相撞。" }]);
+  });
+
+  it("输出形状不符合契约时抛错，由引擎失败关闭", async () => {
+    const provider = createLlmProvider(config(), { fetchImpl: accidentTransport({ kind: "other", text: "x" }) });
+    await expect(
+      provider.consultAccidentLiability!({ turns: [], forceReport: true, legalSources: [], requestId: "r" }),
+    ).rejects.toThrow();
+  });
+});

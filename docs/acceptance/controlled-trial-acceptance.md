@@ -51,9 +51,10 @@ PM_ACCEPTANCE_GENERATED_AT=2026-09-29T00:00:00.000Z npm run release:acceptance
 
 | 演练 | 验证行为 |
 | --- | --- |
-| `drill-master-switch` | 后端总开关关闭时两个入口同时不可用且正文检索失败关闭 |
-| `drill-analysis-entry-disabled` | 案情分析入口停用时文书范例仍可用 |
-| `drill-documents-entry-disabled` | 文书范例入口停用时正文检索失败关闭而案情分析不受影响 |
+| `drill-master-switch` | 后端总开关关闭时各入口同时不可用且正文检索失败关闭 |
+| `drill-analysis-entry-disabled` | 案情分析入口停用时其余入口仍可用 |
+| `drill-documents-entry-disabled` | 文书范例入口停用时正文检索失败关闭而其余入口不受影响 |
+| `drill-accident-liability-entry-disabled` | 交通事故责任认定入口停用时其余入口不受影响 |
 | `drill-legal-source-repealed` / `drill-legal-source-uncertain` | 法源失效或效力不明时依赖内容立即退出生产 |
 | `drill-single-example-withdrawn` | 单项下架只影响指定范例，旧链接返回不可用 |
 | `drill-single-case-focus-disabled` | 单项禁用重点案情后命中仍成立但停止限定法源 |

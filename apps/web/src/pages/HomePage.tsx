@@ -5,7 +5,7 @@ import { Icon } from "../components/Icon";
 import { useShell } from "../app/ShellContext";
 
 /**
- * 首页只提供两个同级主入口，不展示未来功能占位、账户、历史、收藏或设置入口。
+ * 首页只提供同级主入口，不展示未来功能占位、账户、历史、收藏或设置入口。
  */
 export function HomePage() {
   const { state, reload } = useShell();
@@ -38,7 +38,7 @@ export function HomePage() {
       <section className="entry-section" aria-labelledby="entry-section-title">
         <div className="section-heading">
           <h2 id="entry-section-title">选择工作入口</h2>
-          <p>两个入口同等重要，并根据当前服务与内容状态独立开放。</p>
+          <p>各入口同等重要，并根据当前服务与内容状态独立开放。</p>
         </div>
 
         {state.status === "loading" ? (
@@ -70,6 +70,15 @@ export function HomePage() {
               available={state.data.entries.documentExamples.available}
               reason={state.data.entries.documentExamples.reason}
               to="/documents"
+            />
+            <EntryCard
+              capability="accidentLiability"
+              title="交通事故责任认定"
+              description="描述脱敏的事故概况，系统逐轮追问关键事实，最后给出可核验的纯文本责任研判意见。"
+              icon="traffic"
+              available={state.data.entries.accidentLiability.available}
+              reason={state.data.entries.accidentLiability.reason}
+              to="/accident-liability"
             />
           </nav>
         ) : null}

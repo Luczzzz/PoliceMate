@@ -26,6 +26,7 @@ import { extractCaseFactsFixture } from "../analysis/fixture-extract";
 import { buildAssaultReport } from "../analysis/assault-report";
 import { ASSAULT_FOCUS_ID } from "../content/public-order-drug-content";
 import type {
+  AccidentLiabilityConsultOutput,
   CaseAnalysisProvider,
   CaseExtractionRequest,
   CaseExtractionResult,
@@ -66,8 +67,7 @@ export const FIXTURE_STREAM_PIECE_DELAY_MS = 30;
 /** slow 模式的每段间隔：给浏览器测试留出点击“停止”的时间。 */
 export const FIXTURE_STREAM_SLOW_DELAY_MS = 400;
 
-/** 流式替身的固定文本：六个编号小节，内容为虚构、不依赖案情。 */
-export const FIXTURE_STREAM_PIECES: readonly string[] = [
+/** 流式替身的固定文本：六个编号小节，内容为虚构、不依赖案情。 */export const FIXTURE_STREAM_PIECES: readonly string[] = [
   "1、案件定性：本案按虚构示例分析，涉嫌殴打他人（待核实伤情）。\n",
   "2、是否应当受案：属公安机关管辖范围，应当受案。\n",
   "3、核心证据清单：①现场监控录像；②被害人陈述；③伤情鉴定意见。\n",
@@ -75,6 +75,21 @@ export const FIXTURE_STREAM_PIECES: readonly string[] = [
   "5、执法风险提示：及时固定现场监控，按规定制作询问笔录。\n",
   "6、法律条文原文节选：本次为测试替身，没有可引用的受治理法源。\n",
 ];
+
+export const FIXTURE_ACCIDENT_QUESTION =
+  "请补充说明：事故双方当时的通行方向和路口信号灯（或标志标线）状态。";
+
+/** 事故问答替身的固定报告：四个小节，内容为虚构、不依赖案情。 */
+export const FIXTURE_ACCIDENT_REPORT = [
+  "一、事故概况",
+  "本次为测试替身，仅复述虚构的事故概况，未提供或存在争议的事实一律写「待核实」。",
+  "二、责任认定",
+  "按虚构示例，机动车一方可能承担主要责任，非机动车一方可能承担次要责任；这只是研判意见，最终以官方认定为准。",
+  "三、法律依据",
+  "本次为测试替身，没有可引用的受治理法源。",
+  "四、后续程序建议",
+  "核对监控录像、当事人陈述与现场照片，必要时开展车辆技术检验。",
+].join("\n");
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -324,6 +339,15 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     },
   };
 
+  const accidentLiability: NonNullable<Providers["accidentLiability"]> = {
+    async consultAccidentLiability(request): Promise<AccidentLiabilityConsultOutput> {
+      const officerTurns = request.turns.filter((turn) => turn.speaker === "officer").length;
+      return request.forceReport || officerTurns >= 2
+        ? { kind: "report", text: FIXTURE_ACCIDENT_REPORT }
+        : { kind: "question", text: FIXTURE_ACCIDENT_QUESTION };
+    },
+  };
+
   const content: GovernedContentProvider = {
     async getActiveRelease(): Promise<GovernedContentRelease> {
       const snapshot = store.snapshot();
@@ -383,6 +407,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
     dify,
     analysis,
     content,
+    accidentLiability,
     updateState: (patch) => {
       applyPatch(patch);
       return describe();

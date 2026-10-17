@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   UNAVAILABLE_REASONS,
   buildProductShell,
+  resolveAccidentLiabilityAvailability,
   resolveCaseAnalysisAvailability,
   resolveDocumentExamplesAvailability,
   type CapabilityInputs,
@@ -11,9 +12,11 @@ const allAvailable: CapabilityInputs = {
   masterSwitch: true,
   analysisEnabled: true,
   documentsEnabled: true,
+  accidentLiabilityEnabled: true,
   difyAvailable: true,
   difyUnavailableReason: null,
   eligibleExampleCount: 3,
+  accidentLiabilitySupported: true,
 };
 
 describe("入口可用性", () => {
@@ -77,6 +80,29 @@ describe("入口可用性", () => {
     });
     expect(resolveCaseAnalysisAvailability(inputs).available).toBe(true);
   });
+
+  it("交通事故责任认定入口独立降级：开关关闭、边界不支持或服务不可用时失败关闭", () => {
+    expect(resolveAccidentLiabilityAvailability(allAvailable)).toEqual({ available: true, reason: null });
+
+    expect(resolveAccidentLiabilityAvailability({ ...allAvailable, accidentLiabilityEnabled: false })).toEqual({
+      available: false,
+      reason: UNAVAILABLE_REASONS.accidentLiabilityDisabled,
+    });
+    expect(resolveAccidentLiabilityAvailability({ ...allAvailable, accidentLiabilitySupported: false })).toEqual({
+      available: false,
+      reason: UNAVAILABLE_REASONS.accidentLiabilityUnsupported,
+    });
+    // 未明确声明支持多轮问答时失败关闭，不默认开放。
+    const { accidentLiabilitySupported: _omitted, ...withoutSupport } = allAvailable;
+    expect(resolveAccidentLiabilityAvailability(withoutSupport).available).toBe(false);
+    expect(resolveAccidentLiabilityAvailability({ ...allAvailable, difyAvailable: false }).available).toBe(false);
+    expect(resolveAccidentLiabilityAvailability({ ...allAvailable, masterSwitch: false })).toEqual({
+      available: false,
+      reason: UNAVAILABLE_REASONS.trialPaused,
+    });
+    // 关闭该入口不影响其余入口。
+    expect(resolveCaseAnalysisAvailability({ ...allAvailable, accidentLiabilityEnabled: false }).available).toBe(true);
+  });
 });
 
 describe("产品外壳响应", () => {
@@ -86,6 +112,11 @@ describe("产品外壳响应", () => {
 
     expect(shell.contractVersion).toBe("1.0");
     expect(shell.generatedAt).toBe("2026-01-02T03:04:05.000Z");
-    expect(Object.keys(shell.entries).sort()).toEqual(["caseAnalysis", "documentExamples"]);
+    expect(Object.keys(shell.entries).sort()).toEqual([
+      "accidentLiability",
+      "caseAnalysis",
+      "documentExamples",
+    ]);
+    expect(shell.entries.accidentLiability).toEqual({ available: true, reason: null });
   });
 });
