@@ -91,6 +91,13 @@ function parseModelJson(content: string): { value: unknown; repaired: boolean } 
   }
 }
 
+/** 上游思维链字段的字符数：`reasoning_content`（DeepSeek/vLLM）或 `reasoning`（OpenAI 风格）。 */
+function reasoningCharsOf(holder: { reasoning_content?: unknown; reasoning?: unknown } | undefined): number {
+  if (holder === undefined) return 0;
+  const value = typeof holder.reasoning_content === "string" ? holder.reasoning_content : holder.reasoning;
+  return typeof value === "string" ? Array.from(value).length : 0;
+}
+
 function completionContent(body: unknown): string {
   const choice = (body as { choices?: Array<{ finish_reason?: unknown; message?: { content?: unknown } }> } | null)?.choices?.[0];
   if (choice === undefined) throw new Error("模型响应缺少 choices。");
@@ -114,7 +121,12 @@ export function createLlmProvider(
   const maxBytes = options.maxResponseBytes ?? config.llmMaxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
   const workflowVersion = config.llmWorkflowVersion ?? DEFAULT_WORKFLOW_VERSION;
 
-  const complete = async (operation: LlmOperation, payload: unknown, signal?: AbortSignal): Promise<unknown> => {
+  const complete = async (
+    operation: LlmOperation,
+    payload: unknown,
+    signal?: AbortSignal,
+    onThinking?: (info: { reasoningChars: number }) => void,
+  ): Promise<unknown> => {
     const availability = configured(config);
     if (!availability.available) throw new Error(availability.reason ?? "模型接口不可用。");
     const maxTokens =
@@ -145,7 +157,14 @@ export function createLlmProvider(
       await response.body?.cancel();
       throw new Error(`LLM HTTP ${response.status}。`);
     }
-    const parsed = parseModelJson(completionContent(await readJsonBounded(response, maxBytes)));
+    const body = await readJsonBounded(response, maxBytes);
+    // 推理型模型会把思维链放在 message.reasoning_content 里；它计入 max_tokens
+    // 但不出现在正文，只统计字符数（不含内容）用于解释耗时与截断。
+    const reasoningChars = reasoningCharsOf(
+      (body as { choices?: Array<{ message?: { reasoning_content?: unknown; reasoning?: unknown } }> } | null)?.choices?.[0]?.message,
+    );
+    if (reasoningChars > 0) onThinking?.({ reasoningChars });
+    const parsed = parseModelJson(completionContent(body));
     const pruned = pruneToSchema(parsed.value, SCHEMAS[operation] as Parameters<typeof pruneToSchema>[1]);
     if (parsed.repaired || pruned.dropped.length > 0) {
       options.onRepair?.({ operation, trailingCommas: parsed.repaired, droppedKeys: [...new Set(pruned.dropped)] });
@@ -185,6 +204,10 @@ export function createLlmProvider(
     const decoder = new TextDecoder();
     let buffer = "";
     let produced = false;
+    // 思维链只计数：推理型模型先流 reasoning_content，正文之前的时间不是"卡住"。
+    const streamStartedAt = performance.now();
+    let reasoningChars = 0;
+    let firstReasoningMs: number | undefined;
     const handleLine = (line: string): string | null => {
       if (!line.startsWith("data:")) return null;
       const data = line.slice(5).trim();
@@ -193,7 +216,17 @@ export function createLlmProvider(
       try { event = JSON.parse(data); } catch { throw new Error("模型流式输出格式无效。"); }
       const choice = event.choices?.[0];
       if (choice?.finish_reason === "length") throw new Error("模型输出被截断。");
-      return typeof choice?.delta?.content === "string" && choice.delta.content !== "" ? choice.delta.content : null;
+      const delta = choice?.delta as
+        | { content?: unknown; reasoning_content?: unknown; reasoning?: unknown }
+        | undefined;
+      const reasoning =
+        typeof delta?.reasoning_content === "string" ? delta.reasoning_content
+          : typeof delta?.reasoning === "string" ? delta.reasoning : "";
+      if (reasoning !== "") {
+        reasoningChars += Array.from(reasoning).length;
+        firstReasoningMs ??= Math.round(performance.now() - streamStartedAt);
+      }
+      return typeof delta?.content === "string" && delta.content !== "" ? delta.content : null;
     };
     try {
       for (;;) {
@@ -212,6 +245,9 @@ export function createLlmProvider(
       if (tail !== null) { produced = true; yield tail; }
     } finally {
       await reader.cancel().catch(() => undefined);
+      if (reasoningChars > 0) {
+        request.onThinking?.({ reasoningChars, ...(firstReasoningMs === undefined ? {} : { firstReasoningMs }) });
+      }
     }
     if (!produced) throw new Error("模型未返回内容。");
   }
@@ -287,6 +323,7 @@ export function createLlmProvider(
           citableArticles,
         },
         signal,
+        (info) => request.onThinking?.(info),
       )) as { kind?: unknown; text?: unknown } | null;
       if (
         result === null ||

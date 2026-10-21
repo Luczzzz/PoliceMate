@@ -81,14 +81,17 @@ export type ReportFormat = "stream" | "structured";
 export type LlmTokenBudget = "extract" | "report" | "stream" | "accident";
 
 /**
- * 生成预算默认值：只封顶，不强制。流式与报告留足空间（实测最长约 4,000 字符），
- * 事故报告上限对齐 ADR-0016 的 12,000 字符截断口径。
+ * 生成预算默认值：只封顶，不强制。
+ *
+ * 注意 `max_tokens` 是**思维链 + 正文**的合计额度：推理型模型先在
+ * `reasoning_content` 里思考，那部分也计价。取值因此给足余量——封得太紧会把
+ * 一次正常回答变成 `finish_reason=length` 硬失败，而不是"短一点"。
  */
 export const DEFAULT_LLM_MAX_TOKENS: Record<LlmTokenBudget, number> = {
-  extract: 1024,
-  report: 4096,
-  stream: 4096,
-  accident: 2048,
+  extract: 2048,
+  report: 8192,
+  stream: 8192,
+  accident: 6144,
 };
 
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 30 * 1000;

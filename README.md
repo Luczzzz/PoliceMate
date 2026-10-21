@@ -188,10 +188,10 @@ bash scripts/install-browser-deps.sh
 | `PM_STREAM_IDLE_TIMEOUT_MS` | `30000` | 流式上游首字之后连续无新内容的空闲超时 |
 | `PM_STREAM_FIRST_TOKEN_TIMEOUT_MS` | `60000` | 流式等待首字的独立预算（ADR-0018） |
 | `PM_STREAM_MAX_CHARS` | `12000` | 流式输出字符上限，到达即截断 |
-| `PM_LLM_MAX_TOKENS_STREAM` | `4096` | 流式分析单次生成上限（只封顶，超限按失败处理） |
-| `PM_LLM_MAX_TOKENS_ACCIDENT` | `2048` | 事故问答单次生成上限 |
-| `PM_LLM_MAX_TOKENS_REPORT` | `4096` | 结构化报告单次生成上限 |
-| `PM_LLM_MAX_TOKENS_EXTRACT` | `1024` | 候选事实提取单次生成上限 |
+| `PM_LLM_MAX_TOKENS_STREAM` | `8192` | 流式分析单次生成上限（含思维链 token；超限按失败处理） |
+| `PM_LLM_MAX_TOKENS_ACCIDENT` | `6144` | 事故问答单次生成上限 |
+| `PM_LLM_MAX_TOKENS_REPORT` | `8192` | 结构化报告单次生成上限 |
+| `PM_LLM_MAX_TOKENS_EXTRACT` | `2048` | 候选事实提取单次生成上限 |
 | `PM_ACCIDENT_TIMEOUT_MS` | `60000` | 事故问答单次边界调用超时 |
 | `PM_ACCIDENT_TOTAL_BUDGET_MS` | `120000` | 事故问答一次请求的重试总预算（含首次，超出即失败关闭） |
 | `PM_TELEMETRY_SINK` | `memory` | 遥测接收端；`stdout` 逐行 JSON 落盘（仍只写白名单字段） |

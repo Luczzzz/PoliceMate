@@ -44,6 +44,10 @@ export interface TelemetryEvent {
   firstChunkMs?: number;
   /** 本次调用交给模型的法源材料字符数（只计数，不含内容）。 */
   payloadChars?: number;
+  /** 上游思维链（thinking）字符数（只计数，不含内容）。 */
+  reasoningChars?: number;
+  /** 从请求开始到首个思维链 token 到达的毫秒数（只计数）。 */
+  firstReasoningMs?: number;
   /** 已匹配的受治理法源记录 ID。 */
   matchedSourceIds?: string[];
   /** 匿名功能/页面状态计数增量。 */
@@ -74,6 +78,8 @@ const ALLOWED_KEYS: ReadonlySet<string> = new Set([
   "attempts",
   "firstChunkMs",
   "payloadChars",
+  "reasoningChars",
+  "firstReasoningMs",
   "matchedSourceIds",
   "featureCount",
   "featureState",

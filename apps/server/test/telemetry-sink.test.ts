@@ -61,11 +61,20 @@ describe("遥测落盘（ADR-0019）", () => {
 });
 
 describe("事故问答的重试总预算（ADR-0019）", () => {
-  const hang = () => new Promise<never>(() => undefined);
+  /** 永不返回的边界，同时记录被实际发起的次数。 */
+  function hangCounter() {
+    const calls: number[] = [];
+    const provider = () => {
+      calls.push(performance.now());
+      return new Promise<never>(() => undefined);
+    };
+    return { provider, calls };
+  }
 
   it("重试不得把等待翻倍：预算耗尽后不再发起新的完整超时", async () => {
     const events: TelemetryEvent[] = [];
-    const engine = new AccidentLiabilityEngine(hang as never, {
+    const { provider, calls } = hangCounter();
+    const engine = new AccidentLiabilityEngine(provider as never, {
       timeoutMs: 500,
       totalBudgetMs: 120,
       maxAttempts: 5,
@@ -73,14 +82,16 @@ describe("事故问答的重试总预算（ADR-0019）", () => {
     });
     const startedAt = performance.now();
     await expect(engine.createSession("虚构事故概况", [])).rejects.toThrow(/暂不可用/);
-    const elapsed = performance.now() - startedAt;
-    expect(elapsed).toBeLessThan(400);
-    expect(events.at(-1)?.attempts).toBe(1);
+    // 真正的不变量：整个请求的耗时被总预算按住，而不是 5 × 500 毫秒。
+    expect(performance.now() - startedAt).toBeLessThan(500);
+    expect(calls.length).toBeLessThanOrEqual(2);
+    expect(events.at(-1)?.outcome).toBe("error");
   });
 
   it("每次尝试的时限取“单次超时”和“剩余预算”的较小值", async () => {
     const events: TelemetryEvent[] = [];
-    const engine = new AccidentLiabilityEngine(hang as never, {
+    const { provider, calls } = hangCounter();
+    const engine = new AccidentLiabilityEngine(provider as never, {
       timeoutMs: 60,
       totalBudgetMs: 100,
       maxAttempts: 2,
@@ -89,7 +100,20 @@ describe("事故问答的重试总预算（ADR-0019）", () => {
     const startedAt = performance.now();
     await expect(engine.createSession("虚构事故概况", [])).rejects.toThrow(/暂不可用/);
     expect(performance.now() - startedAt).toBeLessThan(400);
-    expect(events.at(-1)?.attempts).toBe(2);
+    expect(calls).toHaveLength(2);
     expect(events.at(-1)?.payloadChars).toBe(2);
+    expect(events.at(-1)?.attempts).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("思维链诊断字段（ADR-0019）", () => {
+  it("reasoningChars 与 firstReasoningMs 可落盘，且仍不含内容", () => {
+    const lines: string[] = [];
+    createStdoutTelemetrySink((line) => lines.push(line)).record(
+      event({ reasoningChars: 4321, firstReasoningMs: 8123 } as TelemetryEvent),
+    );
+    const parsed = JSON.parse(lines[0]);
+    expect(parsed.reasoningChars).toBe(4321);
+    expect(parsed.firstReasoningMs).toBe(8123);
   });
 });

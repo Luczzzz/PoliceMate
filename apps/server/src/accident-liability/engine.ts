@@ -174,6 +174,9 @@ export class AccidentLiabilityEngine {
     const startedAt = performance.now();
     // 法源材料字符数（只计数）：载荷大小是首字延迟的可测变量，需进遥测才能归因。
     const payloadChars = JSON.stringify(legalSources).length;
+    // 思维链只计数：事故问答是非流式，若上游返回 reasoning_content，它就是 41 秒里
+    // 看不见的那一半；没有这个数字就只能把"思考"和"拥塞"混为一谈。
+    let reasoningChars = 0;
     let lastError: unknown = null;
     let usedAttempts = 0;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
@@ -189,6 +192,9 @@ export class AccidentLiabilityEngine {
               forceReport,
               legalSources,
               requestId: randomUUID(),
+              onThinking: (info) => {
+                reasoningChars = info.reasoningChars;
+              },
             },
             signal,
           ),
@@ -217,6 +223,7 @@ export class AccidentLiabilityEngine {
           durationMs: Math.max(1, Math.round(performance.now() - startedAt)),
           attempts: attempt,
           payloadChars,
+          ...(reasoningChars > 0 ? { reasoningChars } : {}),
           featureState: forceReport ? "force_report" : output.kind,
         });
         return { kind: output.kind, text: output.text.trim() };
@@ -233,6 +240,7 @@ export class AccidentLiabilityEngine {
       durationMs: Math.max(1, Math.round(performance.now() - startedAt)),
       attempts: usedAttempts,
       payloadChars,
+      ...(reasoningChars > 0 ? { reasoningChars } : {}),
       featureState: forceReport ? "force_report" : "question",
     });
     throw new AnalysisUpstreamError("分析服务暂不可用，请稍后再试。", Math.max(usedAttempts, 1), lastError);

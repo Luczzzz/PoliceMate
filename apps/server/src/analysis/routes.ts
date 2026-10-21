@@ -228,9 +228,24 @@ export async function registerAnalysisRoutes(
 
           let emitted = 0;
           let firstChunkMs: number | undefined;
+          // 思维链只计数：用于把"首字慢"拆成"思考慢"与"载荷/上游拥塞"。
+          let reasoningChars = 0;
+          let firstReasoningMs: number | undefined;
           let iterator: AsyncIterator<string> | undefined;
           try {
-            iterator = stream.provider({ caseText, legalSources }, upstream.signal)[Symbol.asyncIterator]();
+            iterator = stream
+              .provider(
+                {
+                  caseText,
+                  legalSources,
+                  onThinking: (info) => {
+                    reasoningChars = info.reasoningChars;
+                    firstReasoningMs = info.firstReasoningMs ?? firstReasoningMs;
+                  },
+                },
+                upstream.signal,
+              )
+              [Symbol.asyncIterator]();
             for (;;) {
               const pending = iterator.next();
               pending.catch(() => undefined);
@@ -285,6 +300,8 @@ export async function registerAnalysisRoutes(
             // 法源材料字符数（只计数）：首字延迟与载荷的关系只能在遥测里归因。
             payloadChars: JSON.stringify(legalSources).length,
             ...(firstChunkMs !== undefined ? { firstChunkMs } : {}),
+            ...(reasoningChars > 0 ? { reasoningChars } : {}),
+            ...(firstReasoningMs !== undefined ? { firstReasoningMs } : {}),
             featureState: state,
           });
         });

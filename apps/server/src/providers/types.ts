@@ -242,9 +242,22 @@ export interface GovernedContentProvider {
 }
 
 /** 流式纯文本分析请求（ADR-0015）：只含案情文本和本次适用的受治理法源。 */
+/**
+ * 上游思维链（thinking）的只计数诊断回调。
+ *
+ * 推理型模型会先流出一段 `reasoning_content`，它不是正文、我们也不展示，但它
+ * 决定了"首字"到底是多少：只统计 content 的首字会把思考时间算成等待。这里只
+ * 回传字符数与首个思维链 token 的到达时间，不含任何内容。
+ */
+export interface ThinkingDiagnostic {
+  reasoningChars: number;
+  firstReasoningMs?: number;
+}
+
 export interface StreamAnalysisRequest {
   caseText: string;
   legalSources: LegalSourceReference[];
+  onThinking?: (info: ThinkingDiagnostic) => void;
 }
 
 /** 支持流式纯文本分析的边界；按到达顺序逐段产出文本，不做结构化校验。 */
@@ -272,6 +285,8 @@ export interface AccidentLiabilityConsultRequest {
   /** 本次适用的受治理法源；模型只能引用其中条文。 */
   legalSources: LegalSourceReference[];
   requestId: string;
+  /** 思维链只计数诊断（见 `ThinkingDiagnostic`）。 */
+  onThinking?: (info: ThinkingDiagnostic) => void;
 }
 
 /**
