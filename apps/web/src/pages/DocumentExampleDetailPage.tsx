@@ -32,6 +32,9 @@ export function DocumentExampleDetailPage() {
       </span>
       <h1 className="page-title">文书范例详情</h1>
       <p className="page-lead">只读制作指导，用于核验适用条件、结构与常见错误。</p>
+      <div className="command-tag">
+        <code>只读指导 · 适用与排除 · 治理信息</code>
+      </div>
     </header>
   );
 

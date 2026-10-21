@@ -86,7 +86,7 @@ export function OperationModal({
         <button
           ref={cancelRef}
           type="button"
-          className="button button--muted"
+          className="button button--secondary"
           onClick={onCancel}
           data-testid={cancelTestId ?? `${testIdPrefix}-cancel`}
         >

@@ -270,6 +270,7 @@ tar \
   --exclude='.env' \
   --exclude='.env.*' \
   --exclude='apps/web/dist' \
+  --exclude='data' \
   --exclude='test-results' \
   --exclude='playwright-report' \
   --exclude='.browser-deps' \
@@ -333,7 +334,7 @@ node --version
 npm --version
 
 id policemate >/dev/null 2>&1 || useradd --system --home-dir /opt/policymate --create-home --shell /usr/sbin/nologin policemate
-install -d -o policemate -g policemate /opt/policymate/releases /etc/policymate
+install -d -o policemate -g policemate /opt/policymate/releases /opt/policymate/data /etc/policymate
 RELEASE_DIR="/opt/policymate/releases/$RELEASE_ID"
 rm -rf "$RELEASE_DIR"
 install -d -o policemate -g policemate "$RELEASE_DIR"
@@ -366,6 +367,8 @@ PM_LLM_BASE_URL=
 PM_LLM_API_KEY=
 PM_LLM_MODEL=
 PM_ALLOWED_ORIGINS="https://$(env_escape "$DOMAIN")"
+PM_USAGE_STATS_FILE=/opt/policymate/data/usage-stats.json
+PM_USAGE_TIME_ZONE=Asia/Shanghai
 PM_SERVICE_PROVIDER="$(env_escape "$PM_SERVICE_PROVIDER")"
 PM_SERVICE_CONTACT="$(env_escape "$PM_SERVICE_CONTACT")"
 PM_DATA_PROCESSING_STATEMENT="$(env_escape "$PM_DATA_PROCESSING_STATEMENT")"

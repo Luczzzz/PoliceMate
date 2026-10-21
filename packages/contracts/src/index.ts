@@ -26,6 +26,27 @@ export interface ProductShellResponse {
   reportFormat: "stream" | "structured";
 }
 
+/**
+ * 首页匿名使用统计。
+ *
+ * 只累加三个入口的受理次数，不关联身份、令牌、会话、案情或页面轨迹，
+ * 也不构成个人使用历史、热门排行或行为分析。
+ */
+export interface UsageStatsResponse {
+  contractVersion: string;
+  generatedAt: string;
+  /** 统计口径：三个功能入口的受理次数（不含页面浏览与检索）。 */
+  scope: "entry_use";
+  /** 统计日期使用的 IANA 时区；今日次数按该时区跨日重置。 */
+  timeZone: string;
+  /** 时区下的当前日期（YYYY-MM-DD）。 */
+  date: string;
+  /** 今日已受理的入口使用次数。 */
+  today: number;
+  /** 累计已受理的入口使用次数。 */
+  total: number;
+}
+
 /** 使用与数据说明页面的一个章节。 */
 export interface DataUseSection {
   id: string;

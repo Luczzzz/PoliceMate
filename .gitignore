@@ -11,6 +11,10 @@ blob-report/
 # 无 root 环境下的浏览器系统库降级目录（scripts/install-browser-deps.sh）
 .browser-deps/
 
+# Local runtime counters (anonymous aggregate only; never contains case content)
+/data/
+apps/server/data/
+
 # Local environment and deployment settings (may contain private configuration)
 .env
 .env.*

@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AnalysisFlowProvider } from "./analysis/AnalysisSessionContext";
 import { WorkbenchProvider } from "./analysis/WorkbenchContext";
+import { ScrollToTop } from "./app/ScrollToTop";
 import { ShellProvider } from "./app/ShellContext";
 import { AnalysisProgress } from "./components/AnalysisProgress";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -19,6 +20,7 @@ import { TestThrowPage } from "./pages/TestThrowPage";
 export function App() {
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <ErrorBoundary>
         <a className="skip-link" href="#main">
           跳到主要内容

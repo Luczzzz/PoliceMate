@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { EntryCard } from "../components/EntryCard";
 import { FailurePanel } from "../components/FailurePanel";
 import { Icon } from "../components/Icon";
+import { UsageStatsStrip } from "../components/UsageStatsStrip";
 import { useShell } from "../app/ShellContext";
 
 /**
@@ -24,16 +25,20 @@ export function HomePage() {
         </Link>
       </nav>
 
-      <header className="home-hero">
-        <span className="hero-mark" aria-hidden="true">
-          <Icon name="brand" size={68} strokeWidth={1.35} />
-        </span>
-        <p className="trial-label">受控试行版 · 程序辅助工具</p>
-        <h1 className="page-title page-title--hero">把复杂案情，整理成可核验的研判线索</h1>
-        <p className="page-lead page-lead--hero">
-          围绕案情分析、程序核查与公开法源，为一线民警提供清晰、可追溯的辅助参考。
-        </p>
-      </header>
+      <div className="home-intro">
+        <header className="home-hero">
+          <span className="hero-mark" aria-hidden="true">
+            <Icon name="brand" size={68} strokeWidth={1.35} />
+          </span>
+          <p className="trial-label">受控试行版 · 程序辅助工具</p>
+          <h1 className="page-title page-title--hero">把复杂案情，整理成可核验的研判线索</h1>
+          <p className="page-lead page-lead--hero">
+            围绕案情分析、程序核查与公开法源，为一线民警提供清晰、可追溯的辅助参考。
+          </p>
+        </header>
+
+        <UsageStatsStrip />
+      </div>
 
       <section className="entry-section" aria-labelledby="entry-section-title">
         <div className="section-heading">

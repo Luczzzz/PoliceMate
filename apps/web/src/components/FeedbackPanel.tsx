@@ -43,7 +43,7 @@ export function FeedbackPanel({ pageId = "data_use" }: { pageId?: string } = {})
   return (
     <section className="info-section info-section--feedback" data-testid="feedback-panel">
       <span className="info-section__index" aria-hidden="true">
-        反馈
+        10
       </span>
       <div className="info-section__content">
         <h2 className="info-section__title">结构化反馈</h2>

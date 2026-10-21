@@ -17,7 +17,7 @@ const CLEAR_CONFIRM_TEXT =
  */
 export function ClearAnalysisButton({
   testId = "clear-analysis",
-  className = "button button--muted",
+  className = "button button--danger",
   label = "清除本次分析",
 }: ClearAnalysisButtonProps) {
   const { clear } = useAnalysisFlow();

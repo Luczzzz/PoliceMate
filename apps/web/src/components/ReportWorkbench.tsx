@@ -86,7 +86,7 @@ function ModuleHead({
       </div>
       <button
         type="button"
-        className="button button--muted workbench-header__toggle"
+        className="button button--secondary workbench-header__toggle"
         aria-expanded={!collapsed}
         onClick={() => toggleCollapsed(collapsedKey)}
         data-testid={`workbench-collapse-${testIdSuffix}`}

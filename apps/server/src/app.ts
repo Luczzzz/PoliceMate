@@ -24,6 +24,7 @@ import {
   type LegalSourceReference,
   type ProductShellResponse,
   type UpstreamFailureMode,
+  type UsageStatsResponse,
 } from "@policymate/contracts";
 import { HANDLING_STAGE_CATALOG } from "./content/catalog";
 import { UNAVAILABLE_REASONS, buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } from "./capabilities";
@@ -36,6 +37,7 @@ import { AccidentLiabilityEngine } from "./accident-liability/engine";
 import { registerAccidentLiabilityRoutes } from "./accident-liability/routes";
 import type { FixtureControls, FixturePatch } from "./providers/fixture";
 import type { Providers, ServiceAvailability } from "./providers/types";
+import { createUsageStats, type UsageStats } from "./usage-stats";
 import {
   AnonymousTokenService,
   ConcurrencyGate,
@@ -63,6 +65,8 @@ export interface BuildAppDeps {
   rateLimiter?: FixedWindowRateLimiter;
   concurrencyGate?: ConcurrencyGate;
   runtime?: ResolvedRuntimeConfig;
+  /** 首页匿名使用计数；测试可注入内存实现。 */
+  usageStats?: UsageStats;
 }
 
 const CONTRACT_HEADER = "x-pm-contract-version";
@@ -337,6 +341,12 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   const tokenService = deps.tokenService ?? anonymousTokens;
   const rateLimiter = deps.rateLimiter ?? new FixedWindowRateLimiter(runtime.rateLimitMax, runtime.rateLimitWindowMs);
   const concurrencyGate = deps.concurrencyGate ?? new ConcurrencyGate(runtime.maxConcurrency);
+  const usageStats =
+    deps.usageStats ??
+    createUsageStats({
+      filePath: config.usageStatsFile ?? null,
+      timeZone: config.usageTimeZone ?? undefined,
+    });
 
   const reportFormat = resolveReportFormat(config);
   /** 分析边界可用性；选了流式但提供者不支持时失败关闭，不静默回退（ADR-0015）。 */
@@ -484,6 +494,20 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     return buildDataUseResponse(config.service, CONTRACT_VERSION);
   });
 
+  // 首页匿名使用统计：只返回累加次数，不含任何身份、会话或内容标识。
+  app.get("/api/v1/usage-stats", async (): Promise<UsageStatsResponse> => {
+    const snapshot = usageStats.snapshot();
+    return {
+      contractVersion: CONTRACT_VERSION,
+      generatedAt: new Date().toISOString(),
+      scope: "entry_use",
+      timeZone: usageStats.timeZone,
+      date: snapshot.date,
+      today: snapshot.today,
+      total: snapshot.total,
+    };
+  });
+
   // 结构化反馈：只接受预定义类型与白名单元数据，不接收自由文本或页面文本。
   app.post<{ Body: FeedbackRequest }>("/api/v1/feedback", async (request, reply) => {
     const parsed = readFeedbackRequest(request.body);
@@ -593,6 +617,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         ...lookup.example,
         legalSources: lookup.example.legalSources.map(sanitizeLegalSource),
       };
+      usageStats.record();
       const response: DocumentExampleDetailResponse = {
         contractVersion: CONTRACT_VERSION,
         generatedAt: new Date().toISOString(),
@@ -618,6 +643,11 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
 
     app.post("/api/test/fixtures/reset", async (): Promise<FixtureControlResponse> => {
       return { ...fixtures.reset() };
+    });
+
+    app.post("/api/test/usage-stats/reset", async () => {
+      usageStats.reset();
+      return { ...usageStats.snapshot(), timeZone: usageStats.timeZone };
     });
   }
 
@@ -651,6 +681,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         }
       : undefined,
     concurrencyGate,
+    onUse: () => usageStats.record(),
     stream: reportFormat === "stream" && providers.analysis.streamAnalysis !== undefined
       ? {
           provider: (streamRequest, signal) => providers.analysis.streamAnalysis!(streamRequest, signal),
@@ -659,6 +690,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
           totalTimeoutMs: runtime.reportTimeoutMs,
           maxChars: runtime.streamMaxChars,
           telemetry,
+          onUse: () => usageStats.record(),
         }
       : undefined,
   });
@@ -693,6 +725,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     capabilityEnabled: () => config.masterSwitch && config.accidentLiabilityEnabled !== false,
     boundaryAvailable: analysisBoundary,
     concurrencyGate,
+    onUse: () => usageStats.record(),
   });
 
   app.setErrorHandler(async (error: FastifyError, request, reply) => {

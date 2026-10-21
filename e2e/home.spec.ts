@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { resetFixture } from "./helpers";
+import { reachReport } from "./report-flow";
+import { resetFixture, resetUsageStats } from "./helpers";
 
 test.beforeEach(async ({ request }) => {
   await resetFixture(request);
+  await resetUsageStats(request);
 });
 
 test.describe("首页产品外壳", () => {
@@ -88,5 +90,18 @@ test.describe("首页产品外壳", () => {
 
     await expect(page).toHaveURL(/\/data-use$/);
     await expect(page.getByRole("heading", { name: "使用与数据说明", level: 1 })).toBeVisible();
+  });
+
+  test("首页显示今日与累计使用次数，完成一次分析后再次进入首页会刷新", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByTestId("usage-stats")).toBeVisible();
+    await expect(page.getByTestId("usage-today")).toHaveText("0");
+    await expect(page.getByTestId("usage-total")).toHaveText("0");
+
+    await reachReport(page);
+    await page.goto("/");
+
+    await expect(page.getByTestId("usage-today")).toHaveText("1");
+    await expect(page.getByTestId("usage-total")).toHaveText("1");
   });
 });

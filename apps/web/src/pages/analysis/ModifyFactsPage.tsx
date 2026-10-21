@@ -35,7 +35,7 @@ function RevisionEditor({
     <div className="revision-editor">
       <button
         type="button"
-        className="button button--muted"
+        className="button button--secondary"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         disabled={disabled}
@@ -322,7 +322,7 @@ export function ModifyFactsPage() {
         </button>
         <button
           type="button"
-          className="button button--muted"
+          className="button button--secondary"
           onClick={() => void discard()}
           disabled={busy}
           data-testid="discard-modification"

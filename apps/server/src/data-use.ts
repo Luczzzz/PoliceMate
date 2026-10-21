@@ -67,6 +67,7 @@ const SECTIONS: Record<DataUseSectionId, SectionContent> = {
       "重试、取消和限流事件",
       "已匹配的法源记录 ID",
       "页面或功能状态的匿名计数",
+      "三个入口的匿名使用次数：只保存累计次数、当日日期与当日次数，不保存请求编号、令牌、IP、案情或页面轨迹",
     ],
   },
   logging: {

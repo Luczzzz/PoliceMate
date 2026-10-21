@@ -10,6 +10,8 @@ PoliceMate 后端、三个同级主入口的可用状态门控、使用与数据
 受治理文书范例，从脱敏案情输入直接形成不可变事实快照并生成分析报告的完整流程
 （无需事实确认与决定性追问；报告补充与纠正在报告页完成），以及按问答方式进行的
 交通事故责任认定辅助（见 [ADR-0016](docs/adr/0016-accident-liability-interactive-aid.md)）。
+首页展示匿名累加的今日与累计使用次数，只保存次数、日期与时区，不含任何案情、身份或
+页面轨迹（见 [ADR-0021](docs/adr/0021-anonymous-home-usage-counts.md)）。
 
 ## 目录结构
 
@@ -195,6 +197,8 @@ bash scripts/install-browser-deps.sh
 | `PM_ACCIDENT_TIMEOUT_MS` | `60000` | 事故问答单次边界调用超时 |
 | `PM_ACCIDENT_TOTAL_BUDGET_MS` | `120000` | 事故问答一次请求的重试总预算（含首次，超出即失败关闭） |
 | `PM_TELEMETRY_SINK` | `memory` | 遥测接收端；`stdout` 逐行 JSON 落盘（仍只写白名单字段） |
+| `PM_USAGE_STATS_FILE` | `data/usage-stats.json`（生产建议 `/opt/policymate/data/usage-stats.json`） | 首页匿名使用计数文件；设为 `off` 时只保存在进程内存 |
+| `PM_USAGE_TIME_ZONE` | `Asia/Shanghai` | 使用计数按哪个 IANA 时区跨日 |
 | `PM_LLM_REASONING_EFFORT` | 未设置 | 直传 `reasoning_effort`（`none`/`minimal`/`low`/`medium`/`high`）；未设置则不发该字段（ADR-0020） |
 | `PM_LLM_THINKING` | 未设置 | 设为 `off` 时发 `thinking:{type:"disabled"}`；与上面一项互斥 |
 

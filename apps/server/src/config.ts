@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DataUseServiceInfo } from "@policymate/contracts";
+import { DEFAULT_USAGE_TIME_ZONE, isValidUsageTimeZone } from "./usage-stats";
 
 /**
  * 运行配置。所有影响能力可用性的输入都必须来自配置或外部边界提供者，
@@ -66,6 +67,13 @@ export interface AppConfig {
   streamMaxChars?: number;
   /** 遥测接收端：`memory`（默认，测试用）或 `stdout`（逐行 JSON，部署用）。 */
   telemetrySink?: "memory" | "stdout";
+  /**
+   * 首页匿名使用计数的持久化文件；`null` 表示只保存在进程内存。
+   * 文件只包含累计次数、当日日期与当日次数，不含任何案情或身份信息。
+   */
+  usageStatsFile?: string | null;
+  /** 使用计数按哪个 IANA 时区跨日；默认 Asia/Shanghai。 */
+  usageTimeZone?: string;
   /**
    * 思考强度：直传 OpenAI 风格的 `reasoning_effort`。未设置时不发该字段，
    * 请求体与之前逐字节一致（ADR-0020）。
@@ -224,6 +232,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     throw new Error("PM_TELEMETRY_SINK 必须为 memory 或 stdout。");
   }
 
+  const usageTimeZone = readOptional(env.PM_USAGE_TIME_ZONE) ?? DEFAULT_USAGE_TIME_ZONE;
+  if (!isValidUsageTimeZone(usageTimeZone)) {
+    throw new Error(`PM_USAGE_TIME_ZONE 不是有效的 IANA 时区：${usageTimeZone}。`);
+  }
+  const rawUsageFile = readOptional(env.PM_USAGE_STATS_FILE);
+  const isTestRun =
+    env.NODE_ENV === "test" || process.env.NODE_ENV === "test" || process.env.VITEST !== undefined;
+  const usageStatsFile =
+    rawUsageFile !== null && rawUsageFile.toLowerCase() === "off"
+      ? null
+      : (rawUsageFile ?? (isTestRun ? null : resolve(packageRoot, "../../data/usage-stats.json")));
+
   return {
     host: readOptional(env.PM_HOST) ?? "127.0.0.1",
     port: Number(readOptional(env.PM_SERVER_PORT) ?? "8787"),
@@ -260,6 +280,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     streamFirstTokenTimeoutMs: readNumber(env.PM_STREAM_FIRST_TOKEN_TIMEOUT_MS, DEFAULT_STREAM_FIRST_TOKEN_TIMEOUT_MS),
     streamMaxChars: readNumber(env.PM_STREAM_MAX_CHARS, DEFAULT_STREAM_MAX_CHARS),
     telemetrySink: rawTelemetrySink === "stdout" ? "stdout" : "memory",
+    usageStatsFile,
+    usageTimeZone,
     llmReasoningEffort: rawReasoningEffort as AppConfig["llmReasoningEffort"],
     llmThinkingDisabled: thinkingDisabled,
     llmMaxTokens: {

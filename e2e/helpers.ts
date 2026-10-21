@@ -15,6 +15,12 @@ export async function resetFixture(request: APIRequestContext): Promise<void> {
   expect(response.ok(), `替身重置失败：${response.status()}`).toBeTruthy();
 }
 
+/** 把匿名使用计数清零，使首页统计断言从确定基线开始。 */
+export async function resetUsageStats(request: APIRequestContext): Promise<void> {
+  const response = await request.post("/api/test/usage-stats/reset");
+  expect(response.ok(), `使用统计重置失败：${response.status()}`).toBeTruthy();
+}
+
 /**
  * 直接调用受保护 API 时所需的请求头。浏览器页面会自动携带短期匿名令牌；
  * 测试中的 APIRequestContext 需要显式获取一次。

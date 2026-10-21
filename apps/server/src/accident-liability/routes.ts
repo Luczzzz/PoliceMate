@@ -17,6 +17,8 @@ export interface AccidentLiabilityRoutesOptions {
   capabilityEnabled: () => boolean;
   boundaryAvailable: () => Promise<{ available: boolean; reason: string | null }>;
   concurrencyGate: ConcurrencyGate;
+  /** 新建事故问答会话成功后累加一次匿名使用计数。 */
+  onUse?: () => void;
 }
 
 function errorBody(
@@ -115,7 +117,9 @@ export async function registerAccidentLiabilityRoutes(
         await assertCapability();
         const state = await withConcurrency(request, reply, async (signal) => {
           const legalSources = await options.legalSources();
-          return engine.createSession(request.body?.caseText, legalSources, signal);
+          const created = await engine.createSession(request.body?.caseText, legalSources, signal);
+          options.onUse?.();
+          return created;
         });
         return reply.code(201).send(state);
       } catch (error) {

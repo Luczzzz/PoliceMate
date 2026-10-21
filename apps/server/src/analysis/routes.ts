@@ -28,6 +28,8 @@ export interface StreamRouteOptions {
   totalTimeoutMs: number;
   maxChars: number;
   telemetry: TelemetrySink;
+  /** 流式分析开流后累加一次匿名使用计数。 */
+  onUse?: () => void;
 }
 
 /**
@@ -48,6 +50,8 @@ export interface AnalysisRoutesOptions {
   caseFocusResolver?: CaseFocusResolver;
   /** 并发闸门：同一令牌在途分析请求不得超过上限。 */
   concurrencyGate: ConcurrencyGate;
+  /** 受理一次结构化分析提交时累加匿名使用计数。 */
+  onUse?: () => void;
   stream?: StreamRouteOptions;
 }
 
@@ -193,6 +197,7 @@ export async function registerAnalysisRoutes(
             "x-robots-tag": "noindex, nofollow, noarchive",
             connection: "keep-alive",
           });
+          stream.onUse?.();
           const send = (event: string, data: unknown) => {
             if (!raw.writableEnded && !raw.destroyed) raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
           };
@@ -321,6 +326,7 @@ export async function registerAnalysisRoutes(
         await assertCapability();
         const response = await withConcurrency(request, reply, async (signal): Promise<AnalysisIntakeResponse> => {
           const states = await engine.createSessions(request.body, undefined, signal);
+          options.onUse?.();
           try {
             const analyses = await Promise.all(
               states.map(async (state) => ({

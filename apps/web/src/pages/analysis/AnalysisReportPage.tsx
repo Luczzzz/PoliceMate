@@ -231,7 +231,7 @@ function AnalysisSwitcher() {
             <button
               type="button"
               className={
-                index === selectedAnalysisIndex ? "button button--primary" : "button button--muted"
+                index === selectedAnalysisIndex ? "button button--primary" : "button button--secondary"
               }
               aria-pressed={index === selectedAnalysisIndex}
               onClick={() => selectAnalysis(index)}
@@ -473,7 +473,7 @@ function GapBranchSection({
           <div className="analysis-actions">
             <button
               type="button"
-              className={gap.officerAnswer === "unknown" ? "button button--primary" : "button button--muted"}
+              className={gap.officerAnswer === "unknown" ? "button button--primary" : "button button--secondary"}
               onClick={() => onAnswer(gap.gapId, "unknown")}
               disabled={actionsDisabled}
               data-testid={`gap-answer-unknown-${gap.gapId}`}
@@ -482,7 +482,7 @@ function GapBranchSection({
             </button>
             <button
               type="button"
-              className={gap.officerAnswer === "pending_verification" ? "button button--primary" : "button button--muted"}
+              className={gap.officerAnswer === "pending_verification" ? "button button--primary" : "button button--secondary"}
               onClick={() => onAnswer(gap.gapId, "pending_verification")}
               disabled={actionsDisabled}
               data-testid={`gap-answer-pending-${gap.gapId}`}
@@ -551,12 +551,9 @@ function ReportBody({
       ) : null}
 
       <header className="report-header">
-        <div className="report-header__status-row">
-          <p className="status-badge" data-testid="report-status">
-            {report.statusLabel}
-          </p>
-  
-        </div>
+        <p className="status-badge" data-testid="report-status">
+          {report.statusLabel}
+        </p>
         <h1 className="page-title" data-testid="report-headline">{report.headline}</h1>
         <p className="report-header__lead">辅助参考，未经过正式内容审定；不构成案件定性或受立案决定。</p>
         {reportHasUnconfirmedBasis(report) ? (
@@ -579,7 +576,7 @@ function ReportBody({
           </p>
           <button
             type="button"
-            className="button button--muted"
+            className="button button--secondary"
             onClick={onDismissSuperseded}
             data-testid="dismiss-superseded-report"
           >
@@ -812,6 +809,7 @@ export function AnalysisReportPage() {
           <Icon name="arrowLeft" size={18} />
           重新输入案情
         </Link>
+        <span className="report-page__kind">分析报告</span>
       </header>
       <AnalysisSwitcher />
       {report ? (
