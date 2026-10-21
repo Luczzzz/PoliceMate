@@ -582,3 +582,22 @@
 - 提示词版本已提升为 `actionable-analysis-v2`（第5项改为提升，此前"不提升"的说明作废）。**旧工作流在新后端下会被拒（503）**。
 - 需要部署端配合：① 把新版 `docs/deployment/dify-prompts/report-system.md` 逐字替换到 `llm_report` 节点；② 节点结构化输出 Schema 换成新版 `dify-report-result.json`（JSON 对象）；③ 工作流版本串提升并发布；④ 用虚构案情实测，目标 report 节点中位耗时 ≤ 90 秒（约 15k 令牌内），六模块与研判速览校验仍通过，并在此回报耗时。达不到则再收紧一档上限。
 - 前端：等待提示改为居中弹窗；420/410/360 秒超时天花板暂保留，待实测稳定后再下调。
+
+### 部署端回报 · 2026-10-21（提交 `23ea4ce`，ADR-0019）
+
+**部署结果：已上线。** 发布 `20261021T084736Z-23ea4ce1efa8`，本地健康 200 / 公网 200，`provider=llm`，回滚点 `56fc601`。
+
+**环境变更（按用户要求"环境干净，只跑最新版"）：**
+- Dify 全套 16 个容器 `compose down`，8080 释放；本机现只剩 `pansou-local`（115 转存工具，与 PoliceMate 无关）。
+- 摘除 nginx `127.0.0.1:8443`（原 Dify TLS 转发）站点块；**`8445` 保留**（直连模型出口），实测网关 200、模型返回正常。
+- 删除从未启用的失败构建目录，清理全部临时实例（8788/8789）与临时文件。
+
+**测试闸门：`--fast` 放行（1 条失败，已定性为测试自身竞态）。**
+`test/telemetry-sink.test.ts:78` 断言 `attempts === 1`，单跑 3 次结果 挂/挂/过。根因：`apps/server/src/accident-liability/engine.ts:181` 的 `if (remaining <= 0) break;` 没有余量——首轮在 119.8ms 超时返回时剩余预算算得 **+0.2ms**，于是又起一次 0.2ms 的尝试，`usedAttempts` 变 2。生产行为无碍（总等待未翻倍），但测试必然偶发红。其余 473/474 通过，typecheck 通过。
+
+**待改项（按优先级）：**
+1. `engine.ts:181` 改为留余量判定（如 `if (remaining <= 5) break;`），否则 CI 会随机红，部署闸门不可用。
+2. `apps/server/src/providers/llm.ts:195` 对 `finish_reason === "length"` 直接抛 `模型输出被截断。`，路由把它归到 `upstream_error`（`analysis/routes.ts:253` 的 `catch {}`）；**建议**① 语义上改用 `truncated` 结束态（前端已能显示"不完整"），② 该 catch 至少要 `console.error` 或写遥测，否则线上故障无法归因（本次就是靠临时注入日志才抓到）。
+3. 默认 `DEFAULT_LLM_MAX_TOKENS.stream = 4096` 对推理型模型偏小（reasoning token 计入预算），实测会偶发截断；部署端已用 `PM_LLM_MAX_TOKENS_STREAM=12000` 兜住，建议把默认值提上来或在文档里写明必须配。
+
+**实测（修复 token 预算后，生产实例连打 6 次真实分析）：** 6/6 `status: complete`，24–56 秒，558–1058 段流式；ADR-0019 行为可见——材料未提供的《道路交通安全法》条文明确拒绝引用，仅对已给到的《民法典》条文做两档引用。
