@@ -276,4 +276,6 @@ export const CIVIL_CODE: LegalSourceRecord = {
   lastVerifiedAt: NATIONAL_VERIFIED_AT,
   nextReviewDueAt: NEXT_REVIEW_DUE_AT,
   maintainer: NATIONAL_MAINTAINER,
+  // 民法典侵权责任编条款也是道路交通事故损害赔偿的依据，故同样进入交通场景的适用法源集。
+  domains: ["traffic"],
 };

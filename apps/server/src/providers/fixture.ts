@@ -4,6 +4,7 @@ import {
 } from "@policymate/contracts";
 import type {
   ContentStatus,
+  FixtureAccidentMode,
   FixtureControlResponse,
   FixtureCaseFocusState,
   FixtureStreamMode,
@@ -56,10 +57,13 @@ export interface FixturePatch extends ReportFailureControls {
   caseFocusesExpired?: boolean;
   legalSourcesExpired?: boolean;
   extractionMode?: UpstreamFailureMode;
+  accidentMode?: FixtureAccidentMode;
 }
 
 /** 替身超时模式等待时长；必须明显长于测试注入的引擎超时上限。 */
 export const FIXTURE_TIMEOUT_DELAY_MS = 250;
+/** 事故问答 slow 模式的响应延迟：够长到能断言弹窗，够短到不拖慢黑盒测试。 */
+export const FIXTURE_ACCIDENT_SLOW_DELAY_MS = 1200;
 
 /** 流式替身每段之间的间隔，足以让浏览器黑盒测试观察到逐段出现。 */
 export const FIXTURE_STREAM_PIECE_DELAY_MS = 30;
@@ -118,12 +122,14 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
   let reportMode: NonNullable<ReportFailureControls["reportMode"]> = "complete";
   let extractionMode: UpstreamFailureMode = "normal";
   let streamMode: FixtureStreamMode = "normal";
+  let accidentMode: FixtureAccidentMode = "normal";
 
   const applyPatch = (patch: FixturePatch) => {
     if (patch.analysisAvailable !== undefined) analysisAvailable = patch.analysisAvailable;
     if (patch.reportMode !== undefined) reportMode = patch.reportMode;
     if (patch.extractionMode !== undefined) extractionMode = patch.extractionMode;
     if (patch.streamMode !== undefined) streamMode = patch.streamMode;
+    if (patch.accidentMode !== undefined) accidentMode = patch.accidentMode;
     if (patch.exampleStatusAll !== undefined) store.setAllExampleStatus(patch.exampleStatusAll);
     if (patch.exampleStatus !== undefined) {
       store.setExampleStatus(patch.exampleStatus.exampleId, patch.exampleStatus.status);
@@ -157,6 +163,7 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
       extractionMode,
       reportMode,
       streamMode,
+      accidentMode,
     };
   };
 
@@ -349,6 +356,8 @@ export function createFixtureControls(initial: FixturePatch = {}): FixtureContro
 
   const accidentLiability: NonNullable<Providers["accidentLiability"]> = {
     async consultAccidentLiability(request): Promise<AccidentLiabilityConsultOutput> {
+      // slow 模式给浏览器黑盒测试留出观察等待弹窗与点击取消的时间。
+      if (accidentMode === "slow") await delay(FIXTURE_ACCIDENT_SLOW_DELAY_MS);
       const officerTurns = request.turns.filter((turn) => turn.speaker === "officer").length;
       return request.forceReport || officerTurns >= 2
         ? { kind: "report", text: FIXTURE_ACCIDENT_REPORT }

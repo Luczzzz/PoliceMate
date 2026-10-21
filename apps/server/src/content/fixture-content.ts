@@ -17,6 +17,7 @@ import {
   createFamilyMinorCaseFocuses,
   createFamilyMinorSources,
 } from "./family-minor-content";
+import { createTrafficLegalSources } from "./traffic-legal-sources";
 
 /**
  * 受控试行内容种子。
@@ -75,6 +76,8 @@ export function createFixtureContent(): GovernedContentSeed {
     createPropertyEconomicSources(),
     createPublicOrderDrugSources(),
     createFamilyMinorSources(),
+    // 交通事故责任认定辅助的可提示法源范围登记（无条款原文）。
+    createTrafficLegalSources(),
   );
 
   return {

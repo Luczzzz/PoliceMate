@@ -41,6 +41,11 @@ export interface LegalSourceRecord {
   retrievedAt: string;
   contentHash: string;
   articles: LegalSourceArticle[];
+  /**
+   * 该法源所属的适用领域标记（如 `traffic`）。入口据此挑选本次的适用法源集；
+   * 未标记的法源不进入任何按领域筛选的调用。
+   */
+  domains?: readonly string[];
   lastVerifiedAt: string;
   nextReviewDueAt: string;
   maintainer: string;

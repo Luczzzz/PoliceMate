@@ -79,6 +79,21 @@ export function effectiveReviewDueAtFor(
   return new Date(Math.min(...candidates)).toISOString();
 }
 
+/**
+ * 法源本身是否可用于生成依据：状态现行有效，且复核期限未过。
+ *
+ * 复核日期无法解析时失败关闭——无法确认有效即视为失效。给按场景挑选适用法源
+ * 集的入口使用（ADR-0019），与文书范例的判定口径保持同一套期限语义。
+ */
+export function isSourceUsable(
+  source: Pick<LegalSourceRecord, "status" | "nextReviewDueAt">,
+  now: Date = new Date(),
+): boolean {
+  if (source.status !== "current") return false;
+  const dueAt = Date.parse(source.nextReviewDueAt);
+  return Number.isFinite(dueAt) && dueAt > now.getTime();
+}
+
 export function evaluateEligibility(
   item: DocumentExampleRecord,
   context: EligibilityContext,
@@ -281,6 +296,7 @@ export function toLegalSourceReference(source: LegalSourceRecord): LegalSourceRe
     nextReviewDueAt: source.nextReviewDueAt,
     maintainer: source.maintainer,
     articles: source.articles.map((article) => ({ ...article })),
+    ...(source.domains === undefined ? {} : { domains: [...source.domains] }),
   };
 }
 

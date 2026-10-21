@@ -16,10 +16,18 @@ import type {
 import { AnalysisInputError, AnalysisUpstreamError } from "../analysis/engine";
 import type { AccidentLiabilityProvider } from "../providers/types";
 import type { TelemetrySink } from "../telemetry";
+import { checkCitations, citationNotice } from "./citation-check";
 
 /** 空闲多久后丢弃会话；与案情分析一致，只保存在短暂运行内存（ADR-0004）。 */
 export const ACCIDENT_LIABILITY_SESSION_TTL_MS = 30 * 60 * 1000;
-export const DEFAULT_ACCIDENT_LIABILITY_TIMEOUT_MS = 90 * 1000;
+export const DEFAULT_ACCIDENT_LIABILITY_TIMEOUT_MS = 60 * 1000;
+/**
+ * 一次请求的重试总预算（含首次）。
+ *
+ * 重试不得把等待翻倍：每次尝试的可用时限是“单次超时”与“剩余预算”的较小值，
+ * 预算耗尽就以最后一次失败结束，而不是再等一个完整超时。
+ */
+export const DEFAULT_ACCIDENT_LIABILITY_TOTAL_BUDGET_MS = 120 * 1000;
 export const DEFAULT_ACCIDENT_LIABILITY_MAX_ATTEMPTS = 2;
 
 /** 报告被长度上限截断时追加的固定提示；由后端附加，不经过模型。 */
@@ -36,6 +44,8 @@ interface AccidentLiabilitySession {
 export interface AccidentLiabilityEngineOptions {
   /** 单次边界调用超时。 */
   timeoutMs?: number;
+  /** 一次请求的重试总预算（含首次）；未给出时退回 `timeoutMs × maxAttempts`。 */
+  totalBudgetMs?: number;
   /** 边界错误时最多尝试次数（含首次）。 */
   maxAttempts?: number;
   telemetry?: TelemetrySink;
@@ -107,6 +117,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, signal?: AbortSi
 export class AccidentLiabilityEngine {
   private readonly sessions = new Map<string, AccidentLiabilitySession>();
   private readonly timeoutMs: number;
+  private readonly totalBudgetMs: number;
   private readonly maxAttempts: number;
   private readonly telemetry: TelemetrySink | undefined;
 
@@ -115,6 +126,9 @@ export class AccidentLiabilityEngine {
     options: AccidentLiabilityEngineOptions = {},
   ) {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_ACCIDENT_LIABILITY_TIMEOUT_MS;
+    this.totalBudgetMs =
+      options.totalBudgetMs ??
+      this.timeoutMs * Math.max(options.maxAttempts ?? DEFAULT_ACCIDENT_LIABILITY_MAX_ATTEMPTS, 1);
     this.maxAttempts = Math.max(options.maxAttempts ?? DEFAULT_ACCIDENT_LIABILITY_MAX_ATTEMPTS, 1);
     this.telemetry = options.telemetry;
   }
@@ -158,8 +172,15 @@ export class AccidentLiabilityEngine {
     signal?: AbortSignal,
   ): Promise<{ kind: "question" | "report"; text: string }> {
     const startedAt = performance.now();
+    // 法源材料字符数（只计数）：载荷大小是首字延迟的可测变量，需进遥测才能归因。
+    const payloadChars = JSON.stringify(legalSources).length;
     let lastError: unknown = null;
+    let usedAttempts = 0;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      // 剩余预算不足时不另起一次注定超时的尝试。
+      const remaining = this.totalBudgetMs - (performance.now() - startedAt);
+      if (remaining <= 0) break;
+      usedAttempts = attempt;
       try {
         const output = await withTimeout(
           this.provider(
@@ -171,7 +192,7 @@ export class AccidentLiabilityEngine {
             },
             signal,
           ),
-          this.timeoutMs,
+          Math.min(this.timeoutMs, remaining),
           signal,
         );
         const invalid =
@@ -195,6 +216,7 @@ export class AccidentLiabilityEngine {
           outcome: "ok",
           durationMs: Math.max(1, Math.round(performance.now() - startedAt)),
           attempts: attempt,
+          payloadChars,
           featureState: forceReport ? "force_report" : output.kind,
         });
         return { kind: output.kind, text: output.text.trim() };
@@ -209,14 +231,19 @@ export class AccidentLiabilityEngine {
       kind: "accident.consult",
       outcome: "error",
       durationMs: Math.max(1, Math.round(performance.now() - startedAt)),
-      attempts: this.maxAttempts,
+      attempts: usedAttempts,
+      payloadChars,
       featureState: forceReport ? "force_report" : "question",
     });
-    throw new AnalysisUpstreamError("分析服务暂不可用，请稍后再试。", this.maxAttempts, lastError);
+    throw new AnalysisUpstreamError("分析服务暂不可用，请稍后再试。", Math.max(usedAttempts, 1), lastError);
   }
 
   /** 应用一次边界输出：追问追加一轮；报告写入并切换到 `report_ready`。 */
-  private apply(session: AccidentLiabilitySession, output: { kind: "question" | "report"; text: string }): void {
+  private apply(
+    session: AccidentLiabilitySession,
+    output: { kind: "question" | "report"; text: string },
+    legalSources: LegalSourceReference[],
+  ): void {
     if (output.kind === "question") {
       session.turns.push({
         turnId: randomUUID(),
@@ -227,10 +254,15 @@ export class AccidentLiabilityEngine {
       return;
     }
     // 报告本身不是一轮问答，只作为 `report` 字段返回；问答记录保持为追问与回答。
+    const truncated = countCharacters(output.text) > ACCIDENT_LIABILITY_REPORT_MAX_CHARACTERS;
+    const base = truncated
+      ? `${Array.from(output.text).slice(0, ACCIDENT_LIABILITY_REPORT_MAX_CHARACTERS).join("")}${TRUNCATION_NOTE}`
+      : output.text;
+    // 事后核对引用（ADR-0019）：未命中的条号就地降级标注，命中的附上后端原文。
+    const checked = checkCitations(base, legalSources);
+    const notice = citationNotice(checked);
     session.report =
-      countCharacters(output.text) > ACCIDENT_LIABILITY_REPORT_MAX_CHARACTERS
-        ? `${Array.from(output.text).slice(0, ACCIDENT_LIABILITY_REPORT_MAX_CHARACTERS).join("")}${TRUNCATION_NOTE}`
-        : output.text;
+      checked.verified.length === 0 && checked.unverified.length === 0 ? checked.text : `${checked.text}${notice}`;
     session.stage = "report_ready";
   }
 
@@ -256,7 +288,7 @@ export class AccidentLiabilityEngine {
       lastActiveAt: Date.now(),
     };
     const output = await this.consult(session.turns, false, legalSources, signal);
-    this.apply(session, output);
+    this.apply(session, output, legalSources);
     session.lastActiveAt = Date.now();
     this.sessions.set(session.sessionId, session);
     this.prune(session.lastActiveAt);
@@ -284,7 +316,7 @@ export class AccidentLiabilityEngine {
     session.turns.push(turn);
     try {
       const output = await this.consult(session.turns, false, legalSources, signal);
-      this.apply(session, output);
+      this.apply(session, output, legalSources);
     } catch (error) {
       // 失败不留下民警这一轮，避免重试后记录重复。
       session.turns.pop();
@@ -305,7 +337,7 @@ export class AccidentLiabilityEngine {
       return this.toState(session);
     }
     const output = await this.consult(session.turns, true, legalSources, signal);
-    this.apply(session, output);
+    this.apply(session, output, legalSources);
     session.lastActiveAt = Date.now();
     return this.toState(session);
   }

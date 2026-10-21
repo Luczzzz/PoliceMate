@@ -6,7 +6,6 @@ const caseText = "昨天傍晚在城南路口，一辆小客车与一辆电动�
 test.beforeEach(async ({ request }) => {
   await resetFixture(request);
 });
-
 test.describe("交通事故责任认定辅助", () => {
   test("从首页进入，提交事故概况后得到第一个追问", async ({ page }) => {
     await page.goto("/");
@@ -77,5 +76,44 @@ test.describe("交通事故责任认定辅助", () => {
     await page.goto("/accident-liability");
     await expect(page.getByTestId("capability-unavailable")).toBeVisible();
     await expect(page.getByTestId("capability-unavailable-reason")).toContainText("分析服务");
+  });
+
+  test("等待回答时显示与案情分析同构的弹窗：真实阶段、已等待秒数与取消", async ({ page, request }) => {
+    await setFixture(request, { accidentMode: "slow" });
+    await page.goto("/accident-liability");
+    await page.getByTestId("accident-case-input").fill(caseText);
+    await page.getByTestId("accident-start").click();
+
+    const progress = page.getByTestId("accident-progress");
+    await expect(progress).toBeVisible();
+    await expect(progress).toHaveAttribute("role", "alertdialog");
+    await expect(page.getByTestId("accident-progress-stage")).toContainText("正在分析事故概况");
+    await expect(page.getByTestId("accident-progress-elapsed")).toContainText("已等待");
+
+    // 取消后按“已取消”展示，不是失败；输入不清空，可直接重试。
+    await page.getByTestId("accident-progress-cancel").click();
+    await expect(page.getByTestId("accident-progress")).toHaveCount(0);
+    await expect(page.getByTestId("accident-cancelled")).toBeVisible();
+    await expect(page.getByTestId("accident-failure")).toHaveCount(0);
+    await expect(page.getByTestId("accident-case-input")).toHaveValue(caseText);
+
+    // 重试成功，弹窗自行关闭。
+    await setFixture(request, { accidentMode: "normal" });
+    await page.getByTestId("accident-start").click();
+    await expect(page.getByTestId("accident-answer-input")).toBeVisible();
+    await expect(page.getByTestId("accident-progress")).toHaveCount(0);
+  });
+
+  test("生成研判意见时弹窗显示对应阶段", async ({ page, request }) => {
+    await page.goto("/accident-liability");
+    await page.getByTestId("accident-case-input").fill(caseText);
+    await page.getByTestId("accident-start").click();
+    await expect(page.getByTestId("accident-answer-input")).toBeVisible();
+
+    await setFixture(request, { accidentMode: "slow" });
+    await page.getByTestId("accident-generate-now").click();
+    await expect(page.getByTestId("accident-progress-stage")).toContainText("正在生成研判意见");
+    await expect(page.getByTestId("accident-report")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("accident-progress")).toHaveCount(0);
   });
 });

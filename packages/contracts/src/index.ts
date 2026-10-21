@@ -860,6 +860,8 @@ export interface LegalSourceReference {
   nextReviewDueAt: string;
   maintainer: string;
   articles: LegalSourceArticle[];
+  /** 适用领域标记（如 `traffic`）；入口据此挑选本次的适用法源集。 */
+  domains?: readonly string[];
 }
 
 /** 文书范例详情页必须常驻的辅助定位说明。 */
@@ -1060,6 +1062,9 @@ export interface FixtureCaseFocusStatusPatch {
  * 确定性替身控制请求。仅在启用测试控制（`PM_ENABLE_TEST_CONTROLS=1`）时挂载，
  * 用于浏览器黑盒测试替换外部分析服务与受治理内容边界。
  */
+/** 事故问答边界的替身响应速度。 */
+export type FixtureAccidentMode = "normal" | "slow";
+
 export interface FixtureControlRequest {
   analysisAvailable?: boolean;
   reportMode?: ReportFailureControls["reportMode"];
@@ -1081,6 +1086,8 @@ export interface FixtureControlRequest {
   legalSourcesExpired?: boolean;
   /** 测试控制：候选事实提取边界的失败模式。 */
   extractionMode?: UpstreamFailureMode;
+  /** 测试控制：事故多轮问答边界的响应速度，用于验证等待弹窗与取消。 */
+  accidentMode?: FixtureAccidentMode;
 }
 
 /**
@@ -1125,6 +1132,7 @@ export interface FixtureControlResponse {
   extractionMode: UpstreamFailureMode;
   reportMode: NonNullable<ReportFailureControls["reportMode"]>;
   streamMode: FixtureStreamMode;
+  accidentMode: FixtureAccidentMode;
 }
 
 /* ---------- 结构化反馈与运行元数据 ---------- */

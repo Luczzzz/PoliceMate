@@ -92,6 +92,18 @@ _Avoid_: 已审定内容、官方口径、知识库全文
 一组同时激活的受治理内容项及其确定版本，用于标识一次分析可使用的内容范围。批次可回滚，但不得把未经核验的内容混入当前批次。
 _Avoid_: 实时知识库状态、自动生效内容
 
+**确定引用**:
+分析输出中以「《法源名称》第X条」形态出现、且该条号确实存在于本次适用法源集里的法律依据。它必须由受治理内容项支撑：条文原文、版本与官方链接由后端补全，模型只选择条号。条号不在适用法源集里的同类写法会被降级标注为「条号未经核对」。
+_Avoid_: 模型引用、AI 查到的法条、条文记忆
+
+**方向提示**:
+分析输出中以「〔待核对〕《法源名称》关于…的规定」形态出现、不带条号的一类线索。它只说明该去查哪部法，不是引用，也不表示系统已核对该法是否存在、是否现行有效。
+_Avoid_: 法律依据、参考条文、法条推荐
+
+**适用法源集**:
+一次分析请求实际交给模型的法源与条款集合，由当前内容发布批次按场景或重点案情筛出。它是批次的一个子集，不是批次本身；集合为空表示本次研判没有可引用的受治理法源。
+_Avoid_: 法源库、知识库、全量法源、实时法源
+
 **程序辅助工具**:
 A tool that presents procedural tasks, time limits, conditions, exceptions, documents, notices, and legal sources for officers to verify. It does not decide case acceptance, case filing, legal classification, punishment, or criminal charges.
 _Avoid_: 执法决定系统、自动办案系统、法律裁判工具

@@ -64,11 +64,32 @@ export interface AppConfig {
   streamFirstTokenTimeoutMs?: number;
   /** 流式输出字符数上限，到达即截断。 */
   streamMaxChars?: number;
+  /** 遥测接收端：`memory`（默认，测试用）或 `stdout`（逐行 JSON，部署用）。 */
+  telemetrySink?: "memory" | "stdout";
+  /** 各操作的单次生成上限（token）；只封顶不强制，避免模型写超长输出。 */
+  llmMaxTokens?: Partial<Record<LlmTokenBudget, number>>;
+  /** 事故问答单次边界调用超时。 */
+  accidentTimeoutMs?: number;
+  /** 事故问答一次请求的重试总预算（含首次）；超出即失败关闭，不再重试。 */
+  accidentTotalBudgetMs?: number;
   /** 运行环境标识；用于发布检查，不参与产品行为。 */
   environment?: "development" | "production";
 }
 
 export type ReportFormat = "stream" | "structured";
+
+export type LlmTokenBudget = "extract" | "report" | "stream" | "accident";
+
+/**
+ * 生成预算默认值：只封顶，不强制。流式与报告留足空间（实测最长约 4,000 字符），
+ * 事故报告上限对齐 ADR-0016 的 12,000 字符截断口径。
+ */
+export const DEFAULT_LLM_MAX_TOKENS: Record<LlmTokenBudget, number> = {
+  extract: 1024,
+  report: 4096,
+  stream: 4096,
+  accident: 2048,
+};
 
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 30 * 1000;
 /** 首字预算；部署侧实测公网首字上限 40.6 秒，取 60 秒留余量（ADR-0018）。 */
@@ -99,6 +120,10 @@ export interface ResolvedRuntimeConfig {
 export const DEFAULT_ANALYSIS_TIMEOUT_MS = 30 * 1000;
 export const DEFAULT_REPORT_TIMEOUT_MS = 90 * 1000;
 export const DEFAULT_MAX_PROVIDER_ATTEMPTS = 2;
+/** 事故问答实测首问约 13 秒、研判报告 28–41 秒，单次 60 秒已留足余量。 */
+export const DEFAULT_ACCIDENT_TIMEOUT_MS = 60 * 1000;
+/** 重试不得把等待翻倍：两次尝试合计不超过 120 秒。 */
+export const DEFAULT_ACCIDENT_TOTAL_BUDGET_MS = 120 * 1000;
 
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:5173",
@@ -167,6 +192,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (testControls && (mode !== "fixture" || env.NODE_ENV === "production")) {
     throw new Error("测试控制只允许在非生产 fixture 模式启用。");
   }
+  const rawTelemetrySink = readOptional(env.PM_TELEMETRY_SINK);
+  if (rawTelemetrySink !== null && rawTelemetrySink !== "memory" && rawTelemetrySink !== "stdout") {
+    throw new Error("PM_TELEMETRY_SINK 必须为 memory 或 stdout。");
+  }
 
   return {
     host: readOptional(env.PM_HOST) ?? "127.0.0.1",
@@ -203,6 +232,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     streamIdleTimeoutMs: readNumber(env.PM_STREAM_IDLE_TIMEOUT_MS, DEFAULT_STREAM_IDLE_TIMEOUT_MS),
     streamFirstTokenTimeoutMs: readNumber(env.PM_STREAM_FIRST_TOKEN_TIMEOUT_MS, DEFAULT_STREAM_FIRST_TOKEN_TIMEOUT_MS),
     streamMaxChars: readNumber(env.PM_STREAM_MAX_CHARS, DEFAULT_STREAM_MAX_CHARS),
+    telemetrySink: rawTelemetrySink === "stdout" ? "stdout" : "memory",
+    llmMaxTokens: {
+      extract: readNumber(env.PM_LLM_MAX_TOKENS_EXTRACT, DEFAULT_LLM_MAX_TOKENS.extract),
+      report: readNumber(env.PM_LLM_MAX_TOKENS_REPORT, DEFAULT_LLM_MAX_TOKENS.report),
+      stream: readNumber(env.PM_LLM_MAX_TOKENS_STREAM, DEFAULT_LLM_MAX_TOKENS.stream),
+      accident: readNumber(env.PM_LLM_MAX_TOKENS_ACCIDENT, DEFAULT_LLM_MAX_TOKENS.accident),
+    },
+    accidentTimeoutMs: readNumber(env.PM_ACCIDENT_TIMEOUT_MS, DEFAULT_ACCIDENT_TIMEOUT_MS),
+    accidentTotalBudgetMs: readNumber(env.PM_ACCIDENT_TOTAL_BUDGET_MS, DEFAULT_ACCIDENT_TOTAL_BUDGET_MS),
     environment: env.NODE_ENV === "production" ? "production" : "development",
   };
 }

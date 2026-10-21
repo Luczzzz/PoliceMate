@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { hydrateReportDraft } from "../analysis/report-draft";
-import type { AppConfig } from "../config";
+import { DEFAULT_LLM_MAX_TOKENS, type AppConfig } from "../config";
 import { parseTolerantJson, pruneToSchema } from "./tolerant-json";
 import { ANALYSIS_PROMPT_VERSION, readJsonBounded, validateExtract, validateReport } from "./contract";
 import type {
@@ -24,12 +24,26 @@ const DEFAULT_WORKFLOW_VERSION = "policymate-llm-v1.0.0";
 const TEMPERATURE = 0.2;
 
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
+
+/** 条文节选长度：事故报告只需知道“这一条讲什么”，不需要全文（ADR-0019）。 */
+export const ACCIDENT_ARTICLE_EXCERPT_CHARACTERS = 80;
+
+/** 把条文原文裁剪为节选，并显式标注，避免模型把节选当成完整条文。 */
+function excerptForPrompt(text: string): string {
+  const characters = Array.from(text);
+  return characters.length <= ACCIDENT_ARTICLE_EXCERPT_CHARACTERS
+    ? text
+    : `${characters.slice(0, ACCIDENT_ARTICLE_EXCERPT_CHARACTERS).join("")}…〔节选〕`;
+}
 const PROMPTS = {
   extract: read("./prompts/extract-system.txt"),
   report: read("./prompts/report-system.txt"),
   stream: read("./prompts/stream-system.txt"),
   accident: read("./prompts/accident-liability-system.txt"),
 };
+/** 只暴露提示词文本供单元测试断言口径；不参与运行路径。 */
+export const PROMPT_FOR_TEST = PROMPTS;
+
 const SCHEMAS = {
   extract: JSON.parse(read("./schemas/extract-result.json")) as object,
   report: JSON.parse(read("./schemas/report-result.json")) as object,
@@ -103,6 +117,8 @@ export function createLlmProvider(
   const complete = async (operation: LlmOperation, payload: unknown, signal?: AbortSignal): Promise<unknown> => {
     const availability = configured(config);
     if (!availability.available) throw new Error(availability.reason ?? "模型接口不可用。");
+    const maxTokens =
+      config.llmMaxTokens?.[operation] ?? DEFAULT_LLM_MAX_TOKENS[operation as keyof typeof DEFAULT_LLM_MAX_TOKENS];
     const responseFormat = config.llmResponseFormat === "json_object"
       ? { type: "json_object" }
       : { type: "json_schema", json_schema: { name: `policymate_${operation}`, strict: false, schema: SCHEMAS[operation] } };
@@ -113,6 +129,8 @@ export function createLlmProvider(
         model: config.llmModel,
         temperature: TEMPERATURE,
         stream: false,
+        // 只封顶不强制：输出超过预算会以 finish_reason=length 报错，不静默截断。
+        max_tokens: maxTokens,
         response_format: responseFormat,
         messages: [
           { role: "system", content: PROMPTS[operation] },
@@ -146,6 +164,7 @@ export function createLlmProvider(
         model: config.llmModel,
         temperature: TEMPERATURE,
         stream: true,
+        max_tokens: config.llmMaxTokens?.stream ?? DEFAULT_LLM_MAX_TOKENS.stream,
         messages: [
           { role: "system", content: PROMPTS.stream },
           { role: "user", content: JSON.stringify({ caseText: request.caseText, legalSources: request.legalSources.map((source) => ({
@@ -230,26 +249,42 @@ export function createLlmProvider(
     /**
      * 事故责任认定辅助：把完整问答记录交给模型，由模型决定追问还是给报告。
      * 后端不预设问题分支；只校验输出形状（ADR-0016）。
+     *
+     * 法源分两档交给模型（ADR-0019）：
+     * - `sourceScope`：只有法源名与效力信息、没有条款的法源，仅可用于方向提示；
+     * - `citableArticles`：带逐字核验条文（此处只给节选）的法源，才可以写成确定引用。
+     * 两档之外的法源一律不得出现在输出里，这比整批 20,800 字符的法源全文小一个量级。
      */
     async consultAccidentLiability(
       request: AccidentLiabilityConsultRequest,
       signal?: AbortSignal,
     ): Promise<AccidentLiabilityConsultOutput> {
+      const sourceScope = request.legalSources
+        .filter((source) => source.articles.length === 0)
+        .map((source) => ({
+          title: source.title,
+          issuingAuthority: source.issuingAuthority,
+          version: source.version,
+          note: "仅可点名，不得写出条号或条文内容",
+        }));
+      const citableArticles = request.legalSources
+        .filter((source) => source.articles.length > 0)
+        .map((source) => ({
+          title: source.title,
+          version: source.version,
+          issuingAuthority: source.issuingAuthority,
+          articles: source.articles.map((article) => ({
+            location: article.location,
+            excerpt: excerptForPrompt(article.minimalText),
+          })),
+        }));
       const result = (await complete(
         "accident",
         {
           forceReport: request.forceReport,
           turns: request.turns.map((turn) => ({ speaker: turn.speaker, text: turn.text })),
-          legalSources: request.legalSources.map((source) => ({
-            sourceId: source.sourceId,
-            title: source.title,
-            version: source.version,
-            issuingAuthority: source.issuingAuthority,
-            articles: source.articles.map((article) => ({
-              location: article.location,
-              text: article.minimalText,
-            })),
-          })),
+          sourceScope,
+          citableArticles,
         },
         signal,
       )) as { kind?: unknown; text?: unknown } | null;

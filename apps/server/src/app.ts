@@ -29,7 +29,7 @@ import { HANDLING_STAGE_CATALOG } from "./content/catalog";
 import { UNAVAILABLE_REASONS, buildProductShell, isDocumentRetrievalEnabled, loadCapabilityInputs } from "./capabilities";
 import { resolveReportFormat, resolveRuntimeConfig, type AppConfig, type ResolvedRuntimeConfig } from "./config";
 import { buildDataUseResponse } from "./data-use";
-import { buildFacets } from "./content/gating";
+import { buildFacets, isSourceUsable } from "./content/gating";
 import { AnalysisEngine } from "./analysis/engine";
 import { registerAnalysisRoutes } from "./analysis/routes";
 import { AccidentLiabilityEngine } from "./accident-liability/engine";
@@ -46,7 +46,7 @@ import {
 } from "./security";
 import {
   classifyStatus,
-  createMemoryTelemetrySink,
+  createTelemetrySink,
   type TelemetrySink,
 } from "./telemetry";
 
@@ -253,6 +253,11 @@ function readFixturePatch(body: unknown): FixturePatch | null {
     patch.legalSourcesExpired = candidate.legalSourcesExpired;
   }
 
+  if ("accidentMode" in candidate) {
+    if (candidate.accidentMode !== "normal" && candidate.accidentMode !== "slow") return null;
+    patch.accidentMode = candidate.accidentMode;
+  }
+
   return patch;
 }
 
@@ -328,7 +333,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
     throw new Error("测试控制只允许在非生产 fixture 模式启用。");
   }
   const runtime = deps.runtime ?? resolveRuntimeConfig(config);
-  const telemetry = deps.telemetry ?? createMemoryTelemetrySink();
+  const telemetry = deps.telemetry ?? createTelemetrySink(config.telemetrySink ?? "memory");
   const tokenService = deps.tokenService ?? anonymousTokens;
   const rateLimiter = deps.rateLimiter ?? new FixedWindowRateLimiter(runtime.rateLimitMax, runtime.rateLimitWindowMs);
   const concurrencyGate = deps.concurrencyGate ?? new ConcurrencyGate(runtime.maxConcurrency);
@@ -668,16 +673,23 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
         }
       : (request, signal) => consultAccidentLiability(request, signal),
     {
-      timeoutMs: runtime.reportTimeoutMs,
+      timeoutMs: config.accidentTimeoutMs ?? 60 * 1000,
+      totalBudgetMs: config.accidentTotalBudgetMs ?? 120 * 1000,
       maxAttempts: runtime.maxProviderAttempts,
       telemetry,
     },
   );
   await registerAccidentLiabilityRoutes(app, {
     engine: accidentLiabilityEngine,
-    // 与案情分析一致：只把当前有效（current）的法源交给模型，不得让废止或
-    // 效力不明的条目进入研判依据。
-    legalSources: async () => (await legalSources()).filter((source) => source.status === "current"),
+    // 只把“交通领域 + 当前有效”的法源交给模型（ADR-0019 适用法源集）：
+    // 既不会把刑法、毒品、赌博等无关法源塞给一起交通事故，也不让已废止、
+    // 效力不明或已到期的条目进入研判依据。
+    legalSources: async () => {
+      const now = new Date();
+      return (await legalSources()).filter(
+        (source) => source.domains?.includes("traffic") === true && isSourceUsable(source, now),
+      );
+    },
     capabilityEnabled: () => config.masterSwitch && config.accidentLiabilityEnabled !== false,
     boundaryAvailable: analysisBoundary,
     concurrencyGate,

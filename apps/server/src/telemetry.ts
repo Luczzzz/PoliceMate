@@ -42,6 +42,8 @@ export interface TelemetryEvent {
   attempts?: number;
   /** 流式分析从请求开始到第一段文字到达的毫秒数（只计数）。 */
   firstChunkMs?: number;
+  /** 本次调用交给模型的法源材料字符数（只计数，不含内容）。 */
+  payloadChars?: number;
   /** 已匹配的受治理法源记录 ID。 */
   matchedSourceIds?: string[];
   /** 匿名功能/页面状态计数增量。 */
@@ -71,6 +73,7 @@ const ALLOWED_KEYS: ReadonlySet<string> = new Set([
   "capExceeded",
   "attempts",
   "firstChunkMs",
+  "payloadChars",
   "matchedSourceIds",
   "featureCount",
   "featureState",
@@ -87,16 +90,45 @@ export function createMemoryTelemetrySink(): MemoryTelemetrySink {
   return {
     events,
     record(event: TelemetryEvent): void {
-      const safe: Record<string, unknown> = {};
-      for (const key of Object.keys(event)) {
-        if (ALLOWED_KEYS.has(key)) safe[key] = (event as unknown as Record<string, unknown>)[key];
-      }
-      events.push(safe as unknown as TelemetryEvent);
+      events.push(sanitizeTelemetryEvent(event));
     },
     reset(): void {
       events.length = 0;
     },
   };
+}
+
+/** 只保留白名单字段；任何内容字段名都不在白名单内，因而不会被写出。 */
+export function sanitizeTelemetryEvent(event: TelemetryEvent): TelemetryEvent {
+  const safe: Record<string, unknown> = {};
+  for (const key of Object.keys(event)) {
+    if (ALLOWED_KEYS.has(key)) safe[key] = (event as unknown as Record<string, unknown>)[key];
+  }
+  return safe as unknown as TelemetryEvent;
+}
+
+/**
+ * 逐行 JSON 的标准输出遥测接收端（部署侧长期要求）。
+ *
+ * 字段仍先过 `ALLOWED_KEYS` 白名单，所以案情、事实值、报告正文、法条原文都
+ * 不可能被迫传进来；输出行只用于事后定位阶段、耗时与上游错误分类。
+ */
+export function createStdoutTelemetrySink(
+  write: (line: string) => void = (line) => process.stdout.write(`${line}\n`),
+): TelemetrySink {
+  return {
+    record(event: TelemetryEvent): void {
+      write(JSON.stringify(sanitizeTelemetryEvent(event)));
+    },
+  };
+}
+
+/** 按配置选择遥测接收端；未配置时仍用内存（测试断言无内容泄漏）。 */
+export function createTelemetrySink(
+  kind: "memory" | "stdout",
+  write?: (line: string) => void,
+): TelemetrySink {
+  return kind === "stdout" ? createStdoutTelemetrySink(write) : createMemoryTelemetrySink();
 }
 
 /** 把 HTTP 状态码归类为错误分类；不读取响应正文。 */

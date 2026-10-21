@@ -15,6 +15,15 @@ import {
 } from "../api/client";
 import { CapabilityGate } from "../components/CapabilityGate";
 import { InlineFailure } from "../components/InlineFailure";
+import { OperationModal } from "../components/OperationModal";
+
+/** 事故问答的“比平时慢”阈值：追问约 13 秒、报告约 30 秒，60 秒已明显异常。 */
+const ACCIDENT_SLOW_NOTICE_AFTER_SECONDS = 60;
+
+interface PendingOperation {
+  label: string;
+  startedAt: number;
+}
 
 /**
  * 交通事故责任认定辅助页（ADR-0016）。
@@ -27,10 +36,12 @@ export function AccidentLiabilityPage() {
   const [caseText, setCaseText] = useState("");
   const [answer, setAnswer] = useState("");
   const [session, setSession] = useState<AccidentLiabilitySessionState | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<PendingOperation | null>(null);
   const [failure, setFailure] = useState<ApiFailure | null>(null);
+  const [cancelled, setCancelled] = useState(false);
   const [copied, setCopied] = useState<"ok" | "failed" | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const busy = pending !== null;
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
@@ -43,53 +54,79 @@ export function AccidentLiabilityPage() {
     <InlineFailure failure={failure} testId="accident-failure" />
   );
 
-  const run = async (action: (signal: AbortSignal) => Promise<AccidentLiabilitySessionState>): Promise<boolean> => {
+  const cancelledNotice = cancelled ? (
+    <p className="field__note" role="status" data-testid="accident-cancelled">
+      已取消本次请求，问答记录和已输入内容都保留，可以直接重新提交。
+    </p>
+  ) : null;
+
+  /**
+   * 统一执行一次事故问答请求。等待期间显示居中模态（真实阶段 + 已等待时间 +
+   * 取消），取消按“已取消”展示而不是失败：会话与已输入内容都不动，可直接重试。
+   */
+  const run = async (
+    label: string,
+    action: (signal: AbortSignal) => Promise<AccidentLiabilitySessionState>,
+  ): Promise<boolean> => {
     if (busy) return false;
     const controller = new AbortController();
     controllerRef.current = controller;
-    setBusy(true);
+    setPending({ label, startedAt: Date.now() });
     setFailure(null);
+    setCancelled(false);
     setCopied(null);
     try {
       setSession(await action(controller.signal));
       return true;
     } catch (error) {
+      if (error instanceof ApiFailure && error.kind === "cancelled") {
+        // 重新开始新问答会主动中止旧请求，那种中止不得被当成“用户取消”。
+        if (controller.signal.reason !== "restart") setCancelled(true);
+        return false;
+      }
       setFailure(
         error instanceof ApiFailure ? error : new ApiFailure("server", "服务暂时不可用，请稍后重试。"),
       );
       return false;
     } finally {
       if (controllerRef.current === controller) controllerRef.current = null;
-      setBusy(false);
+      setPending(null);
     }
+  };
+
+  const cancelPending = () => {
+    controllerRef.current?.abort("user-cancel");
   };
 
   const start = () => {
     if (caseText.trim() === "" || caseOverLimit) return;
-    void run((signal) => createAccidentLiabilitySession(caseText, signal));
+    void run("正在分析事故概况", (signal) => createAccidentLiabilitySession(caseText, signal));
   };
 
   const submitAnswer = () => {
     if (session === null || answer.trim() === "" || answerOverLimit) return;
     const text = answer;
-    // 失败时保留输入，便于重试；成功后清空，等待下一轮追问。
-    void run((signal) => answerAccidentLiability(session.sessionId, text, signal)).then((ok) => {
-      if (ok) setAnswer("");
-    });
+    // 失败或取消时保留输入，便于重试；成功后清空，等待下一轮追问。
+    void run("正在生成下一轮追问", (signal) => answerAccidentLiability(session.sessionId, text, signal)).then(
+      (ok) => {
+        if (ok) setAnswer("");
+      },
+    );
   };
 
   const generateNow = () => {
     if (session === null) return;
-    void run((signal) => requestAccidentLiabilityReport(session.sessionId, signal));
+    void run("正在生成研判意见", (signal) => requestAccidentLiabilityReport(session.sessionId, signal));
   };
 
   const restart = () => {
     const current = session;
-    controllerRef.current?.abort();
+    controllerRef.current?.abort("restart");
     setSession(null);
     setCaseText("");
     setAnswer("");
     setFailure(null);
+    setCancelled(false);
     setCopied(null);
     if (current !== null) {
       void clearAccidentLiabilitySession(current.sessionId).catch(() => undefined);
@@ -126,6 +163,20 @@ export function AccidentLiabilityPage() {
       command="事故概况 → 逐轮追问 → 研判报告"
     >
       <div className="accident-liability" data-testid="accident-liability">
+        {pending !== null ? (
+          <OperationModal
+            title="正在生成研判意见，请稍候"
+            stage={pending.label}
+            startedAt={pending.startedAt}
+            slowNoticeAfterSeconds={ACCIDENT_SLOW_NOTICE_AFTER_SECONDS}
+            normalHint="通常需要十几秒到半分钟，请不要关闭页面。系统只显示真实阶段和已等待时间，不显示百分比。"
+            slowHint="比平时慢，系统仍在处理。可以继续等待，也可以取消后稍后重试。"
+            cancelLabel="取消本次请求"
+            onCancel={cancelPending}
+            titleId="accident-progress-title"
+            testIdPrefix="accident-progress"
+          />
+        ) : null}
         {deidentificationNotice}
 
         {session === null ? (
@@ -147,6 +198,7 @@ export function AccidentLiabilityPage() {
               {caseOverLimit ? "：已超出上限，请精简后提交" : ""}
             </p>
             {failureNotice}
+            {cancelledNotice}
             <div className="accident-liability__actions">
               <button
                 type="button"
@@ -177,6 +229,7 @@ export function AccidentLiabilityPage() {
             </ol>
 
             {failureNotice}
+            {cancelledNotice}
 
             {session.stage === "questioning" ? (
               <div className="accident-liability__answer">

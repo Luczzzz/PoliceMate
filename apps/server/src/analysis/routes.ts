@@ -282,6 +282,8 @@ export async function registerAnalysisRoutes(
             contractVersion: CONTRACT_VERSION,
             inputCharacters: Array.from(caseText).length,
             outputCharacters: emitted,
+            // 法源材料字符数（只计数）：首字延迟与载荷的关系只能在遥测里归因。
+            payloadChars: JSON.stringify(legalSources).length,
             ...(firstChunkMs !== undefined ? { firstChunkMs } : {}),
             featureState: state,
           });
