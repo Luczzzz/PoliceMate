@@ -3,7 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*", "apps/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "description": "松警伴侣（PoliceMate）移动端 H5 受控试行版",
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w @policymate/server\" \"npm run dev -w @policymate/web\"",
@@ -17,7 +20,8 @@
     "content:assets": "tsx scripts/content-assets.ts",
     "schemas:generate": "tsx scripts/schemas.ts",
     "llm:smoke": "tsx scripts/llm-smoke.ts",
-    "verify": "npm run typecheck && npm run test && npm run build && npm run test:e2e"
+    "verify": "npm run typecheck && npm run test && npm run build && npm run test:e2e",
+    "llm:thinking": "tsx scripts/llm-thinking-probe.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

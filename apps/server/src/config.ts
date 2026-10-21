@@ -66,6 +66,16 @@ export interface AppConfig {
   streamMaxChars?: number;
   /** 遥测接收端：`memory`（默认，测试用）或 `stdout`（逐行 JSON，部署用）。 */
   telemetrySink?: "memory" | "stdout";
+  /**
+   * 思考强度：直传 OpenAI 风格的 `reasoning_effort`。未设置时不发该字段，
+   * 请求体与之前逐字节一致（ADR-0020）。
+   */
+  llmReasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | null;
+  /**
+   * 关闭思考：发送 `thinking: {type:"disabled"}`（部分厂商方言）。未设置时不发。
+   * 与 `llmReasoningEffort` 互斥；两者同时设置时启动即报错，避免语义含糊。
+   */
+  llmThinkingDisabled?: boolean;
   /** 各操作的单次生成上限（token）；只封顶不强制，避免模型写超长输出。 */
   llmMaxTokens?: Partial<Record<LlmTokenBudget, number>>;
   /** 事故问答单次边界调用超时。 */
@@ -195,6 +205,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (testControls && (mode !== "fixture" || env.NODE_ENV === "production")) {
     throw new Error("测试控制只允许在非生产 fixture 模式启用。");
   }
+  const rawReasoningEffort = readOptional(env.PM_LLM_REASONING_EFFORT);
+  const reasoningEffortValues = ["none", "minimal", "low", "medium", "high"] as const;
+  if (rawReasoningEffort !== null && !(reasoningEffortValues as readonly string[]).includes(rawReasoningEffort)) {
+    throw new Error(`PM_LLM_REASONING_EFFORT 必须为 ${reasoningEffortValues.join(" / ")}。`);
+  }
+  const rawThinking = readOptional(env.PM_LLM_THINKING);
+  if (rawThinking !== null && rawThinking !== "off" && rawThinking !== "on") {
+    throw new Error("PM_LLM_THINKING 必须为 on 或 off。");
+  }
+  const thinkingDisabled = rawThinking === "off";
+  if (thinkingDisabled && rawReasoningEffort !== null) {
+    throw new Error("PM_LLM_THINKING=off 与 PM_LLM_REASONING_EFFORT 不能同时设置：二者语义重叠，只选一种。");
+  }
+
   const rawTelemetrySink = readOptional(env.PM_TELEMETRY_SINK);
   if (rawTelemetrySink !== null && rawTelemetrySink !== "memory" && rawTelemetrySink !== "stdout") {
     throw new Error("PM_TELEMETRY_SINK 必须为 memory 或 stdout。");
@@ -236,6 +260,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     streamFirstTokenTimeoutMs: readNumber(env.PM_STREAM_FIRST_TOKEN_TIMEOUT_MS, DEFAULT_STREAM_FIRST_TOKEN_TIMEOUT_MS),
     streamMaxChars: readNumber(env.PM_STREAM_MAX_CHARS, DEFAULT_STREAM_MAX_CHARS),
     telemetrySink: rawTelemetrySink === "stdout" ? "stdout" : "memory",
+    llmReasoningEffort: rawReasoningEffort as AppConfig["llmReasoningEffort"],
+    llmThinkingDisabled: thinkingDisabled,
     llmMaxTokens: {
       extract: readNumber(env.PM_LLM_MAX_TOKENS_EXTRACT, DEFAULT_LLM_MAX_TOKENS.extract),
       report: readNumber(env.PM_LLM_MAX_TOKENS_REPORT, DEFAULT_LLM_MAX_TOKENS.report),

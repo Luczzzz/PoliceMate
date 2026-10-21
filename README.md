@@ -195,6 +195,11 @@ bash scripts/install-browser-deps.sh
 | `PM_ACCIDENT_TIMEOUT_MS` | `60000` | 事故问答单次边界调用超时 |
 | `PM_ACCIDENT_TOTAL_BUDGET_MS` | `120000` | 事故问答一次请求的重试总预算（含首次，超出即失败关闭） |
 | `PM_TELEMETRY_SINK` | `memory` | 遥测接收端；`stdout` 逐行 JSON 落盘（仍只写白名单字段） |
+| `PM_LLM_REASONING_EFFORT` | 未设置 | 直传 `reasoning_effort`（`none`/`minimal`/`low`/`medium`/`high`）；未设置则不发该字段（ADR-0020） |
+| `PM_LLM_THINKING` | 未设置 | 设为 `off` 时发 `thinking:{type:"disabled"}`；与上面一项互斥 |
+
+降低思考强度前先跑 `npm run llm:thinking` 探测网关接受哪种字段（它会报告思维链是否存在、
+字符数与耗时）。默认两者都不发，请求体与引入该能力前一致。
 
 使用与数据说明中的服务提供者、联系人和数据处理说明未配置时，页面如实显示“尚未配置”，
 不得使用虚构主体；受控试行前必须填写实际信息。可参考

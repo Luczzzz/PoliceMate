@@ -23,6 +23,21 @@ const DEFAULT_MAX_RESPONSE_BYTES = 1024 * 1024;
 const DEFAULT_WORKFLOW_VERSION = "policymate-llm-v1.0.0";
 const TEMPERATURE = 0.2;
 
+/**
+ * 思考强度相关的可选请求字段（ADR-0020）。
+ *
+ * 默认两者都不发：请求体与未引入该能力时逐字节一致。网关不认识这些字段时通常
+ * 直接 400，因此必须先跑 `npm run llm:thinking` 探测，再把确认可用的那一种写进
+ * 环境变量，而不是在代码里同时发多种方言。
+ */
+function thinkingFields(config: AppConfig): Record<string, unknown> {
+  if (config.llmThinkingDisabled === true) return { thinking: { type: "disabled" } };
+  if (config.llmReasoningEffort !== undefined && config.llmReasoningEffort !== null) {
+    return { reasoning_effort: config.llmReasoningEffort };
+  }
+  return {};
+}
+
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), "utf8");
 
 /** 条文节选长度：事故报告只需知道“这一条讲什么”，不需要全文（ADR-0019）。 */
@@ -143,6 +158,7 @@ export function createLlmProvider(
         stream: false,
         // 只封顶不强制：输出超过预算会以 finish_reason=length 报错，不静默截断。
         max_tokens: maxTokens,
+        ...thinkingFields(config),
         response_format: responseFormat,
         messages: [
           { role: "system", content: PROMPTS[operation] },
@@ -184,6 +200,7 @@ export function createLlmProvider(
         temperature: TEMPERATURE,
         stream: true,
         max_tokens: config.llmMaxTokens?.stream ?? DEFAULT_LLM_MAX_TOKENS.stream,
+        ...thinkingFields(config),
         messages: [
           { role: "system", content: PROMPTS.stream },
           { role: "user", content: JSON.stringify({ caseText: request.caseText, legalSources: request.legalSources.map((source) => ({
