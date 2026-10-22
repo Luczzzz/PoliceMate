@@ -35,6 +35,13 @@ import { AnalysisEngine } from "./analysis/engine";
 import { registerAnalysisRoutes } from "./analysis/routes";
 import { AccidentLiabilityEngine } from "./accident-liability/engine";
 import { registerAccidentLiabilityRoutes } from "./accident-liability/routes";
+import { registerAuthRoutes } from "./auth/routes";
+import { SimpleIdentityService, defaultIdentityService } from "./auth/simple-identity";
+import { registerCalendarRoutes } from "./calendar/routes";
+import { DeadlineRulesManager } from "./calendar/deadline-rules";
+import { CaseDeadlinesManager } from "./calendar/case-deadlines";
+import { UserSchedulesManager } from "./calendar/user-schedules";
+import { CalendarEngine } from "./calendar/engine";
 import type { FixtureControls, FixturePatch } from "./providers/fixture";
 import type { Providers, ServiceAvailability } from "./providers/types";
 import { createUsageStats, type UsageStats } from "./usage-stats";
@@ -67,6 +74,8 @@ export interface BuildAppDeps {
   runtime?: ResolvedRuntimeConfig;
   /** 首页匿名使用计数；测试可注入内存实现。 */
   usageStats?: UsageStats;
+  /** 用户身份服务；默认为进程级实例。 */
+  identityService?: SimpleIdentityService;
 }
 
 const CONTRACT_HEADER = "x-pm-contract-version";
@@ -649,6 +658,26 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
       usageStats.reset();
       return { ...usageStats.snapshot(), timeZone: usageStats.timeZone };
     });
+  }
+
+  // 注册认证路由
+  const identityService = deps.identityService ?? defaultIdentityService;
+  registerAuthRoutes(app, identityService);
+
+  // 注册日历路由（如果启用）
+  if (config.calendarEnabled) {
+    try {
+      const rulesManager = new DeadlineRulesManager(config.deadlineRulesPath!);
+      const deadlinesManager = new CaseDeadlinesManager(config.calendarDataDir!, rulesManager);
+      const schedulesManager = new UserSchedulesManager(config.calendarDataDir!);
+      const calendarEngine = new CalendarEngine(deadlinesManager, schedulesManager);
+
+      registerCalendarRoutes(app, calendarEngine, identityService);
+      console.log("[policymate-server] Calendar module enabled");
+    } catch (error) {
+      console.error("[policymate-server] Failed to initialize calendar module:", error);
+      process.exitCode = 1;
+    }
   }
 
   // 案情分析：会话存于短暂运行内存；能力停用或边界不可用时失败关闭。

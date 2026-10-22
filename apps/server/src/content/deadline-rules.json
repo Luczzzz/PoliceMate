@@ -1,0 +1,37 @@
+[
+  {
+    "id": "criminal-investigation-30d",
+    "category": "criminal",
+    "stageName": "侦查期限（一般）",
+    "description": "刑事案件一般侦查期限",
+    "daysFromStart": 30,
+    "extendable": true,
+    "maxExtensionDays": 30,
+    "legalBasis": "《刑事诉讼法》第129条",
+    "status": "trial",
+    "contentVersion": 1
+  },
+  {
+    "id": "admin-investigation-30d",
+    "category": "administrative",
+    "stageName": "立案后决定",
+    "description": "行政案件立案后30天内作出决定",
+    "daysFromStart": 30,
+    "extendable": true,
+    "maxExtensionDays": 30,
+    "legalBasis": "《公安机关办理行政案件程序规定》第60条",
+    "status": "trial",
+    "contentVersion": 1
+  },
+  {
+    "id": "admin-transfer-7d",
+    "category": "administrative",
+    "stageName": "移送期限",
+    "description": "需要移送的案件应在7天内移送",
+    "daysFromStart": 7,
+    "extendable": false,
+    "legalBasis": "《公安机关办理行政案件程序规定》第120条",
+    "status": "trial",
+    "contentVersion": 1
+  }
+]

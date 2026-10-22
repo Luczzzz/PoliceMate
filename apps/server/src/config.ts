@@ -92,6 +92,12 @@ export interface AppConfig {
   accidentTotalBudgetMs?: number;
   /** 运行环境标识；用于发布检查，不参与产品行为。 */
   environment?: "development" | "production";
+  /** 日历功能开关；环境变量 PM_CALENDAR_ENABLED。 */
+  calendarEnabled?: boolean;
+  /** 日历数据目录；环境变量 PM_CALENDAR_DATA_DIR（默认 ./data/calendar）。 */
+  calendarDataDir?: string;
+  /** 期限规则JSON文件路径；环境变量 PM_DEADLINE_RULES_PATH。 */
+  deadlineRulesPath?: string;
 }
 
 export type ReportFormat = "stream" | "structured";
@@ -293,5 +299,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     accidentTimeoutMs: readNumber(env.PM_ACCIDENT_TIMEOUT_MS, DEFAULT_ACCIDENT_TIMEOUT_MS),
     accidentTotalBudgetMs: readNumber(env.PM_ACCIDENT_TOTAL_BUDGET_MS, DEFAULT_ACCIDENT_TOTAL_BUDGET_MS),
     environment: env.NODE_ENV === "production" ? "production" : "development",
+    calendarEnabled: readBoolean(env.PM_CALENDAR_ENABLED, false),
+    calendarDataDir: readOptional(env.PM_CALENDAR_DATA_DIR) ?? resolve(packageRoot, "../../data/calendar"),
+    deadlineRulesPath: readOptional(env.PM_DEADLINE_RULES_PATH) ?? resolve(packageRoot, "src/content/deadline-rules.json"),
   };
 }
