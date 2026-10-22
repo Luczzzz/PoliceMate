@@ -12,6 +12,7 @@ export type IconName =
   | "wifiOff"
   | "help"
   | "clock"
+  | "calendar"
   | "input";
 
 export interface IconProps {
@@ -148,6 +149,15 @@ export function Icon({ name, size = 24, strokeWidth = 1.8, className }: IconProp
         <svg {...common}>
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7v5l3 2" />
+        </svg>
+      );
+    case "calendar":
+      return (
+        <svg {...common}>
+          <path d="M4 9h16M4 5h16c1.1 0 2 .9 2 2v11c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V7c0-1.1.9-2 2-2Z" />
+          <path d="M8 2v4M16 2v4" />
+          <circle cx="12" cy="17" r="3" />
+          <path d="M12 15v4" />
         </svg>
       );
     case "input":

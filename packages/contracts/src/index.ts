@@ -1259,3 +1259,50 @@ export interface AccidentLiabilityAnswerRequest {
 
 /** 研判报告长度上限；超出即截断并显式标注（沿用 ADR-0012/0015 的思路）。 */
 export const ACCIDENT_LIABILITY_REPORT_MAX_CHARACTERS = 12_000;
+
+// ===== Calendar Types =====
+
+export interface ClaimIdentityRequest {
+  username: string;
+}
+
+export interface ClaimIdentityResponse {
+  userId: string;
+  token: string;
+}
+
+export interface CreateCaseDeadlineRequest {
+  caseId: string;
+  caseStartDate: string;
+  category: "administrative" | "criminal";
+}
+
+export interface UpdateScheduleRequest {
+  date: string;
+  type: "full_day" | "morning" | "afternoon" | "custom";
+  timeRange?: string;
+  note?: string;
+}
+
+export interface CalendarItem {
+  date: string;
+  type: "deadline" | "schedule";
+  caseId?: string;
+  stageName?: string;
+  daysRemaining?: number;
+  urgency?: "normal" | "warning" | "urgent" | "overdue";
+  scheduleType?: "full_day" | "morning" | "afternoon" | "custom";
+  timeRange?: string;
+  note?: string;
+}
+
+export interface CalendarResponse {
+  view: "deadlines" | "schedules";
+  month: string;
+  items: CalendarItem[];
+}
+
+export interface ApiError {
+  error: string;
+  code: string;
+}

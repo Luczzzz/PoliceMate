@@ -85,6 +85,15 @@ export function HomePage() {
               reason={state.data.entries.accidentLiability.reason}
               to="/accident-liability"
             />
+            <Link className="entry-card entry-card--calendar" to="/calendar">
+              <span className="entry-card__icon" aria-hidden="true">
+                <Icon name="calendar" size={40} />
+              </span>
+              <div className="entry-card__content">
+                <h3>日历</h3>
+                <p>追踪办案期限与排班日程。查看期限倒计时，管理个人值班表。</p>
+              </div>
+            </Link>
           </nav>
         ) : null}
       </section>
